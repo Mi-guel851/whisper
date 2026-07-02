@@ -1,11 +1,9 @@
 "use server";
 
-import { redirect } from "next/navigation";
-
 export async function signUp() {
-  redirect("/dashboard");
+  // We'll connect this to Supabase in the next step.
 }
 
 export async function signIn() {
-  redirect("/dashboard");
+  // We'll connect this to Supabase in the next step.
 }
