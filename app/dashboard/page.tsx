@@ -1,47 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import DashboardHeader from "@/components/DashboardHeader";
+import ProfileCard from "@/components/ProfileCard";
+import LinkCard from "@/components/LinkCard";
+import AnalyticsCard from "@/components/AnalyticsCard";
+import NotificationCard from "@/components/NotificationCard";
+import RecentMessages from "@/components/RecentMessages";
+import BottomNav from "@/components/BottomNav";
 
-export default function Dashboard() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-
-  useEffect(() => {
-    async function loadUser() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push("/login");
-        return;
-      }
-
-      setEmail(session.user.email || "");
-    }
-
-    loadUser();
-  }, [router]);
-
-  async function logout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
-
+export default function DashboardPage() {
   return (
-    <main className="min-h-screen bg-[#090014] text-white flex flex-col items-center justify-center">
-      <h1 className="text-4xl font-bold">Dashboard</h1>
+    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] pb-32">
 
-      <p className="mt-4">{email}</p>
+      <div className="mx-auto max-w-3xl space-y-6 p-6">
 
-      <button
-        onClick={logout}
-        className="mt-8 rounded-xl bg-red-500 px-6 py-3 font-bold"
-      >
-        Logout
-      </button>
+        <DashboardHeader />
+
+        <ProfileCard />
+
+        <LinkCard />
+
+        <AnalyticsCard />
+
+        <NotificationCard />
+
+        <RecentMessages />
+
+      </div>
+
+      <BottomNav />
+
     </main>
   );
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Button from "./Button";
 import PhoneMockup from "./PhoneMockup";
 
@@ -24,8 +25,17 @@ export default function Hero() {
         </p>
 
         <div className="mt-10 flex gap-4">
-          <Button>Create Link</Button>
-          <Button variant="secondary">Learn More</Button>
+
+          <Link href="/signup">
+            <Button>Create Link</Button>
+          </Link>
+
+          <a href="#features">
+            <Button variant="secondary">
+              Learn More
+            </Button>
+          </a>
+
         </div>
 
       </div>
