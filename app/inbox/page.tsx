@@ -1,7 +1,9 @@
 "use client";
 
+import BackButton from "@/components/BackButton";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import BottomNavigation from "@/components/BottomNavigation";
 
 interface Message {
   id: string;
@@ -76,6 +78,8 @@ export default function InboxPage() {
         )}
 
       </div>
+      <BottomNavigation />
+      <BackButton />
     </main>
   );
 }

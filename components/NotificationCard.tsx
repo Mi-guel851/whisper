@@ -1,48 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { Bell, ShieldCheck } from "lucide-react";
 
 export default function NotificationCard() {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    async function loadNotifications() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) return;
-
-      const { data } = await supabase
-        .from("messages")
-        .select("id")
-        .eq("recipient_id", session.user.id)
-        .eq("is_read", false);
-
-      setCount(data?.length || 0);
-    }
-
-    loadNotifications();
-  }, []);
-
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/10 backdrop-blur-xl p-6">
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
 
-      <div className="flex items-center justify-between">
+      <div className="mb-5 flex items-center gap-3">
 
-        <div>
-          <h2 className="text-2xl font-bold text-white">
-            Notifications
-          </h2>
+        <Bell className="text-yellow-400" />
 
-          <p className="text-gray-400">
-            Unread anonymous messages
+        <h2 className="text-2xl font-bold text-white">
+          Notifications
+        </h2>
+
+      </div>
+
+      <div className="space-y-4">
+
+        <div className="rounded-2xl bg-white/5 p-4">
+
+          <div className="flex items-center gap-2">
+
+            <ShieldCheck
+              size={18}
+              className="text-green-400"
+            />
+
+            <span className="font-semibold text-white">
+              Security
+            </span>
+
+          </div>
+
+          <p className="mt-2 text-gray-400">
+            Your account is fully protected.
           </p>
+
         </div>
 
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-3xl font-black text-white">
-          {count}
+        <div className="rounded-2xl bg-cyan-500/10 p-4">
+
+          <p className="font-semibold text-cyan-300">
+            🎉 Premium features coming soon!
+          </p>
+
         </div>
 
       </div>

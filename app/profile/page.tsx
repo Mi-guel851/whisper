@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
+import BackButton from "@/components/BackButton";
+import BottomNavigation from "@/components/BottomNavigation";
+import AvatarUpload from "@/components/AvatarUpload";
+import { useToast } from "@/components/ToastProvider";
+import LogoutButton from "@/components/LogoutButton";
 export default function ProfilePage() {
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
@@ -35,7 +41,6 @@ export default function ProfilePage() {
         setBio(data.bio || "");
       }
     }
-
     loadProfile();
   }, [router]);
 
@@ -43,38 +48,32 @@ export default function ProfilePage() {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-
     if (!session) return;
 
     setLoading(true);
-
     const { error } = await supabase
       .from("profiles")
-      .update({
-        display_name: displayName,
-        username,
-        bio,
-      })
+      .update({ display_name: displayName, username, bio })
       .eq("id", session.user.id);
-
     setLoading(false);
 
     if (error) {
-      alert(error.message);
+      showToast(error.message);
       return;
     }
-
-    alert("Profile updated!");
+    showToast("Profile updated successfully 👤");
   }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white p-6">
+      <BackButton />
 
       <div className="mx-auto max-w-xl rounded-3xl bg-white/10 backdrop-blur-xl p-8">
+        <h1 className="text-4xl font-bold mb-8">👤 Profile</h1>
 
-        <h1 className="text-4xl font-bold mb-8">
-          👤 Profile
-        </h1>
+        <div className="mb-6">
+          <AvatarUpload />
+        </div>
 
         <input
           value={displayName}
@@ -82,14 +81,12 @@ export default function ProfilePage() {
           placeholder="Display Name"
           className="mb-4 w-full rounded-2xl bg-black/30 p-4 outline-none"
         />
-
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="Username"
           className="mb-4 w-full rounded-2xl bg-black/30 p-4 outline-none"
         />
-
         <textarea
           value={bio}
           onChange={(e) => setBio(e.target.value)}
@@ -105,9 +102,13 @@ export default function ProfilePage() {
         >
           {loading ? "Saving..." : "Save Profile"}
         </button>
-
+        <div className="mt-6">
+  <LogoutButton />
+</div>
       </div>
-
+      <BottomNavigation />
     </main>
   );
-}
+}<div className="mt-8">
+  <LogoutButton />
+</div>

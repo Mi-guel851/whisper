@@ -1,83 +1,98 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { useToast } from "@/components/ToastProvider";
 
 export default function SignupPage() {
+  const router = useRouter();
+  const { showToast } = useToast();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSignup(e: React.FormEvent) {
-    e.preventDefault();
+  async function signup() {
+    const cleanUsername = username.trim().toLowerCase();
+
+    if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) {
+      showToast("Username must be 3-20 characters: letters, numbers, underscores only.");
+      return;
+    }
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    // check username isn't already taken
+    const { data: existing } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("username", cleanUsername)
+      .maybeSingle();
+
+    if (existing) {
+      setLoading(false);
+      showToast("That username is already taken.");
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: { username: cleanUsername },
+      },
     });
 
     setLoading(false);
 
     if (error) {
-      alert(error.message);
+      showToast(error.message);
       return;
     }
 
-    alert("🎉 Account created successfully! Check your email if verification is enabled.");
+    if (data.session) {
+      showToast("Account created! Welcome to Whisper 🎉");
+      router.push("/dashboard");
+    } else {
+      showToast("Confirmation email sent! Check your inbox to complete signup. 📧");
+      router.push("/login");
+    }
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] flex items-center justify-center text-white">
+    <div className="flex min-h-screen items-center justify-center text-white">
+      <div className="w-full max-w-md space-y-4">
 
-      {/* Background Glow */}
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
-      <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
-      <div className="absolute top-1/2 left-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-500/10 blur-[120px]" />
+        <input
+          className="w-full p-3 text-black"
+          placeholder="email"
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-      {/* Glass Card */}
-      <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/10 bg-white/10 p-8 backdrop-blur-2xl shadow-2xl">
+        <input
+          className="w-full p-3 text-black"
+          placeholder="username"
+          onChange={(e) => setUsername(e.target.value)}
+        />
 
-        <h1 className="mb-2 text-center text-4xl font-bold">
-          Whisper
-        </h1>
+        <input
+          className="w-full p-3 text-black"
+          placeholder="password"
+          type="password"
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-        <p className="mb-8 text-center text-gray-300">
-          Create your anonymous messaging account
-        </p>
-
-        <form onSubmit={handleSignup} className="space-y-5">
-
-          <input
-            type="email"
-            placeholder="Email Address"
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none transition focus:border-cyan-400"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-
-          <input
-            type="password"
-            placeholder="Password"
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none transition focus:border-cyan-400"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-2xl bg-cyan-400 p-4 font-bold text-black transition hover:bg-cyan-300 disabled:opacity-60"
-          >
-            {loading ? "Creating Account..." : "Create Account"}
-          </button>
-
-        </form>
+        <button
+          onClick={signup}
+          disabled={loading}
+          className="w-full bg-cyan-400 p-3 font-bold text-black disabled:opacity-60"
+        >
+          {loading ? "Creating..." : "Create Account"}
+        </button>
 
       </div>
-    </main>
+    </div>
   );
 }
