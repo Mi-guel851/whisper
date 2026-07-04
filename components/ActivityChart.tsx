@@ -11,6 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { supabase } from "@/lib/supabase/client";
+import SectionLoadingBar from "./SectionLoadingBar";
 
 type DayBucket = {
   date: string;
@@ -34,6 +35,7 @@ function last7Days(): DayBucket[] {
 export default function ActivityChart() {
   const [data, setData] = useState<DayBucket[]>(last7Days());
   const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async (uid: string) => {
     const buckets = last7Days();
@@ -65,6 +67,7 @@ export default function ActivityChart() {
     });
 
     setData(buckets);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -72,7 +75,10 @@ export default function ActivityChart() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        setLoading(false);
+        return;
+      }
 
       setUserId(session.user.id);
       loadData(session.user.id);
@@ -114,6 +120,8 @@ export default function ActivityChart() {
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
+      <SectionLoadingBar loading={loading} />
+
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-bold text-white">Activity — Last 7 Days</h2>
         <div className="flex gap-4 text-xs">
@@ -149,20 +157,8 @@ export default function ActivityChart() {
               color: "#fff",
             }}
           />
-          <Area
-            type="monotone"
-            dataKey="messages"
-            stroke="#22d3ee"
-            strokeWidth={2}
-            fill="url(#msgGradient)"
-          />
-          <Area
-            type="monotone"
-            dataKey="views"
-            stroke="#a855f7"
-            strokeWidth={2}
-            fill="url(#viewGradient)"
-          />
+          <Area type="monotone" dataKey="messages" stroke="#22d3ee" strokeWidth={2} fill="url(#msgGradient)" />
+          <Area type="monotone" dataKey="views" stroke="#a855f7" strokeWidth={2} fill="url(#viewGradient)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
+import { ImagePlus, X } from "lucide-react";
 
 export default function PublicProfile() {
   const params = useParams();
@@ -14,6 +15,8 @@ export default function PublicProfile() {
   const [receiverId, setReceiverId] = useState("");
   const [checkingProfile, setCheckingProfile] = useState(true);
   const [message, setMessage] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
@@ -35,15 +38,67 @@ export default function PublicProfile() {
     loadProfile();
   }, [username]);
 
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Please select an image file.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("Image must be under 5MB.");
+      return;
+    }
+
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
+
+  function removeImage() {
+    setImageFile(null);
+    setImagePreview(null);
+  }
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!receiverId) return;
 
+    if (!message.trim() && !imageFile) {
+      showToast("Write a message or attach an image.");
+      return;
+    }
+
     setLoading(true);
+
+    let imageUrl: string | null = null;
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop();
+      const filePath = `${receiverId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("message-images")
+        .upload(filePath, imageFile);
+
+      if (uploadError) {
+        setLoading(false);
+        showToast("Image upload failed: " + uploadError.message);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("message-images")
+        .getPublicUrl(filePath);
+
+      imageUrl = publicUrlData.publicUrl;
+    }
 
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
-      message,
+      message: message.trim() || null,
+      image_url: imageUrl,
     });
 
     setLoading(false);
@@ -55,6 +110,7 @@ export default function PublicProfile() {
 
     showToast("Message sent anonymously! 🎉");
     setMessage("");
+    removeImage();
     setSent(true);
   }
 
@@ -116,14 +172,42 @@ export default function PublicProfile() {
             </p>
           </div>
         ) : (
-          <form onSubmit={sendMessage} className="space-y-5 mt-8">
+          <form onSubmit={sendMessage} className="space-y-4 mt-8">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type your anonymous message..."
-              className="h-40 w-full rounded-2xl bg-black/30 p-4 outline-none"
-              required
+              className="h-32 w-full rounded-2xl bg-black/30 p-4 outline-none resize-none"
             />
+
+            {imagePreview ? (
+              <div className="relative">
+                <img
+                  src={imagePreview}
+                  alt="Attached"
+                  className="w-full max-h-64 rounded-2xl object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  className="absolute top-2 right-2 rounded-full bg-black/70 p-1.5 hover:bg-black transition"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 w-full rounded-2xl border border-dashed border-white/20 p-4 text-gray-400 hover:border-cyan-400 hover:text-cyan-300 cursor-pointer transition">
+                <ImagePlus size={20} />
+                Attach an image (optional)
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+              </label>
+            )}
+
             <button
               type="submit"
               disabled={loading}
