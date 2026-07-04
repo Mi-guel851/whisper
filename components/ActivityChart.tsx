@@ -84,7 +84,7 @@ export default function ActivityChart() {
     if (!userId) return;
 
     const channel = supabase
-      .channel("activity-chart")
+      .channel(`activity-chart-${userId}-${Date.now()}`)
       .on(
         "postgres_changes",
         {

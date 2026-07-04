@@ -41,7 +41,7 @@ export default function NotificationsPage() {
       setLoading(false);
 
       channel = supabase
-        .channel(`notifications-${session.user.id}`)
+        .channel(`notifications-${session.user.id}-${Date.now()}`)
         .on(
           "postgres_changes",
           {
