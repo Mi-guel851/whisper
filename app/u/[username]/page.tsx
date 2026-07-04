@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, X, User } from "lucide-react";
 
 export default function PublicProfile() {
   const params = useParams();
@@ -13,6 +13,8 @@ export default function PublicProfile() {
   const { showToast } = useToast();
 
   const [receiverId, setReceiverId] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(true);
   const [message, setMessage] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -24,12 +26,14 @@ export default function PublicProfile() {
     async function loadProfile() {
       const { data } = await supabase
         .from("profiles")
-        .select("id, username")
+        .select("id, username, avatar_url, display_name")
         .eq("username", username)
         .single();
 
       if (data) {
         setReceiverId(data.id);
+        setAvatarUrl(data.avatar_url);
+        setDisplayName(data.display_name);
         await supabase.from("profile_views").insert({ profile_id: data.id });
       }
       setCheckingProfile(false);
@@ -137,9 +141,30 @@ export default function PublicProfile() {
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white px-4">
       <div className="w-full max-w-lg rounded-3xl bg-white/10 p-8 backdrop-blur-xl">
 
-        <h1 className="text-4xl font-bold">@{username}</h1>
+        <div className="flex items-center gap-4">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={username}
+              className="h-16 w-16 rounded-full object-cover border-2 border-cyan-400"
+            />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+              <User size={28} className="text-white" />
+            </div>
+          )}
 
-        <p className="mt-2 text-gray-300">
+          <div>
+            <h1 className="text-3xl font-bold leading-tight">
+              {displayName || `@${username}`}
+            </h1>
+            {displayName && (
+              <p className="text-cyan-300 text-sm">@{username}</p>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-4 text-gray-300">
           Send an anonymous message
         </p>
 
@@ -172,7 +197,7 @@ export default function PublicProfile() {
             </p>
           </div>
         ) : (
-          <form onSubmit={sendMessage} className="space-y-4 mt-8">
+          <form onSubmit={sendMessage} className="space-y-4 mt-6">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}

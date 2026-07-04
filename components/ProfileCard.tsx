@@ -1,3 +1,4 @@
+// ProfileCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -5,6 +6,7 @@ import Link from "next/link";
 import { User, Pencil, Camera } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import SectionLoadingBar from "./SectionLoadingBar";
+import GlassPanel from "./GlassPanel";
 
 type Profile = {
   display_name: string | null;
@@ -44,7 +46,7 @@ export default function ProfileCard() {
   }, []);
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl shadow-xl">
+    <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
       {!loading && profile && (
@@ -99,6 +101,6 @@ export default function ProfileCard() {
         </>
       )}
 
-    </div>
+    </GlassPanel>
   );
 }

@@ -1,3 +1,4 @@
+// LinkCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -5,6 +6,7 @@ import { Copy, Share2, Link2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import SectionLoadingBar from "./SectionLoadingBar";
+import GlassPanel from "./GlassPanel";
 
 export default function LinkCard() {
   const [link, setLink] = useState("");
@@ -61,7 +63,7 @@ export default function LinkCard() {
   }
 
   return (
-    <div className="rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 to-purple-600/10 p-6 backdrop-blur-2xl shadow-xl">
+    <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
       <div className="flex items-center gap-3">
@@ -94,6 +96,6 @@ export default function LinkCard() {
           Share
         </button>
       </div>
-    </div>
+    </GlassPanel>
   );
 }

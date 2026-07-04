@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 import { X, Download, Share2 } from "lucide-react";
 
 export default function ShareMessageCard({

@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -45,39 +46,32 @@ export default function DashboardPage() {
 
   if (checking) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center bg-[#05010F] text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#05010F] via-[#120022] to-[#030008] pb-36">
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#05010F] via-[#120022] to-[#030008] pb-36">
+      <div className="pointer-events-none absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[180px]" />
+      <div className="pointer-events-none absolute top-1/3 right-[-150px] h-[420px] w-[420px] rounded-full bg-purple-600/10 blur-[180px]" />
 
-      <div className="mx-auto max-w-4xl space-y-6 p-6">
-
+      <div className="relative mx-auto max-w-4xl space-y-6 p-6">
         <DashboardHeader />
-
         <LinkCard />
-
         <ProfileCard />
 
         <div className="grid gap-6 md:grid-cols-2">
-
           <AnalyticsCard />
-
           <NotificationCard />
-
         </div>
 
         <ActivityChart />
-
         <RecentMessages />
-
       </div>
 
       <BottomNavigation />
-
     </main>
   );
 }

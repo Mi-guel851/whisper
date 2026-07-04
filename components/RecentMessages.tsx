@@ -1,3 +1,4 @@
+// RecentMessages.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -5,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import { MessageCircle, Share2 } from "lucide-react";
 import ShareMessageCard from "./ShareMessageCard";
 import SectionLoadingBar from "./SectionLoadingBar";
+import GlassPanel from "./GlassPanel";
 
 export default function RecentMessages() {
   const [messages, setMessages] = useState<any[]>([]);
@@ -36,7 +38,7 @@ export default function RecentMessages() {
   }, []);
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
+    <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
       <h2 className="mb-6 text-2xl font-bold text-white">Recent Messages</h2>
@@ -78,6 +80,6 @@ export default function RecentMessages() {
       )}
 
       {sharing && <ShareMessageCard message={sharing} onClose={() => setSharing(null)} />}
-    </div>
+    </GlassPanel>
   );
 }

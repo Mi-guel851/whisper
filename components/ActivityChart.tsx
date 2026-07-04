@@ -1,3 +1,4 @@
+// ActivityChart.tsx
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -12,6 +13,7 @@ import {
 } from "recharts";
 import { supabase } from "@/lib/supabase/client";
 import SectionLoadingBar from "./SectionLoadingBar";
+import GlassPanel from "./GlassPanel";
 
 type DayBucket = {
   date: string;
@@ -119,7 +121,7 @@ export default function ActivityChart() {
   }, [userId, loadData]);
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-2xl">
+    <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
       <div className="mb-4 flex items-center justify-between">
@@ -161,6 +163,6 @@ export default function ActivityChart() {
           <Area type="monotone" dataKey="views" stroke="#a855f7" strokeWidth={2} fill="url(#viewGradient)" />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+    </GlassPanel>
   );
 }

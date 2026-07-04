@@ -1,7 +1,9 @@
+// app/signup/page.tsx
 "use client";
 
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
+import GlassPanel from "@/components/GlassPanel";
 
 export default function SignupPage() {
   const { showToast } = useToast();
@@ -25,9 +27,9 @@ export default function SignupPage() {
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
-      <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/10 bg-white/10 p-8 backdrop-blur-2xl shadow-2xl text-center">
+      <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8 text-center">
 
-        <h1 className="text-4xl font-bold">Create Account</h1>
+        <h1 className="text-4xl font-black">Create Account</h1>
         <p className="mt-2 mb-8 text-gray-300">
           Get your own Whisper link
         </p>
@@ -45,7 +47,7 @@ export default function SignupPage() {
           Continue with Google
         </button>
 
-      </div>
+      </GlassPanel>
     </main>
   );
 }

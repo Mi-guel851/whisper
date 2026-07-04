@@ -1,3 +1,4 @@
+// app/profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,6 +10,8 @@ import BottomNavigation from "@/components/BottomNavigation";
 import AvatarUpload from "@/components/AvatarUpload";
 import { useToast } from "@/components/ToastProvider";
 import LogoutButton from "@/components/LogoutButton";
+import GlassPanel from "@/components/GlassPanel";
+
 export default function ProfilePage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -65,11 +68,11 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white p-6">
+    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white p-6 pb-28">
       <BackButton />
 
-      <div className="mx-auto max-w-xl rounded-3xl bg-white/10 backdrop-blur-xl p-8">
-        <h1 className="text-4xl font-bold mb-8">👤 Profile</h1>
+      <GlassPanel className="mx-auto max-w-xl rounded-3xl p-8 mt-4">
+        <h1 className="text-4xl font-black mb-8">👤 Profile</h1>
 
         <div className="mb-6">
           <AvatarUpload />
@@ -79,36 +82,36 @@ export default function ProfilePage() {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="Display Name"
-          className="mb-4 w-full rounded-2xl bg-black/30 p-4 outline-none"
+          className="mb-4 w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
         />
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="Username"
-          className="mb-4 w-full rounded-2xl bg-black/30 p-4 outline-none"
+          className="mb-4 w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
         />
         <textarea
           value={bio}
           onChange={(e) => setBio(e.target.value)}
           placeholder="Bio"
           rows={4}
-          className="mb-6 w-full rounded-2xl bg-black/30 p-4 outline-none"
+          className="mb-6 w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
         />
 
         <button
           onClick={saveProfile}
           disabled={loading}
-          className="w-full rounded-2xl bg-cyan-400 p-4 font-bold text-black"
+          className="w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
         >
           {loading ? "Saving..." : "Save Profile"}
         </button>
+
         <div className="mt-6">
-  <LogoutButton />
-</div>
-      </div>
+          <LogoutButton />
+        </div>
+      </GlassPanel>
+
       <BottomNavigation />
     </main>
   );
-}<div className="mt-8">
-  <LogoutButton />
-</div>
+}

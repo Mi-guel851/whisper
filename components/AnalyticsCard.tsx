@@ -1,8 +1,10 @@
+// AnalyticsCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import SectionLoadingBar from "./SectionLoadingBar";
+import GlassPanel from "./GlassPanel";
 
 export default function AnalyticsCard() {
   const [stats, setStats] = useState({ messages: 0 });
@@ -32,12 +34,12 @@ export default function AnalyticsCard() {
   }, []);
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+    <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
       <h2 className="text-xl font-bold text-white">Your Analytics</h2>
       <div className="mt-4 text-gray-300">Total Messages Received:</div>
       <div className="mt-2 text-4xl font-black text-cyan-400">{stats.messages}</div>
-    </div>
+    </GlassPanel>
   );
 }
