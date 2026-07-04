@@ -184,12 +184,12 @@ export default function PublicProfile() {
               >
                 Send another
               </button>
-              <button
-                onClick={() => router.push("/signup")}
-                className="flex-1 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black hover:opacity-90 transition"
-              >
-                Create your own link
-              </button>
+             <button
+  onClick={() => window.open("https://whisper-anonymous.vercel.app/signup")}
+  className="flex-1 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black hover:opacity-90 transition"
+>
+  Create your own link
+</button>
             </div>
 
             <p className="text-center text-xs text-gray-500">
