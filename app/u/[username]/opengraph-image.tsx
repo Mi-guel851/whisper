@@ -12,10 +12,9 @@ export const contentType = "image/png";
 export default async function Image({
   params,
 }: {
-  params: Promise<{ username: string }>;
+  params: { username: string };
 }) {
-  const { username } = await params;
-
+  const username = decodeURIComponent(params.username);
   return new ImageResponse(
     (
       <div
