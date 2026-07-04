@@ -43,7 +43,9 @@ export default function InboxPage() {
     <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
       <div className="max-w-2xl mx-auto px-6 py-10">
 
-        <h1 className="text-5xl font-bold mb-2">
+        <BackButton />
+
+        <h1 className="text-5xl font-bold mb-2 mt-4">
           📥 Inbox
         </h1>
 
@@ -79,7 +81,6 @@ export default function InboxPage() {
 
       </div>
       <BottomNavigation />
-      <BackButton />
     </main>
   );
 }
