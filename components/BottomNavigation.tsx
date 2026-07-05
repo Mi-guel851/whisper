@@ -3,55 +3,58 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, MessageCircle, Bell, User, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { playNotificationSound } from "@/lib/sound";
-import { notificationManager } from "@/lib/realtime/notifications";
+import { House, Users, MessageCircle, Activity, User } from "lucide-react";
 
 export default function BottomNavigation() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    let mounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     async function init() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session || !mounted) return;
+      if (!session) return;
 
       const { count } = await supabase
         .from("messages")
-        .select("*", {
-          count: "exact",
-          head: true,
-        })
+        .select("*", { count: "exact", head: true })
         .eq("recipient_id", session.user.id)
         .eq("is_read", false);
 
-      if (mounted) {
-        setUnreadCount(count ?? 0);
-      }
+      setUnreadCount(count || 0);
 
-      notificationManager.connect(session.user.id, () => {
-        if (!mounted) return;
-
-        setUnreadCount((c) => c + 1);
-        playNotificationSound();
-      });
+      channel = supabase
+        .channel(`bottomnav-unread-${session.user.id}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `recipient_id=eq.${session.user.id}`,
+          },
+          () => {
+            setUnreadCount((c) => c + 1);
+            playNotificationSound();
+          }
+        )
+        .subscribe();
     }
 
     init();
 
     return () => {
-      mounted = false;
-      notificationManager.disconnect();
+      if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
-  async function handleNotificationsClick() {
+  async function handleActivityClick() {
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -60,14 +63,12 @@ export default function BottomNavigation() {
 
     const { error } = await supabase
       .from("messages")
-      .update({
-        is_read: true,
-      })
+      .update({ is_read: true })
       .eq("recipient_id", session.user.id)
       .eq("is_read", false);
 
     if (error) {
-      console.error(error.message);
+      console.error("Failed to mark as read:", error.message);
       return;
     }
 
@@ -75,15 +76,11 @@ export default function BottomNavigation() {
   }
 
   const nav = [
-    { href: "/dashboard", icon: House },
-    { href: "/active", icon: Users },
-    { href: "/inbox", icon: MessageCircle },
-    {
-      href: "/notifications",
-      icon: Bell,
-      badge: unreadCount,
-    },
-    { href: "/profile", icon: User },
+    { href: "/dashboard", icon: House, label: "Home" },
+    { href: "/active", icon: Users, label: "Friends" },
+    { href: "/inbox", icon: MessageCircle, label: "Inbox" },
+    { href: "/notifications", icon: Activity, label: "Activity", badge: unreadCount },
+    { href: "/profile", icon: User, label: "Profile" },
   ];
 
   return (
@@ -92,26 +89,22 @@ export default function BottomNavigation() {
         {nav.map((item) => {
           const Icon = item.icon;
           const active = pathname.startsWith(item.href);
+          const isActivity = item.href === "/notifications";
 
           return (
             <Link
               key={item.href}
               href={item.href}
-              onClick={
-                item.href === "/notifications"
-                  ? handleNotificationsClick
-                  : undefined
-              }
-              className={`relative transition ${
-                active
-                  ? "text-cyan-400"
-                  : "text-gray-500 hover:text-white"
+              onClick={isActivity ? handleActivityClick : undefined}
+              className={`relative flex flex-col items-center gap-1 text-[10px] font-semibold transition duration-300 ${
+                active ? "text-cyan-400" : "text-gray-500 hover:text-white"
               }`}
             >
-              <Icon size={27} strokeWidth={2.3} />
+              <Icon size={24} strokeWidth={2.3} />
+              {item.label}
 
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="absolute -top-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+              {"badge" in item && item.badge !== undefined && item.badge > 0 && (
+                <span className="absolute -top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
                   {item.badge > 9 ? "9+" : item.badge}
                 </span>
               )}

@@ -1,75 +1,33 @@
 const ADJECTIVES = [
-  "Silent",
-  "Hidden",
-  "Shadow",
-  "Ghost",
-  "Midnight",
-  "Echo",
-  "Masked",
-  "Phantom",
-  "Dark",
-  "Frozen",
-  "Lost",
-  "Quiet",
+  "Silent","Hidden","Quiet","Shadow","Masked","Ghostly","Veiled","Faceless",
+  "Whispering","Cloaked","Mystic","Nameless","Phantom","Elusive","Secret",
+  "Vanishing","Unseen","Obscure","Muted","Blurred","Foggy","Dim","Wandering",
+  "Drifting","Unknown","Enigmatic","Shrouded","Concealed","Fading","Nocturnal",
 ];
 
 const NOUNS = [
-  "Fox",
-  "Wolf",
-  "Raven",
-  "Tiger",
-  "Mist",
-  "Wisp",
-  "Echo",
-  "Ghost",
-  "Specter",
-  "Falcon",
-  "Drift",
-  "Storm",
+  "Ghost","Phantom","Shade","Wisp","Specter","Wraith","Echo","Mist","Shadow",
+  "Whisper","Spirit","Fog","Silhouette","Vapor","Ember","Star","Moon","Raven",
+  "Fox","Owl","Wolf","Cat","Sparrow","Lynx","Fern","Willow","Reed","Comet",
 ];
 
-export function getAnonIdentity() {
-  if (typeof window === "undefined") return "Anonymous";
-
-  const existing = sessionStorage.getItem("whisper_anon");
-
-  if (existing) return existing;
-
-  const adjective =
-    ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-
-  const noun =
-    NOUNS[Math.floor(Math.random() * NOUNS.length)];
-
-  const number = Math.floor(Math.random() * 9000 + 1000);
-
-  const label = `${adjective} ${noun} #${number}`;
-
-  sessionStorage.setItem("whisper_anon", label);
-
-  return label;
-}
-
-function hash(str: string) {
-  let h = 0;
-
+function fnv1aHash(str: string): number {
+  let hash = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
-    h = (h << 5) - h + str.charCodeAt(i);
-    h |= 0;
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
   }
-
-  return Math.abs(h);
+  return hash >>> 0;
 }
 
-export function getDeterministicAnonLabel(seed: string) {
-  const h = hash(seed);
+export function getDeterministicAnonLabel(seed: string): string {
+  const hash = fnv1aHash(seed);
+  const hash2 = fnv1aHash(seed + "::salt2");
+  const hash3 = fnv1aHash(seed + "::salt3");
 
-  const adjective = ADJECTIVES[h % ADJECTIVES.length];
-
-  const noun =
-    NOUNS[Math.floor(h / ADJECTIVES.length) % NOUNS.length];
-
-  const number = (h % 9000) + 1000;
+  const adjective = ADJECTIVES[hash % ADJECTIVES.length];
+  const noun = NOUNS[hash2 % NOUNS.length];
+  const number = 1000 + (hash3 % 9000);
 
   return `${adjective} ${noun} #${number}`;
 }
