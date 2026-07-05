@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
@@ -74,6 +75,15 @@ export default function LoginPage() {
             >
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
+          </div>
+
+          <div className="text-right -mt-2">
+            <Link
+              href="/forgot-password"
+              className="text-sm font-semibold text-cyan-300 hover:text-cyan-200"
+            >
+              Forgot password?
+            </Link>
           </div>
 
           <button
