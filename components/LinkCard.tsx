@@ -1,4 +1,3 @@
-// LinkCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,6 +9,7 @@ import GlassPanel from "./GlassPanel";
 
 export default function LinkCard() {
   const [link, setLink] = useState("");
+  const [displayPath, setDisplayPath] = useState("");
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
 
@@ -32,6 +32,7 @@ export default function LinkCard() {
 
       if (data) {
         setLink(`${window.location.origin}/u/${data.username}`);
+        setDisplayPath(`whisper.app/u/${data.username}`);
       }
       setLoading(false);
     }
@@ -66,33 +67,39 @@ export default function LinkCard() {
     <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
-      <div className="flex items-center gap-3">
-        <div className="rounded-2xl bg-cyan-500/20 p-3">
-          <Link2 className="text-cyan-300" size={24} />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-white">Your Anonymous Link</h2>
-          <p className="text-gray-400">Share it everywhere.</p>
-        </div>
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-300">
+        <Link2 size={14} />
+        Your Whisper Link
       </div>
 
-      <div className="mt-6 rounded-2xl bg-black/30 p-4 break-all text-cyan-300">
-        {link || "Generating link..."}
+      <h2 className="mt-2 text-2xl font-black leading-snug text-white">
+        Share it. Wait for the{" "}
+        <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+          honest ones
+        </span>
+        .
+      </h2>
+
+      <div className="mt-5 flex items-center gap-2 rounded-2xl bg-black/30 px-4 py-3">
+        <Link2 size={16} className="shrink-0 text-gray-500" />
+        <span className="truncate text-sm text-gray-200">
+          {displayPath || "Generating link..."}
+        </span>
       </div>
 
-      <div className="mt-5 flex gap-4">
+      <div className="mt-4 flex gap-3">
         <button
           onClick={copyLink}
-          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-cyan-400 p-4 font-bold text-black hover:scale-105 transition"
+          className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-3 font-semibold text-white transition hover:bg-white/10"
         >
-          <Copy size={20} />
+          <Copy size={16} />
           Copy
         </button>
         <button
           onClick={shareLink}
-          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-purple-600 p-4 font-bold text-white hover:scale-105 transition"
+          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-cyan-400 py-3 font-semibold text-black transition hover:scale-[1.02]"
         >
-          <Share2 size={20} />
+          <Share2 size={16} />
           Share
         </button>
       </div>

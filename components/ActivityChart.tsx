@@ -1,15 +1,13 @@
-// ActivityChart.tsx
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { TrendingUp } from "lucide-react";
 import {
   ResponsiveContainer,
   AreaChart,
   Area,
   XAxis,
-  YAxis,
   Tooltip,
-  CartesianGrid,
 } from "recharts";
 import { supabase } from "@/lib/supabase/client";
 import SectionLoadingBar from "./SectionLoadingBar";
@@ -20,6 +18,7 @@ type DayBucket = {
   label: string;
   messages: number;
   views: number;
+  total: number;
 };
 
 function last7Days(): DayBucket[] {
@@ -29,13 +28,21 @@ function last7Days(): DayBucket[] {
     d.setDate(d.getDate() - i);
     const date = d.toISOString().slice(0, 10);
     const label = d.toLocaleDateString("en-US", { weekday: "short" });
-    days.push({ date, label, messages: 0, views: 0 });
+    days.push({ date, label, messages: 0, views: 0, total: 0 });
   }
   return days;
 }
 
+function calcTrend(buckets: DayBucket[]): number {
+  const firstHalf = buckets.slice(0, 3).reduce((s, b) => s + b.total, 0);
+  const secondHalf = buckets.slice(4).reduce((s, b) => s + b.total, 0);
+  if (firstHalf === 0) return secondHalf > 0 ? 100 : 0;
+  return Math.round(((secondHalf - firstHalf) / firstHalf) * 100);
+}
+
 export default function ActivityChart() {
   const [data, setData] = useState<DayBucket[]>(last7Days());
+  const [trend, setTrend] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -68,7 +75,10 @@ export default function ActivityChart() {
       if (bucket) bucket.views += 1;
     });
 
+    buckets.forEach((b) => (b.total = b.messages + b.views));
+
     setData(buckets);
+    setTrend(calcTrend(buckets));
     setLoading(false);
   }, []);
 
@@ -124,33 +134,40 @@ export default function ActivityChart() {
     <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">Activity — Last 7 Days</h2>
-        <div className="flex gap-4 text-xs">
-          <span className="flex items-center gap-1.5 text-cyan-300">
-            <span className="h-2 w-2 rounded-full bg-cyan-400" /> Messages
-          </span>
-          <span className="flex items-center gap-1.5 text-purple-300">
-            <span className="h-2 w-2 rounded-full bg-purple-400" /> Views
-          </span>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
+            Last 7 Days
+          </p>
+          <h2 className="mt-1 text-xl font-bold text-white">
+            Engagement is climbing
+          </h2>
         </div>
+
+        {trend !== 0 && (
+          <div
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${
+              trend > 0
+                ? "bg-cyan-400/15 text-cyan-300"
+                : "bg-red-400/15 text-red-300"
+            }`}
+          >
+            <TrendingUp size={13} />
+            {trend > 0 ? "+" : ""}
+            {trend}%
+          </div>
+        )}
       </div>
 
-      <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={data}>
+      <ResponsiveContainer width="100%" height={140}>
+        <AreaChart data={data} margin={{ top: 20, left: 0, right: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="msgGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4} />
-              <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id="viewGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
+            <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.5} />
               <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-          <XAxis dataKey="label" stroke="#666" fontSize={12} />
-          <YAxis stroke="#666" fontSize={12} allowDecimals={false} />
+          <XAxis dataKey="label" hide />
           <Tooltip
             contentStyle={{
               background: "#120021",
@@ -159,8 +176,13 @@ export default function ActivityChart() {
               color: "#fff",
             }}
           />
-          <Area type="monotone" dataKey="messages" stroke="#22d3ee" strokeWidth={2} fill="url(#msgGradient)" />
-          <Area type="monotone" dataKey="views" stroke="#a855f7" strokeWidth={2} fill="url(#viewGradient)" />
+          <Area
+            type="monotone"
+            dataKey="total"
+            stroke="#a855f7"
+            strokeWidth={2.5}
+            fill="url(#totalGradient)"
+          />
         </AreaChart>
       </ResponsiveContainer>
     </GlassPanel>

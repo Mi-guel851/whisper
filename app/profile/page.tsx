@@ -1,16 +1,18 @@
-// app/profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Bell, Palette, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
-import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import AvatarUpload from "@/components/AvatarUpload";
 import { useToast } from "@/components/ToastProvider";
 import LogoutButton from "@/components/LogoutButton";
 import GlassPanel from "@/components/GlassPanel";
+
+const BIO_LIMIT = 140;
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -20,6 +22,7 @@ export default function ProfilePage() {
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   useEffect(() => {
     async function loadProfile() {
@@ -43,6 +46,7 @@ export default function ProfilePage() {
         setUsername(data.username || "");
         setBio(data.bio || "");
       }
+      setInitialLoad(false);
     }
     loadProfile();
   }, [router]);
@@ -68,48 +72,139 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white p-6 pb-28">
-      <BackButton />
-
-      <GlassPanel className="mx-auto max-w-xl rounded-3xl p-8 mt-4">
-        <h1 className="text-4xl font-black mb-8">👤 Profile</h1>
-
-        <div className="mb-6">
-          <AvatarUpload />
+    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white pb-28">
+      <div className="mx-auto max-w-xl p-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 transition hover:bg-white/10"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="flex items-center gap-2">
+            <Image src="/ghost.png" alt="Whisper" width={24} height={24} />
+            <span className="text-sm font-black tracking-wide">WHISPER</span>
+          </div>
         </div>
 
-        <input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Display Name"
-          className="mb-4 w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
-        />
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Username"
-          className="mb-4 w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
-        />
-        <textarea
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          placeholder="Bio"
-          rows={4}
-          className="mb-6 w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
-        />
+        <GlassPanel className="mt-6 rounded-3xl p-8 text-center">
+          <div className="flex justify-center">
+            <AvatarUpload />
+          </div>
 
-        <button
-          onClick={saveProfile}
-          disabled={loading}
-          className="w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
-        >
-          {loading ? "Saving..." : "Save Profile"}
-        </button>
+          <h1 className="mt-4 text-2xl font-bold text-white">
+            {displayName || "New User"}
+          </h1>
+          <p className="text-purple-300">@{username || "username"}</p>
+          <p className="mt-2 text-sm text-gray-400">
+            {bio || "Just here for the honest whispers ✨"}
+          </p>
+        </GlassPanel>
+
+        <div className="mt-4 space-y-4">
+          <GlassPanel className="rounded-2xl p-4">
+            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
+              <User size={12} />
+              Display Name
+            </label>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your name"
+              className="mt-2 w-full bg-transparent text-lg font-semibold text-white outline-none placeholder:text-gray-600"
+            />
+          </GlassPanel>
+
+          <GlassPanel className="rounded-2xl p-4">
+            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
+              <AtSign size={12} />
+              Username
+            </label>
+            <div className="mt-2 flex items-center text-lg">
+              <span className="text-gray-500">whisper.app/u/</span>
+              <input
+                value={username}
+                onChange={(e) =>
+                  setUsername(e.target.value.replace(/\s+/g, "").toLowerCase())
+                }
+                placeholder="username"
+                className="flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-600"
+              />
+            </div>
+          </GlassPanel>
+
+          <GlassPanel className="rounded-2xl p-4">
+            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
+              <Sparkles size={12} />
+              Bio
+            </label>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value.slice(0, BIO_LIMIT))}
+              placeholder="Tell people a little about yourself..."
+              rows={3}
+              className="mt-2 w-full resize-none bg-transparent text-white outline-none placeholder:text-gray-600"
+            />
+            <div className="text-right text-xs text-gray-500">
+              {bio.length}/{BIO_LIMIT}
+            </div>
+          </GlassPanel>
+
+          <button
+            onClick={saveProfile}
+            disabled={loading || initialLoad}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-cyan-400 py-4 font-bold text-black transition hover:scale-[1.01] disabled:opacity-60"
+          >
+            <Save size={18} />
+            {loading ? "Saving..." : "Save changes"}
+          </button>
+        </div>
+
+        <div className="mt-8">
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-500">
+            Account
+          </p>
+
+          <GlassPanel className="divide-y divide-white/5 rounded-2xl">
+            <div className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <ShieldCheck size={18} />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-white">Privacy & safety</p>
+                <p className="text-xs text-gray-500">Fully protected</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-600" />
+            </div>
+
+            <div className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-300">
+                <Bell size={18} />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-white">Notifications</p>
+                <p className="text-xs text-gray-500">Push · Email</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-600" />
+            </div>
+
+            <div className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <Palette size={18} />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-white">Appearance</p>
+                <p className="text-xs text-gray-500">Midnight</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-600" />
+            </div>
+          </GlassPanel>
+        </div>
 
         <div className="mt-6">
           <LogoutButton />
         </div>
-      </GlassPanel>
+      </div>
 
       <BottomNavigation />
     </main>

@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import { MessageCircle, Share2 } from "lucide-react";
+import { MessageSquareQuote, ArrowUpRight } from "lucide-react";
 import ShareMessageCard from "./ShareMessageCard";
 import SectionLoadingBar from "./SectionLoadingBar";
 import GlassPanel from "./GlassPanel";
+
+function timeAgo(dateString: string) {
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
 
 export default function RecentMessages() {
   const [messages, setMessages] = useState<any[]>([]);
@@ -27,7 +37,8 @@ export default function RecentMessages() {
         .from("messages")
         .select("*")
         .eq("recipient_id", session.user.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(3);
 
       setMessages(data || []);
       setLoading(false);
@@ -40,42 +51,45 @@ export default function RecentMessages() {
     <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
-      <h2 className="mb-6 text-2xl font-bold text-white">Recent Messages</h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Latest whispers</h2>
+        <Link
+          href="/notifications"
+          className="flex items-center gap-1 text-sm font-semibold text-purple-300 hover:text-purple-200"
+        >
+          View all
+          <ArrowUpRight size={14} />
+        </Link>
+      </div>
 
       {!loading && messages.length === 0 && (
-        <div className="text-center text-gray-400">No messages yet 👻</div>
+        <div className="py-6 text-center text-gray-400">No whispers yet 👻</div>
       )}
 
       {!loading && messages.length > 0 && (
         <div className="space-y-3">
           {messages.map((msg) => (
-            <div key={msg.id} className="rounded-2xl bg-white/5 p-4 text-white">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-cyan-300">
-                  <MessageCircle size={18} />
-                  Anonymous
-                </div>
-                <button
-                  onClick={() =>
-                    setSharing({ message: msg.message || "", imageUrl: msg.image_url || null })
-                  }
-                  className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition"
-                >
-                  <Share2 size={14} />
-                  Share
-                </button>
-              </div>
-
-              {msg.message && <p className="mt-2 text-gray-200">{msg.message}</p>}
-
-              {msg.image_url && (
-                <img
-                  src={msg.image_url}
-                  alt="Anonymous attachment"
-                  className="mt-3 rounded-xl max-h-80 w-full object-cover"
-                />
+            <button
+              key={msg.id}
+              onClick={() =>
+                setSharing({ message: msg.message || "", imageUrl: msg.image_url || null })
+              }
+              className="w-full rounded-2xl bg-white/5 p-4 text-left transition hover:bg-white/10"
+            >
+              {msg.message && (
+                <p className="text-sm text-gray-100">&ldquo;{msg.message}&rdquo;</p>
               )}
-            </div>
+              {!msg.message && msg.image_url && (
+                <p className="text-sm text-gray-100">📷 Image</p>
+              )}
+              <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                <span className="flex items-center gap-1.5">
+                  <MessageSquareQuote size={13} />
+                  Anonymous
+                </span>
+                <span>{timeAgo(msg.created_at)}</span>
+              </div>
+            </button>
           ))}
         </div>
       )}
