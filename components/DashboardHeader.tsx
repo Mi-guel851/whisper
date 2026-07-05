@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import EnablePushButton from "@/components/EnablePushButton";
 
 export default function DashboardHeader() {
   return (
-    <div className="mb-8 flex items-center justify-between">
+    <div className="mb-8 flex items-center justify-between gap-4">
 
       <div>
 
@@ -27,6 +28,8 @@ export default function DashboardHeader() {
         </p>
 
       </div>
+
+      <EnablePushButton />
 
     </div>
   );

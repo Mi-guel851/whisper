@@ -1,8 +1,8 @@
-// app/notifications/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { notificationManager } from "@/lib/realtime/notifications";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import ShareMessageCard from "@/components/ShareMessageCard";
@@ -21,7 +21,7 @@ export default function NotificationsPage() {
   const [viewing, setViewing] = useState<string | null>(null);
 
   useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let mounted = true;
 
     async function init() {
       const {
@@ -33,44 +33,35 @@ export default function NotificationsPage() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("messages")
         .select("id,message,created_at")
         .eq("recipient_id", session.user.id)
         .order("created_at", { ascending: false });
 
-      if (!error) {
-        setNotifications(data || []);
+      if (mounted) {
+        setNotifications(data ?? []);
+        setLoading(false);
       }
 
-      setLoading(false);
+      notificationManager.connect(session.user.id, async () => {
+        const { data } = await supabase
+          .from("messages")
+          .select("id,message,created_at")
+          .eq("recipient_id", session.user.id)
+          .order("created_at", { ascending: false });
 
-      channel = supabase
-        .channel(`notifications-${session.user.id}-${Date.now()}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: `recipient_id=eq.${session.user.id}`,
-          },
-          (payload) => {
-            setNotifications((prev) => [
-              payload.new as Notification,
-              ...prev,
-            ]);
-          }
-        )
-        .subscribe();
+        if (mounted) {
+          setNotifications(data ?? []);
+        }
+      });
     }
 
     init();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      mounted = false;
+      notificationManager.disconnect();
     };
   }, []);
 
@@ -89,7 +80,7 @@ export default function NotificationsPage() {
           <GlassPanel className="mt-8 rounded-3xl p-8 text-center">
             <h2 className="text-xl font-bold">No notifications yet</h2>
             <p className="mt-2 text-gray-400">
-              You&apos;ll see new anonymous messages here.
+              You'll see new anonymous messages here.
             </p>
           </GlassPanel>
         ) : (
@@ -100,19 +91,22 @@ export default function NotificationsPage() {
                 onClick={() => setViewing(item.message)}
                 className="w-full text-left"
               >
-                <GlassPanel className="flex w-full items-center gap-4 rounded-2xl p-4 transition hover:bg-white/[0.09]">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-red-500">
+                <GlassPanel className="flex items-center gap-4 rounded-2xl p-4 hover:bg-white/10 transition">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-red-500">
                     <Heart size={20} className="fill-white text-white" />
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-pink-300">New Message!</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-pink-300">
+                      New Message!
+                    </p>
+
                     <p className="truncate text-sm text-gray-400">
                       {item.message}
                     </p>
                   </div>
 
-                  <span className="shrink-0 text-xs text-gray-500">
+                  <span className="text-xs text-gray-500">
                     {new Date(item.created_at).toLocaleDateString()}
                   </span>
                 </GlassPanel>
@@ -123,7 +117,10 @@ export default function NotificationsPage() {
       </div>
 
       {viewing && (
-        <ShareMessageCard message={viewing} onClose={() => setViewing(null)} />
+        <ShareMessageCard
+          message={viewing}
+          onClose={() => setViewing(null)}
+        />
       )}
 
       <BottomNavigation />

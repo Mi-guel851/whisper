@@ -1,4 +1,3 @@
-// RecentMessages.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,7 +10,7 @@ import GlassPanel from "./GlassPanel";
 export default function RecentMessages() {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sharing, setSharing] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<{ message: string; imageUrl: string | null } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -57,7 +56,9 @@ export default function RecentMessages() {
                   Anonymous
                 </div>
                 <button
-                  onClick={() => setSharing(msg.message || "")}
+                  onClick={() =>
+                    setSharing({ message: msg.message || "", imageUrl: msg.image_url || null })
+                  }
                   className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition"
                 >
                   <Share2 size={14} />
@@ -79,7 +80,13 @@ export default function RecentMessages() {
         </div>
       )}
 
-      {sharing && <ShareMessageCard message={sharing} onClose={() => setSharing(null)} />}
+      {sharing && (
+        <ShareMessageCard
+          message={sharing.message}
+          imageUrl={sharing.imageUrl}
+          onClose={() => setSharing(null)}
+        />
+      )}
     </GlassPanel>
   );
 }

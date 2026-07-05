@@ -1,131 +1,212 @@
-// app/inbox/page.tsx
 "use client";
 
-import BackButton from "@/components/BackButton";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
-import { Download } from "lucide-react";
 
-interface Message {
+type Conversation = {
   id: string;
-  message: string;
-  image_url: string | null;
-  created_at: string;
-}
+  user_a: string;
+  user_b: string;
+  user_a_label: string;
+  user_b_label: string;
+  last_message: string | null;
+  last_message_at: string | null;
+  last_sender_id: string | null;
+};
 
 export default function InboxPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [downloading, setDownloading] = useState<string | null>(null);
+  const router = useRouter();
+
+  const [me, setMe] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
 
   useEffect(() => {
-    async function loadMessages() {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function load() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session) return;
-
-      const { data, error } = await supabase
-        .from("messages")
-        .select("id, message, image_url, created_at")
-        .eq("recipient_id", session.user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error(error);
+      if (!session) {
+        setLoading(false);
         return;
       }
 
-      setMessages(data || []);
+      setMe(session.user.id);
+
+      const { data } = await supabase
+        .from("conversations")
+        .select("*")
+        .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
+        .order("last_message_at", {
+          ascending: false,
+          nullsFirst: false,
+        });
+
+      setConversations(data || []);
+      setLoading(false);
+
+      channel = supabase
+        .channel(`conversation-list-${session.user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+           table: "conversations",
+filter: `user_a=eq.${session.user.id}`,
+          },
+          async () => {
+            const { data } = await supabase
+              .from("conversations")
+              .select("*")
+              .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
+              .order("last_message_at", {
+                ascending: false,
+                nullsFirst: false,
+              });
+
+            setConversations(data || []);
+          }
+        )
+        .subscribe();
     }
 
-    loadMessages();
+    load();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
-  async function downloadImage(url: string, id: string) {
-    setDownloading(id);
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = `whisper-image-${id}.jpg`;
-      link.click();
-
-      URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      console.error("Download failed", err);
-    } finally {
-      setDownloading(null);
-    }
-  }
-
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
-      <div className="max-w-2xl mx-auto px-6 py-10 pb-28">
+    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white pb-28">
+
+      <div className="mx-auto max-w-2xl px-6 py-8">
 
         <BackButton />
 
-        <h1 className="text-5xl font-black mb-2 mt-4">
-          📥 Inbox
+        <h1 className="mt-5 text-5xl font-black">
+          💬 Chats
         </h1>
 
-        <p className="text-gray-400 mb-8">
-          Anonymous messages you've received
+        <p className="mt-2 text-gray-400">
+          Anonymous conversations
         </p>
 
-        {messages.length === 0 ? (
-          <GlassPanel className="rounded-3xl p-10 text-center">
-            <p className="text-xl">No messages yet.</p>
+        {loading ? (
+
+          <p className="mt-10 text-gray-500">
+            Loading...
+          </p>
+
+        ) : conversations.length === 0 ? (
+
+          <GlassPanel className="mt-10 rounded-3xl p-10 text-center">
+
+            <p className="text-xl font-semibold">
+              No conversations yet
+            </p>
+
+            <p className="mt-2 text-gray-400">
+              Visit Active Users to start chatting.
+            </p>
+
           </GlassPanel>
+
         ) : (
-          <div className="space-y-6">
-            {messages.map((msg) => (
-              <GlassPanel
-                key={msg.id}
-                className="rounded-3xl p-6 shadow-xl hover:scale-[1.01] transition-all duration-300"
-              >
-                {msg.message && (
-                  <p className="text-lg leading-8 break-words">
-                    {msg.message}
-                  </p>
-                )}
 
-                {msg.image_url && (
-                  <div className="relative mt-4">
-                    <img
-                      src={msg.image_url}
-                      alt="Anonymous attachment"
-                      className="w-full max-h-96 rounded-2xl object-cover"
-                    />
-                    <button
-                      onClick={() => downloadImage(msg.image_url!, msg.id)}
-                      disabled={downloading === msg.id}
-                      className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-black/70 backdrop-blur-md px-3 py-2 text-xs font-semibold text-white hover:bg-black/90 transition disabled:opacity-60"
-                    >
-                      <Download size={14} />
-                      {downloading === msg.id ? "Saving..." : "Save"}
-                    </button>
-                  </div>
-                )}
+          <div className="mt-8 space-y-3">
 
-                <div className="mt-6 flex items-center justify-between text-sm text-gray-400">
-                  <span>👤 Anonymous</span>
-                  <span>
-                    {new Date(msg.created_at).toLocaleString()}
-                  </span>
-                </div>
-              </GlassPanel>
-            ))}
+            {conversations.map((chat) => {
+
+              const otherLabel =
+                chat.user_a === me
+                  ? chat.user_b_label
+                  : chat.user_a_label;
+
+              return (
+
+                <button
+                  key={chat.id}
+                  onClick={() => router.push(`/chat/${chat.id}`)}
+                  className="w-full text-left"
+                >
+
+                  <GlassPanel className="rounded-3xl p-5 transition hover:scale-[1.01] hover:bg-white/5">
+
+                    <div className="flex items-center gap-4">
+
+                      <div className="relative">
+
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 text-2xl">
+
+                          👻
+
+                        </div>
+
+                        <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#090014] bg-green-400" />
+
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+
+                        <div className="flex items-center justify-between">
+
+                          <h2 className="truncate text-lg font-bold">
+                            {otherLabel}
+                          </h2>
+
+                          {chat.last_message_at && (
+
+                            <span className="text-xs text-gray-500">
+
+                              {new Date(
+                                chat.last_message_at
+                              ).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+
+                            </span>
+
+                          )}
+
+                        </div>
+
+                        <p className="mt-1 truncate text-sm text-gray-400">
+
+                          {chat.last_message || "Start chatting..."}
+
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </GlassPanel>
+
+                </button>
+
+              );
+            })}
+
           </div>
+
         )}
 
       </div>
+
       <BottomNavigation />
+
     </main>
   );
 }

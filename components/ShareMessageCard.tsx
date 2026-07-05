@@ -6,9 +6,11 @@ import { X, Download, Share2 } from "lucide-react";
 
 export default function ShareMessageCard({
   message,
+  imageUrl,
   onClose,
 }: {
   message: string;
+  imageUrl?: string | null;
   onClose: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -19,6 +21,7 @@ export default function ShareMessageCard({
     const canvas = await html2canvas(cardRef.current, {
       backgroundColor: null,
       scale: 2,
+      useCORS: true,
     });
     return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
   }
@@ -53,7 +56,7 @@ export default function ShareMessageCard({
           text: "I got an anonymous message on Whisper 👻",
         });
       } catch {
-        // user cancelled — fine
+        // cancelled
       }
     } else {
       handleDownload();
@@ -71,7 +74,6 @@ export default function ShareMessageCard({
           <X size={28} />
         </button>
 
-        {/* The actual shareable card */}
         <div
           ref={cardRef}
           className="rounded-3xl bg-gradient-to-br from-[#170033] via-[#0d0020] to-[#02000A] p-8 border border-white/10"
@@ -81,9 +83,20 @@ export default function ShareMessageCard({
             <span className="text-xl font-black text-white tracking-tight">Whisper</span>
           </div>
 
-          <p className="text-2xl font-extrabold text-white leading-snug break-words">
-            {message}
-          </p>
+          {message && (
+            <p className="text-2xl font-extrabold text-white leading-snug break-words">
+              {message}
+            </p>
+          )}
+
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              crossOrigin="anonymous"
+              alt="Anonymous attachment"
+              className={`w-full rounded-2xl object-cover max-h-80 ${message ? "mt-5" : ""}`}
+            />
+          )}
 
           <p className="mt-8 text-sm text-gray-400">
             Anonymous message · whisper.app
