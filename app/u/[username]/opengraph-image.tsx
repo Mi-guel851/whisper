@@ -1,85 +1,39 @@
-import { ImageResponse } from "next/og";
+import type { Metadata } from "next";
 
-export const runtime = "edge";
-
-export const size = {
-  width: 1200,
-  height: 630,
+type Props = {
+  params: Promise<{ username: string }>;
+  children: React.ReactNode;
 };
 
-export const contentType = "image/png";
-
-export default async function Image({
+export async function generateMetadata({
   params,
 }: {
-  params: { username: string };
-}) {
-  const username = decodeURIComponent(params.username);
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          background: "#090014",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "white",
-          fontFamily: "sans-serif",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 40,
-          }}
-        >
-          <img
-            src="https://whisper-anonymous.vercel.app/ghost.png"
-            width={220}
-            height={220}
-          />
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
+  const { username: rawUsername } = await params;
+  const username = decodeURIComponent(rawUsername);
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 72,
-                fontWeight: 800,
-              }}
-            >
-              Whisper
-            </div>
+  const title = `Whisper | @${username}`;
+  const description = `Send @${username} an anonymous message on Whisper 👻`;
 
-            <div
-              style={{
-                fontSize: 42,
-                color: "#67e8f9",
-                marginTop: 10,
-              }}
-            >
-              @{username}
-            </div>
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: `https://whisper-anonymous.vercel.app/u/${username}`,
+      siteName: "Whisper",
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+  };
+}
 
-            <div
-              style={{
-                marginTop: 28,
-                fontSize: 28,
-                color: "#d4d4d8",
-              }}
-            >
-              Send anonymous messages 👻
-            </div>
-          </div>
-        </div>
-      </div>
-    ),
-    size
-  );
+export default function UsernameLayout({ children }: Props) {
+  return children;
 }
