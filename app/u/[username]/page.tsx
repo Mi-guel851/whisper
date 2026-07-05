@@ -2,15 +2,14 @@ import type { Metadata } from "next";
 import ClientPage from "./ClientPage";
 
 type Props = {
-  params: {
-    username: string;
-  };
+  params: Promise<{ username: string }>;
 };
 
 export async function generateMetadata({
   params,
 }: Props): Promise<Metadata> {
-  const username = decodeURIComponent(params.username);
+  const { username: rawUsername } = await params;
+  const username = decodeURIComponent(rawUsername);
 
   return {
     title: `Whisper | @${username}`,

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { playNotificationSound } from "@/lib/sound";
 import {
   House,
   MessageCircle,
@@ -43,7 +44,10 @@ export default function BottomNavigation() {
             table: "messages",
             filter: `recipient_id=eq.${session.user.id}`,
           },
-          () => setUnreadCount((c) => c + 1)
+          () => {
+            setUnreadCount((c) => c + 1);
+            playNotificationSound();
+          }
         )
         .subscribe();
     }
