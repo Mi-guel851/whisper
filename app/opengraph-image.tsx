@@ -10,9 +10,11 @@ export const size = {
 export const contentType = "image/png";
 
 export default async function Image() {
-  const image = await fetch(
-    new URL("../public/og-image.png", import.meta.url)
-  ).then((res) => res.arrayBuffer());
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app";
+
+  const image = await fetch(new URL("/og-image.png", baseUrl)).then((res) =>
+    res.arrayBuffer()
+  );
 
   return new ImageResponse(
     (
