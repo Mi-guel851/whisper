@@ -1,280 +1,431 @@
 "use client";
 
+import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { chatManager, ChatMessage } from "@/lib/realtime/chat";
-import { typingManager } from "@/lib/realtime/typing";
-import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
-import { Send } from "lucide-react";
+import { Send, X, CornerUpLeft } from "lucide-react";
+
+type Message = {
+  id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+  reply_to_id: string | null;
+};
+
+type Reaction = {
+  message_id: string;
+  user_id: string;
+  emoji: string;
+};
+
+const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const SWIPE_THRESHOLD = 80;
+
+function MessageBubble({
+  msg,
+  isMe,
+  repliedMsg,
+  msgReactions,
+  actionMenuFor,
+  setActionMenuFor,
+  toggleReaction,
+  setReplyingTo,
+  startPress,
+  cancelPress,
+  onSwipeReply,
+}: {
+  msg: Message;
+  isMe: boolean;
+  repliedMsg: Message | null;
+  msgReactions: Record<string, number>;
+  actionMenuFor: string | null;
+  setActionMenuFor: (id: string | null) => void;
+  toggleReaction: (messageId: string, emoji: string) => void;
+  setReplyingTo: (msg: Message | null) => void;
+  startPress: (id: string) => void;
+  cancelPress: () => void;
+  onSwipeReply: (msg: Message) => void;
+}) {
+  const x = useMotionValue(0);
+  const replyIconOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
+
+  return (
+    <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+      <div className="relative max-w-[75%]">
+        <motion.div
+          className="absolute left-2 top-1/2 -translate-y-1/2 text-cyan-400 pointer-events-none"
+          style={{ opacity: replyIconOpacity }}
+        >
+          <CornerUpLeft size={18} />
+        </motion.div>
+
+        <motion.div
+          style={{ x }}
+          drag="x"
+          dragDirectionLock
+          dragConstraints={{ left: 0, right: 90 }}
+          dragElastic={0.15}
+          whileTap={{ scale: 0.98 }}
+          onDragEnd={(_e, info) => {
+            if (info.offset.x > SWIPE_THRESHOLD) {
+              navigator.vibrate?.(20);
+              onSwipeReply(msg);
+            }
+            animate(x, 0, { type: "spring", stiffness: 500, damping: 40 });
+          }}
+          onMouseDown={() => startPress(msg.id)}
+          onMouseUp={cancelPress}
+          onMouseLeave={cancelPress}
+          onTouchStart={() => startPress(msg.id)}
+          onTouchEnd={cancelPress}
+        >
+          <GlassPanel
+            className={`rounded-2xl px-4 py-3 select-none ${
+              isMe ? "rounded-br-sm" : "rounded-bl-sm"
+            }`}
+          >
+            {repliedMsg && (
+              <div className="mb-2 border-l-2 border-cyan-400 pl-2 text-xs text-gray-400 truncate">
+                {repliedMsg.content}
+              </div>
+            )}
+            <p className="text-sm text-gray-100 break-words">{msg.content}</p>
+          </GlassPanel>
+        </motion.div>
+
+        {Object.keys(msgReactions).length > 0 && (
+          <div className={`mt-1 flex gap-1 ${isMe ? "justify-end" : "justify-start"}`}>
+            {Object.entries(msgReactions).map(([emoji, count]) => (
+              <span key={emoji} className="rounded-full bg-white/10 px-2 py-0.5 text-xs">
+                {emoji} {count > 1 ? count : ""}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {actionMenuFor === msg.id && (
+          <div className={`absolute z-20 -top-14 ${isMe ? "right-0" : "left-0"}`}>
+            <GlassPanel strong className="flex items-center gap-1 rounded-full px-2 py-2">
+              {EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => toggleReaction(msg.id, emoji)}
+                  className="text-lg hover:scale-125 transition"
+                >
+                  {emoji}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  setReplyingTo(msg);
+                  setActionMenuFor(null);
+                }}
+                className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+              >
+                <CornerUpLeft size={14} />
+              </button>
+              <button
+                onClick={() => setActionMenuFor(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+              >
+                <X size={14} />
+              </button>
+            </GlassPanel>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ChatPage() {
-  const { conversationId } = useParams<{ conversationId: string }>();
+  const params = useParams();
+  const router = useRouter();
+  const conversationId = params.conversationId as string;
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [myId, setMyId] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [otherLabel, setOtherLabel] = useState("");
   const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [online, setOnline] = useState(false);
-  const [lastSeen, setLastSeen] = useState("");
-
+  const [myId, setMyId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let unsubChat: (() => void) | undefined;
-    let unsubTyping: (() => void) | undefined;
+    let msgChannel: ReturnType<typeof supabase.channel> | null = null;
+    let reactionChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function init() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session) return;
+      if (!session) {
+        router.push("/login");
+        return;
+      }
 
       setMyId(session.user.id);
 
-      const { data } = await supabase
-        .from("direct_messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at", {
-          ascending: true,
-        });
-
-      setMessages((data as ChatMessage[]) || []);
-
-      unsubChat = chatManager.subscribe(
-        conversationId,
-        (message) => {
-          setMessages((prev) => {
-            if (prev.find((m) => m.id === message.id)) return prev;
-            return [...prev, message];
-          });
-        }
-      );
-
-      unsubTyping = typingManager.subscribe(
-        conversationId,
-        session.user.id,
-        (state) => setTyping(state)
-      );
-
-      await supabase
-        .from("direct_messages")
-        .update({
-          is_read: true,
-          read_at: new Date().toISOString(),
-        })
-        .eq("conversation_id", conversationId)
-        .neq("sender_id", session.user.id);
-
       const { data: convo } = await supabase
         .from("conversations")
-        .select("*")
+        .select("user_a, user_b, user_a_label, user_b_label")
         .eq("id", conversationId)
         .single();
 
-      if (convo) {
-        const other =
-          convo.user_a === session.user.id
-            ? convo.user_b
-            : convo.user_a;
-
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("is_online,last_seen")
-          .eq("id", other)
-          .single();
-
-        if (profile) {
-          setOnline(profile.is_online);
-          if (profile.last_seen) {
-            setLastSeen(
-              new Date(profile.last_seen).toLocaleString()
-            );
-          }
-        }
+      if (!convo) {
+        router.push("/active");
+        return;
       }
+
+      const label = convo.user_a === session.user.id ? convo.user_a_label : convo.user_b_label;
+      setOtherLabel(label);
+
+      const { data: msgs } = await supabase
+        .from("direct_messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+
+      setMessages(msgs || []);
+
+      const { data: reacts } = await supabase
+        .from("message_reactions")
+        .select("message_id, user_id, emoji")
+        .in("message_id", (msgs || []).map((m) => m.id));
+
+      setReactions(reacts || []);
+      setLoading(false);
+
+      msgChannel = supabase
+        .channel(`chat-msgs-${conversationId}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "direct_messages",
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          (payload) => {
+            setMessages((prev) => [...prev, payload.new as Message]);
+          }
+        )
+        .subscribe();
+
+      reactionChannel = supabase
+        .channel(`chat-reactions-${conversationId}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "message_reactions",
+          },
+          (payload) => {
+            if (payload.eventType === "INSERT") {
+              setReactions((prev) => [...prev, payload.new as Reaction]);
+            }
+
+            if (payload.eventType === "UPDATE") {
+              setReactions((prev) =>
+                prev.map((r) =>
+                  r.message_id === (payload.new as Reaction).message_id &&
+                  r.user_id === (payload.new as Reaction).user_id
+                    ? (payload.new as Reaction)
+                    : r
+                )
+              );
+            }
+
+            if (payload.eventType === "DELETE") {
+              setReactions((prev) =>
+                prev.filter(
+                  (r) =>
+                    !(
+                      r.message_id === (payload.old as any).message_id &&
+                      r.user_id === (payload.old as any).user_id
+                    )
+                )
+              );
+            }
+          }
+        )
+        .subscribe();
     }
 
     init();
 
     return () => {
-      unsubChat?.();
-      unsubTyping?.();
+      if (msgChannel) supabase.removeChannel(msgChannel);
+      if (reactionChannel) supabase.removeChannel(reactionChannel);
     };
-  }, [conversationId]);
+  }, [conversationId, router]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function send() {
-    if (!input.trim()) return;
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || !myId) return;
 
-    const text = input.trim();
-
-    setSending(true);
     setInput("");
+    const replyId = replyingTo?.id || null;
+    setReplyingTo(null);
 
-    await typingManager.setTyping(
-      conversationId,
-      myId,
-      false
-    );
-
-    const { error } = await supabase
-      .from("direct_messages")
-      .insert({
-        conversation_id: conversationId,
-        sender_id: myId,
-        content: text,
-      });
+    const { error } = await supabase.from("direct_messages").insert({
+      conversation_id: conversationId,
+      sender_id: myId,
+      content: trimmed,
+      reply_to_id: replyId,
+    });
 
     if (!error) {
       await supabase
         .from("conversations")
-        .update({
-          last_message: text,
-          last_sender_id: myId,
-          last_message_at: new Date().toISOString(),
-        })
+        .update({ last_message_at: new Date().toISOString() })
         .eq("id", conversationId);
     }
-
-    setSending(false);
   }
 
-  async function onTyping(value: string) {
-    setInput(value);
+  async function toggleReaction(messageId: string, emoji: string) {
+    setActionMenuFor(null);
 
-    await typingManager.setTyping(
-      conversationId,
-      myId,
-      value.length > 0
+    const existing = reactions.find(
+      (r) => r.message_id === messageId && r.user_id === myId
+    );
+
+    if (existing && existing.emoji === emoji) {
+      await supabase
+        .from("message_reactions")
+        .delete()
+        .eq("message_id", messageId)
+        .eq("user_id", myId);
+      setReactions((prev) =>
+        prev.filter((r) => !(r.message_id === messageId && r.user_id === myId))
+      );
+    } else {
+      await supabase.from("message_reactions").upsert(
+        { message_id: messageId, user_id: myId, emoji },
+        { onConflict: "message_id,user_id" }
+      );
+      setReactions((prev) => [
+        ...prev.filter((r) => !(r.message_id === messageId && r.user_id === myId)),
+        { message_id: messageId, user_id: myId, emoji },
+      ]);
+    }
+  }
+
+  function getReactionsFor(messageId: string) {
+    const grouped: Record<string, number> = {};
+    reactions
+      .filter((r) => r.message_id === messageId)
+      .forEach((r) => {
+        grouped[r.emoji] = (grouped[r.emoji] || 0) + 1;
+      });
+    return grouped;
+  }
+
+  function getRepliedMessage(replyToId: string | null) {
+    if (!replyToId) return null;
+    return messages.find((m) => m.id === replyToId) || null;
+  }
+
+  function startPress(messageId: string) {
+    pressTimer.current = setTimeout(() => {
+      setActionMenuFor(messageId);
+    }, 450);
+  }
+
+  function cancelPress() {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+        <p className="text-gray-400">Loading...</p>
+      </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#150028] to-[#030008] text-white pb-28">
-
-      <div className="sticky top-0 z-30 border-b border-white/10 bg-[#090014]/90 backdrop-blur-xl">
-
-        <div className="p-6">
-
-          <BackButton />
-
-          <h1 className="mt-4 text-3xl font-black">
-            Anonymous Chat
-          </h1>
-
-          {typing ? (
-            <p className="text-sm text-cyan-400">
-              typing...
-            </p>
-          ) : online ? (
-            <p className="text-sm text-green-400">
-              ● Online
-            </p>
-          ) : (
-            <p className="text-xs text-gray-500">
-              Last seen {lastSeen || "recently"}
-            </p>
-          )}
-
+    <main className="flex min-h-screen flex-col bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
+      <div className="border-b border-white/10 p-6 pb-4">
+        <BackButton />
+        <div className="mt-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+            👻
+          </div>
+          <div>
+            <p className="font-bold text-white">{otherLabel}</p>
+            <p className="text-xs text-gray-400">Anonymous chat</p>
+          </div>
         </div>
-
       </div>
 
-      <div className="space-y-3 px-6 py-6 pb-44">
-
-        {messages.map((msg) => {
-
-          const mine = msg.sender_id === myId;
-
-          return (
-
-            <div
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+        {messages.length === 0 ? (
+          <p className="mt-10 text-center text-gray-500">
+            Say hi 👻 — they won&apos;t know who you are.
+          </p>
+        ) : (
+          messages.map((msg) => (
+            <MessageBubble
               key={msg.id}
-              className={`flex ${
-                mine
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
-            >
-
-              <GlassPanel
-                className={`max-w-[78%] rounded-3xl p-4 ${
-                  mine
-                    ? "border-cyan-500/20"
-                    : "border-purple-500/20"
-                }`}
-              >
-
-                <p className="whitespace-pre-wrap break-words">
-                  {msg.content}
-                </p>
-
-                <div className="mt-3 flex justify-end gap-2">
-
-                  <span className="text-[10px] text-gray-500">
-                    {new Date(msg.created_at).toLocaleTimeString([],{
-                      hour:"2-digit",
-                      minute:"2-digit"
-                    })}
-                  </span>
-
-                  {mine && (
-                    <span className="text-[10px] text-cyan-400">
-                      ✓✓
-                    </span>
-                  )}
-
-                </div>
-
-              </GlassPanel>
-
-            </div>
-
-          );
-
-        })}
-
+              msg={msg}
+              isMe={msg.sender_id === myId}
+              repliedMsg={getRepliedMessage(msg.reply_to_id)}
+              msgReactions={getReactionsFor(msg.id)}
+              actionMenuFor={actionMenuFor}
+              setActionMenuFor={setActionMenuFor}
+              toggleReaction={toggleReaction}
+              setReplyingTo={setReplyingTo}
+              startPress={startPress}
+              cancelPress={cancelPress}
+              onSwipeReply={setReplyingTo}
+            />
+          ))
+        )}
         <div ref={bottomRef} />
-
       </div>
 
-      <div className="fixed bottom-20 left-0 right-0 px-6">
+      {replyingTo && (
+        <div className="mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
+          <p className="truncate text-xs text-gray-300">
+            Replying to: {replyingTo.content}
+          </p>
+          <button onClick={() => setReplyingTo(null)}>
+            <X size={14} className="text-gray-400" />
+          </button>
+        </div>
+      )}
 
-        <div className="flex items-center gap-3 rounded-3xl border border-white/10 bg-black/40 p-3 backdrop-blur-xl">
-
+      <form onSubmit={sendMessage} className="p-6 pt-0">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
           <input
             value={input}
-            onChange={(e)=>onTyping(e.target.value)}
-            onBlur={()=>typingManager.setTyping(conversationId,myId,false)}
-            placeholder="Write anonymously..."
-            className="flex-1 bg-transparent outline-none placeholder:text-gray-500"
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Message anonymously..."
+            className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500"
           />
-
           <button
-            disabled={sending}
-            onClick={send}
-            className="rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 p-3 disabled:opacity-50"
+            type="submit"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500"
           >
-            <Send size={18}/>
+            <Send size={16} className="text-black" />
           </button>
-
         </div>
-
-      </div>
-
-      <BottomNavigation />
-
+      </form>
     </main>
   );
 }
