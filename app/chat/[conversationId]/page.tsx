@@ -185,6 +185,16 @@ export default function ChatPage() {
         return;
       }
 
+      const readColumn = convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
+const { error: readError } = await supabase
+  .from("conversations")
+  .update({ [readColumn]: new Date().toISOString() })
+  .eq("id", conversationId);
+
+if (readError) {
+  console.error("[chat] failed to mark conversation as read:", readError.message);
+}
+
       const label = convo.user_a === session.user.id ? convo.user_a_label : convo.user_b_label;
       setOtherLabel(label);
 

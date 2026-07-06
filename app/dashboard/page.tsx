@@ -12,10 +12,12 @@ import StatsRow from "@/components/StatsRow";
 import ActivityChart from "@/components/ActivityChart";
 import RecentMessages from "@/components/RecentMessages";
 import BottomNavigation from "@/components/BottomNavigation";
+import TermsModal from "@/components/TermsModal";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
+  const [showTerms, setShowTerms] = useState(false);
 
   useEffect(() => {
     let stopPresence: (() => void) | undefined;
@@ -38,13 +40,17 @@ export default function DashboardPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("profile_completed")
+        .select("profile_completed, terms_accepted")
         .eq("id", session.user.id)
         .single();
 
       if (!profile?.profile_completed) {
         router.push("/complete-profile");
         return;
+      }
+
+      if (!profile.terms_accepted) {
+        setShowTerms(true);
       }
 
       setChecking(false);
@@ -79,6 +85,8 @@ export default function DashboardPage() {
       </div>
 
       <BottomNavigation />
+
+      {showTerms && <TermsModal onAccept={() => setShowTerms(false)} />}
     </main>
   );
 }

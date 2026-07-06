@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getDeterministicAnonLabel } from "@/lib/anonIdentity";
@@ -23,6 +23,11 @@ export default function ActiveUsersPage() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
 
+  // Tracks the order each user first appeared in, so the list stays
+  // stable while they're online instead of reshuffling on every sync.
+  const joinOrderRef = useRef<Map<string, number>>(new Map());
+  const nextOrderRef = useRef(0);
+
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
@@ -41,15 +46,35 @@ export default function ActiveUsersPage() {
       await presenceManager.connect(session.user.id);
 
       unsubscribe = presenceManager.subscribe((users) => {
-        setOnlineUsers(
-          users
-            .filter((u) => u.id !== session.user.id)
-            .map((u) => ({
-              userId: u.id,
-              label: getDeterministicAnonLabel(u.id),
-            }))
-        );
+        const others = users.filter((u) => u.id !== session.user.id);
+        const currentIds = new Set(others.map((u) => u.id));
 
+        // Assign a stable order index to any user we haven't seen before.
+        others.forEach((u) => {
+          if (!joinOrderRef.current.has(u.id)) {
+            joinOrderRef.current.set(u.id, nextOrderRef.current);
+            nextOrderRef.current += 1;
+          }
+        });
+
+        // Drop tracking for anyone who went offline, so if they
+        // reconnect later they join at the end again (not their old slot).
+        for (const id of joinOrderRef.current.keys()) {
+          if (!currentIds.has(id)) {
+            joinOrderRef.current.delete(id);
+          }
+        }
+
+        const sorted = others
+          .map((u) => ({
+            userId: u.id,
+            label: getDeterministicAnonLabel(u.id),
+            order: joinOrderRef.current.get(u.id) ?? 0,
+          }))
+          .sort((a, b) => a.order - b.order)
+          .map(({ userId, label }) => ({ userId, label }));
+
+        setOnlineUsers(sorted);
         setLoading(false);
       });
     }
@@ -79,15 +104,15 @@ export default function ActiveUsersPage() {
     }
 
     const { data: created, error } = await supabase
-  .from("conversations")
-  .insert({
-    user_a: userA,
-    user_b: userB,
-    user_a_label: getDeterministicAnonLabel(userB),
-    user_b_label: getDeterministicAnonLabel(userA),
-  })
-  .select("id")
-  .single();
+      .from("conversations")
+      .insert({
+        user_a: userA,
+        user_b: userB,
+        user_a_label: getDeterministicAnonLabel(userB),
+        user_b_label: getDeterministicAnonLabel(userA),
+      })
+      .select("id")
+      .single();
     setConnecting(null);
 
     if (error || !created) {
