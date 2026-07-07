@@ -99,6 +99,24 @@ body {
   );
 }
 
+body {
+  background: linear-gradient(
+    to bottom right,
+    var(--theme-bg-from),
+    var(--theme-bg-via),
+    var(--theme-bg-to)
+  );
+}
+
+main.min-h-screen {
+  background: linear-gradient(
+    to bottom right,
+    var(--theme-bg-from),
+    var(--theme-bg-via),
+    var(--theme-bg-to)
+  );
+}
+
 .theme-accent-gradient {
   background: linear-gradient(to right, var(--theme-accent-from), var(--theme-accent-to));
 }
