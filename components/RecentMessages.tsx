@@ -17,8 +17,15 @@ function timeAgo(dateString: string) {
   return `${Math.floor(hours / 24)}d`;
 }
 
+type RecentMessage = {
+  id: string;
+  message: string | null;
+  image_url: string | null;
+  created_at: string;
+};
+
 export default function RecentMessages() {
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<RecentMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<{ message: string; imageUrl: string | null } | null>(null);
 

@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+type PushSubscriptionRow = {
+  id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+};
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-webhook-secret");
@@ -19,12 +15,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const vapidSubject = process.env.VAPID_SUBJECT;
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+
+  if (!vapidSubject || !vapidPublicKey || !vapidPrivateKey) {
+    return NextResponse.json({ error: "missing push configuration" }, { status: 500 });
+  }
+
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+
   const body = await req.json();
   const record = body.record;
 
   if (!record?.recipient_id) {
     return NextResponse.json({ error: "no recipient_id" }, { status: 400 });
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   const { data: subs } = await supabaseAdmin
     .from("push_subscriptions")
@@ -44,7 +52,7 @@ export async function POST(req: NextRequest) {
   let sent = 0;
 
   await Promise.all(
-    subs.map(async (sub) => {
+    (subs as PushSubscriptionRow[]).map(async (sub) => {
       try {
         await webpush.sendNotification(
           {
@@ -54,8 +62,12 @@ export async function POST(req: NextRequest) {
           payload
         );
         sent++;
-      } catch (err: any) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
+      } catch (err) {
+        const statusCode = err instanceof Error && "statusCode" in err
+          ? err.statusCode
+          : undefined;
+
+        if (statusCode === 410 || statusCode === 404) {
           await supabaseAdmin.from("push_subscriptions").delete().eq("id", sub.id);
         }
       }
