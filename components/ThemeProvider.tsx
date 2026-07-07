@@ -26,18 +26,19 @@ function applyTheme(theme: Theme) {
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeIdState] = useState<ThemeId>("midnight");
+  const [themeId, setThemeIdState] = useState<ThemeId>(() => {
+    if (typeof window === "undefined") return "midnight";
+
+    const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
+    return saved && themes[saved] ? saved : "midnight";
+  });
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-    const initial = saved && themes[saved] ? saved : "midnight";
-    setThemeIdState(initial);
-    applyTheme(themes[initial]);
-  }, []);
+    applyTheme(themes[themeId]);
+  }, [themeId]);
 
   function setThemeId(id: ThemeId) {
     setThemeIdState(id);
-    applyTheme(themes[id]);
     localStorage.setItem(STORAGE_KEY, id);
   }
 

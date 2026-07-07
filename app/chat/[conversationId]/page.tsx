@@ -260,8 +260,8 @@ if (readError) {
                 prev.filter(
                   (r) =>
                     !(
-                      r.message_id === (payload.old as any).message_id &&
-                      r.user_id === (payload.old as any).user_id
+                      r.message_id === (payload.old as Partial<Reaction>).message_id &&
+                      r.user_id === (payload.old as Partial<Reaction>).user_id
                     )
                 )
               );

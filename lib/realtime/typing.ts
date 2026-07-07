@@ -1,6 +1,11 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 
+type TypingStatusRow = {
+  user_id: string;
+  typing: boolean;
+};
+
 class TypingManager {
   private channels = new Map<string, RealtimeChannel>();
 
@@ -23,8 +28,8 @@ class TypingManager {
           table: "typing_status",
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload: any) => {
-          const row = payload.new;
+        (payload) => {
+          const row = payload.new as TypingStatusRow | null;
 
           if (!row) return;
 

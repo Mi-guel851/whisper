@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { MessageCircle, ImageIcon, Zap, Shield, Link2, BarChart3 } from "lucide-react";
+import {
+  MessageCircle,
+  ImageIcon,
+  Zap,
+  Shield,
+  Link2,
+  BarChart3,
+  type LucideIcon,
+} from "lucide-react";
 import GlassPanel from "./GlassPanel";
 
 const features = [
@@ -13,7 +21,7 @@ const features = [
   { icon: BarChart3, title: "Live Analytics", desc: "Track messages and views over time with your own activity chart." },
 ];
 
-function TiltCard({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) {
+function TiltCard({ icon: Icon, title, desc }: { icon: LucideIcon; title: string; desc: string }) {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
 
   function handleMove(e: React.MouseEvent<HTMLDivElement>) {
