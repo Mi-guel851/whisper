@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useTheme } from "@/components/ThemeProvider";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -17,6 +19,7 @@ const BIO_LIMIT = 140;
 export default function ProfilePage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { theme } = useTheme();
 
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
@@ -72,7 +75,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white pb-28">
+    <main className="min-h-screen theme-bg-gradient text-white pb-28">
       <div className="mx-auto max-w-xl p-6">
         <div className="flex items-center gap-3">
           <button
@@ -177,16 +180,16 @@ export default function ProfilePage() {
               <ChevronRight size={16} className="text-gray-600" />
             </div>
 
-            <div className="flex items-center gap-4 p-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-300">
-                <Bell size={18} />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-white">Notifications</p>
-                <p className="text-xs text-gray-500">Push · Email</p>
-              </div>
-              <ChevronRight size={16} className="text-gray-600" />
-            </div>
+            <Link href="/appearance" className="flex items-center gap-4 p-4">
+  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+    <Palette size={18} />
+  </div>
+  <div className="flex-1">
+    <p className="font-semibold text-white">Appearance</p>
+    <p className="text-xs text-gray-500">{theme.name}</p>
+  </div>
+  <ChevronRight size={16} className="text-gray-600" />
+</Link>
 
             <div className="flex items-center gap-4 p-4">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">

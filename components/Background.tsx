@@ -14,21 +14,21 @@ export default function Background() {
   }, []);
 
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden bg-[#070012]">
+    <div className="fixed inset-0 -z-10 overflow-hidden theme-bg-gradient">
 
       <div
-        className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-cyan-500/20 blur-[180px] animate-pulse transition-transform duration-100 ease-out"
-        style={{ transform: `translateY(${scrollY * 0.15}px)` }}
+        className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full blur-[180px] animate-pulse transition-transform duration-100 ease-out"
+        style={{ background: "var(--theme-blob-1)", transform: `translateY(${scrollY * 0.15}px)` }}
       />
 
       <div
-        className="absolute right-[-120px] top-[80px] h-[420px] w-[420px] rounded-full bg-purple-600/20 blur-[180px] animate-pulse transition-transform duration-100 ease-out"
-        style={{ transform: `translateY(${scrollY * -0.1}px)` }}
+        className="absolute right-[-120px] top-[80px] h-[420px] w-[420px] rounded-full blur-[180px] animate-pulse transition-transform duration-100 ease-out"
+        style={{ background: "var(--theme-blob-2)", transform: `translateY(${scrollY * -0.1}px)` }}
       />
 
       <div
-        className="absolute bottom-[-180px] left-1/2 h-[550px] w-[550px] -translate-x-1/2 rounded-full bg-fuchsia-500/10 blur-[220px] transition-transform duration-100 ease-out"
-        style={{ transform: `translate(-50%, ${scrollY * 0.25}px)` }}
+        className="absolute bottom-[-180px] left-1/2 h-[550px] w-[550px] -translate-x-1/2 rounded-full blur-[220px] transition-transform duration-100 ease-out"
+        style={{ background: "var(--theme-blob-3)", transform: `translate(-50%, ${scrollY * 0.25}px)` }}
       />
 
       <div

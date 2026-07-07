@@ -1,4 +1,3 @@
-// app/complete-profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, Copy } from "lucide-react";
 
 export default function CompleteProfilePage() {
   const router = useRouter();
@@ -20,6 +19,12 @@ export default function CompleteProfilePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Recovery phrase step
+  const [step, setStep] = useState<"form" | "recovery">("form");
+  const [recoveryPhrase, setRecoveryPhrase] = useState("");
+  const [confirmedSaved, setConfirmedSaved] = useState(false);
+  const [savingPhrase, setSavingPhrase] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -96,10 +101,53 @@ export default function CompleteProfilePage() {
 
     const { error: profileError } = await supabase
       .from("profiles")
-      .update({ username: cleanUsername, profile_completed: true })
+      .update({ username: cleanUsername })
       .eq("id", userId);
 
     setLoading(false);
+
+    if (profileError) {
+      showToast(profileError.message);
+      return;
+    }
+
+    // Move to the mandatory recovery phrase step instead of finishing yet
+    setStep("recovery");
+  }
+
+  async function handleSaveRecoveryPhrase() {
+    if (recoveryPhrase.trim().length < 6) {
+      showToast("Recovery phrase must be at least 6 characters.");
+      return;
+    }
+
+    if (!confirmedSaved) {
+      showToast("Please confirm you've saved your recovery phrase somewhere safe.");
+      return;
+    }
+
+    setSavingPhrase(true);
+
+    const res = await fetch("/api/set-recovery-phrase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, phrase: recoveryPhrase.trim() }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setSavingPhrase(false);
+      showToast(data.error || "Something went wrong saving your recovery phrase.");
+      return;
+    }
+
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ profile_completed: true })
+      .eq("id", userId);
+
+    setSavingPhrase(false);
 
     if (profileError) {
       showToast(profileError.message);
@@ -124,70 +172,113 @@ export default function CompleteProfilePage() {
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
-      <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8">
+      {step === "form" ? (
+        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8">
+          <h1 className="text-center text-3xl font-black">One last step</h1>
+          <p className="mt-2 mb-8 text-center text-gray-300">
+            Pick a username and set a password to finish setting up your account.
+          </p>
 
-        <h1 className="text-center text-3xl font-black">One last step</h1>
-        <p className="mt-2 mb-8 text-center text-gray-300">
-          Pick a username and set a password to finish setting up your account.
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username"
-            required
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
-          />
-
-          <div className="relative">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <input
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Create a password"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
               required
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-cyan-400"
+              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
             />
+
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Create a password"
+                required
+                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-cyan-400"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password"
+                required
+                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-cyan-400"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                tabIndex={-1}
+              >
+                {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+
             <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-              tabIndex={-1}
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black disabled:opacity-60"
             >
-              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              {loading ? "Saving..." : "Continue"}
             </button>
+          </form>
+        </GlassPanel>
+      ) : (
+        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-purple-500/15">
+            <ShieldCheck size={26} className="text-purple-300" />
           </div>
 
-          <div className="relative">
+          <h1 className="mt-4 text-center text-3xl font-black">Set a recovery phrase</h1>
+          <p className="mt-2 mb-6 text-center text-gray-300">
+            Since Whisper doesn&apos;t use email to reset your password, this phrase is the{" "}
+            <span className="font-semibold text-white">only way</span> to get back into your
+            account if you forget your password. Store it somewhere safe — a notes app, a
+            password manager, written down. If you lose it, no one (including us) can recover
+            your account.
+          </p>
+
+          <div className="space-y-4">
             <input
-              type={showConfirmPassword ? "text" : "password"}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm password"
-              required
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-cyan-400"
+              value={recoveryPhrase}
+              onChange={(e) => setRecoveryPhrase(e.target.value)}
+              placeholder="e.g. purple-ghost-echoes-42"
+              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
             />
+
+            <label className="flex items-start gap-3 text-sm text-gray-300">
+              <input
+                type="checkbox"
+                checked={confirmedSaved}
+                onChange={(e) => setConfirmedSaved(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-black/30"
+              />
+              I've saved this recovery phrase somewhere secure. I understand it cannot be
+              recovered if I lose it.
+            </label>
+
             <button
-              type="button"
-              onClick={() => setShowConfirmPassword((v) => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-              tabIndex={-1}
+              onClick={handleSaveRecoveryPhrase}
+              disabled={savingPhrase}
+              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black disabled:opacity-60"
             >
-              {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              {savingPhrase ? "Saving..." : "Finish Setup"}
             </button>
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black disabled:opacity-60"
-          >
-            {loading ? "Saving..." : "Finish Setup"}
-          </button>
-        </form>
-
-      </GlassPanel>
+        </GlassPanel>
+      )}
     </main>
   );
 }

@@ -78,3 +78,31 @@ body {
   backdrop-filter: blur(60px) saturate(180%);
   -webkit-backdrop-filter: blur(60px) saturate(180%);
 }
+:root {
+  --theme-bg-from: #090014;
+  --theme-bg-via: #170033;
+  --theme-bg-to: #02000a;
+  --theme-blob-1: rgba(34, 211, 238, 0.2);
+  --theme-blob-2: rgba(147, 51, 234, 0.2);
+  --theme-blob-3: rgba(217, 70, 239, 0.1);
+  --theme-accent-from: #a855f7;
+  --theme-accent-to: #22d3ee;
+  --theme-accent-text: #d8b4fe;
+}
+
+.theme-bg-gradient {
+  background: linear-gradient(
+    to bottom right,
+    var(--theme-bg-from),
+    var(--theme-bg-via),
+    var(--theme-bg-to)
+  );
+}
+
+.theme-accent-gradient {
+  background: linear-gradient(to right, var(--theme-accent-from), var(--theme-accent-to));
+}
+
+.theme-accent-text {
+  color: var(--theme-accent-text);
+}

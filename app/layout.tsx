@@ -3,6 +3,7 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import SplashScreen from "@/components/SplashScreen";
 import ToastProvider from "@/components/ToastProvider";
+import ThemeProvider from "@/components/ThemeProvider";
 import NextTopLoader from "nextjs-toploader";
 import ClickHaptics from "@/components/ClickHaptics";
 
@@ -26,10 +27,12 @@ export default function RootLayout({
       <body className={montserrat.className}>
         <NextTopLoader color="linear-gradient(to right, #22d3ee, #a855f7)" height={3} showSpinner={false} />
         <ClickHaptics />
-        <ToastProvider>
-          <SplashScreen />
-          {children}
-        </ToastProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <SplashScreen />
+            {children}
+          </ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
