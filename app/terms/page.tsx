@@ -106,6 +106,7 @@ export default function TermsPage() {
               Questions about these terms? Contact us at{" "}
               <a href="mailto:@whisper.anonymous.app@gmail.com" className="text-cyan-300 hover:text-cyan-200">
                 support@whisper.anonymous.app@gmail.com
+                
               </a>{" "}
             </p>
           </section>
