@@ -60,7 +60,7 @@ export default function SetupPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
+    <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
       <div className="w-full max-w-md rounded-3xl bg-white/10 backdrop-blur-xl p-8">
 
         <h1 className="text-4xl font-bold mb-2">

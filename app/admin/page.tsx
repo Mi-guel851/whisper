@@ -80,7 +80,7 @@ export default function AdminPage() {
   if (!authorized) return null;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#05010F] via-[#120022] to-[#030008] p-6 text-white">
+    <main className="min-h-screen theme-bg-gradient p-6 text-white">
       <BackButton />
 
       <div className="mx-auto max-w-4xl mt-4">
