@@ -6,9 +6,8 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { playNotificationSound } from "@/lib/sound";
-import { useToast } from "@/components/ToastProvider";
 import { presenceManager } from "@/lib/realtime/presence";
-import { House, Users, MessageCircle, User, Lightbulb } from "lucide-react";
+import { House, Users, MessageCircle, User, Gem } from "lucide-react";
 
 function uniqueChannelName(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -16,7 +15,6 @@ function uniqueChannelName(prefix: string) {
 
 export default function BottomNavigation() {
   const pathname = usePathname();
-  const { showToast } = useToast();
   const [unreadWhispers, setUnreadWhispers] = useState(0);
   const [unreadChats, setUnreadChats] = useState(0);
   const [myId, setMyId] = useState<string | null>(null);
@@ -147,16 +145,13 @@ export default function BottomNavigation() {
     setUnreadWhispers(0);
   }
 
-  function handleHintClick() {
-    showToast("✨ Premium features coming soon — get ready!");
-  }
-
   const nav = [
     { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined },
     { href: "/active", icon: Users, label: "Friends", showPresenceDot: true, badge: undefined },
     { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats },
     { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers },
     { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined },
+    { href: "/premium", icon: Gem, label: "Coins", showPresenceDot: false, badge: undefined },
   ];
 
   return (
@@ -231,20 +226,6 @@ export default function BottomNavigation() {
             </Link>
           );
         })}
-
-        <button
-          onClick={handleHintClick}
-          className="group relative flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1.5 py-1.5 text-[10px] font-bold transition duration-300 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-95"
-          style={{ color: "var(--theme-nav-inactive)" }}
-        >
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-2xl transition duration-300 group-hover:bg-white/10"
-            style={{ background: "var(--theme-nav-press)" }}
-          >
-            <Lightbulb size={20} strokeWidth={2.3} className="text-yellow-300 drop-shadow" />
-          </div>
-          <span>Hint</span>
-        </button>
         </div>
       </nav>
     </div>

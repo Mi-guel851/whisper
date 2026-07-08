@@ -6,7 +6,9 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
-import { Send, X, CornerUpLeft } from "lucide-react";
+import { UNLOCK_CHAT_COST } from "@/lib/coins";
+import { useToast } from "@/components/ToastProvider";
+import { Send, X, CornerUpLeft, LockKeyhole, Coins } from "lucide-react";
 
 type Message = {
   id: string;
@@ -145,6 +147,7 @@ function MessageBubble({
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
+  const { showToast } = useToast();
   const conversationId = params.conversationId as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -154,6 +157,8 @@ export default function ChatPage() {
   const [myId, setMyId] = useState("");
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [chatUnlocked, setChatUnlocked] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,6 +204,15 @@ export default function ChatPage() {
 
       const label = convo.user_a === session.user.id ? convo.user_a_label : convo.user_b_label;
       setOtherLabel(label);
+
+      await supabase.rpc("ensure_coin_wallet", { target_user: session.user.id });
+      const { data: unlock } = await supabase
+        .from("chat_unlocks")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .eq("conversation_id", conversationId)
+        .maybeSingle();
+      setChatUnlocked(Boolean(unlock));
 
       const { data: msgs } = await supabase
         .from("direct_messages")
@@ -294,6 +308,10 @@ export default function ChatPage() {
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = input.trim();
+    if (!chatUnlocked) {
+      showToast(`Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
+      return;
+    }
     if (!trimmed || !myId) return;
 
     setInput("");
@@ -343,6 +361,19 @@ export default function ChatPage() {
     }
   }
 
+
+  async function unlockChat() {
+    setUnlocking(true);
+    const { error } = await supabase.rpc("unlock_chat_with_coins", { target_conversation_id: conversationId });
+    if (error) {
+      showToast(error.message);
+    } else {
+      setChatUnlocked(true);
+      showToast("Inbox chat unlocked permanently.");
+    }
+    setUnlocking(false);
+  }
+
   function getReactionsFor(messageId: string) {
     const grouped: Record<string, number> = {};
     reactions
@@ -377,7 +408,7 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="flex h-screen flex-col theme-bg-gradient text-white">
+    <main className="flex min-h-screen flex-col theme-bg-gradient text-white">
       <div className="border-b border-white/10 p-6 pb-4">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
@@ -391,7 +422,26 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+        {!chatUnlocked && (
+          <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
+              <LockKeyhole className="text-cyan-200" />
+            </div>
+            <h2 className="text-2xl font-black">Chat locked</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
+              Unlock this anonymous conversation once to send messages normally. No per-message coin charges.
+            </p>
+            <button
+              onClick={unlockChat}
+              disabled={unlocking}
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+            >
+              <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
+            </button>
+          </GlassPanel>
+        )}
+
         {messages.length === 0 ? (
           <p className="mt-10 text-center text-gray-500">
             Say hi 👻 — they won&apos;t know who you are.
@@ -433,12 +483,14 @@ export default function ChatPage() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Message anonymously..."
-            className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500"
+            placeholder={chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
+            disabled={!chatUnlocked}
+            className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
           />
           <button
             type="submit"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500"
+            disabled={!chatUnlocked}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send size={16} className="text-black" />
           </button>
