@@ -160,14 +160,14 @@ export default function CompleteProfilePage() {
 
   if (checking) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] flex items-center justify-center text-white px-4">
+    <main className="relative min-h-screen overflow-hidden theme-bg-gradient flex items-center justify-center text-white px-4">
 
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
