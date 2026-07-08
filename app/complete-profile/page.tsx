@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
+import CountryPhoneInput, { type CountryPhoneValue } from "@/components/CountryPhoneInput";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 
 export default function CompleteProfilePage() {
@@ -18,6 +19,11 @@ export default function CompleteProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [countryPhone, setCountryPhone] = useState<CountryPhoneValue>({
+    countryCode: "NG",
+    dialCode: "+234",
+    phoneNumber: "",
+  });
   const [loading, setLoading] = useState(false);
 
   // Recovery phrase step
@@ -76,6 +82,16 @@ export default function CompleteProfilePage() {
       return;
     }
 
+    if (!countryPhone.countryCode) {
+      showToast("Please select your country.");
+      return;
+    }
+
+    if (countryPhone.phoneNumber.trim().length < 4) {
+      showToast("Please enter a valid phone number.");
+      return;
+    }
+
     setLoading(true);
 
     const { data: existing } = await supabase
@@ -101,7 +117,12 @@ export default function CompleteProfilePage() {
 
     const { error: profileError } = await supabase
       .from("profiles")
-      .update({ username: cleanUsername })
+      .update({
+        username: cleanUsername,
+        country_code: countryPhone.countryCode,
+        dial_code: countryPhone.dialCode,
+        phone_number: countryPhone.phoneNumber,
+      })
       .eq("id", userId);
 
     setLoading(false);
@@ -176,7 +197,8 @@ export default function CompleteProfilePage() {
         <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8">
           <h1 className="text-center text-3xl font-black">One last step</h1>
           <p className="mt-2 mb-8 text-center text-gray-300">
-            Pick a username and set a password to finish setting up your account.
+            Pick a username, set a password, and tell us where you&apos;re based so we can
+            get your premium payments in the right currency.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -224,6 +246,10 @@ export default function CompleteProfilePage() {
               >
                 {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <CountryPhoneInput value={countryPhone} onChange={setCountryPhone} />
             </div>
 
             <button
