@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
 import { ImagePlus, X, User } from "lucide-react";
 
@@ -98,10 +99,27 @@ export default function PublicProfile() {
       imageUrl = publicUrlData.publicUrl;
     }
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    let senderUsername: string | null = null;
+    if (session?.user.id) {
+      const { data: senderProfile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      senderUsername = senderProfile?.username || null;
+    }
+
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
       message: message.trim() || null,
       image_url: imageUrl,
+      sender_user_id: session?.user.id || null,
+      sender_username: senderUsername,
+      sender_email_name: sanitizeGmailName(session?.user.email),
     });
 
     setLoading(false);
