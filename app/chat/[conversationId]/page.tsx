@@ -157,6 +157,7 @@ export default function ChatPage() {
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -185,15 +186,16 @@ export default function ChatPage() {
         return;
       }
 
-      const readColumn = convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
-const { error: readError } = await supabase
-  .from("conversations")
-  .update({ [readColumn]: new Date().toISOString() })
-  .eq("id", conversationId);
+      const readColumn =
+        convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
+      const { error: readError } = await supabase
+        .from("conversations")
+        .update({ [readColumn]: new Date().toISOString() })
+        .eq("id", conversationId);
 
-if (readError) {
-  console.error("[chat] failed to mark conversation as read:", readError.message);
-}
+      if (readError) {
+        console.error("[chat] failed to mark conversation as read:", readError.message);
+      }
 
       const label = convo.user_a === session.user.id ? convo.user_a_label : convo.user_b_label;
       setOtherLabel(label);
@@ -279,9 +281,20 @@ if (readError) {
     };
   }, [conversationId, router]);
 
+  // Auto-scroll to the latest message.
+  // Depends on both `messages` (new message arrives) AND `loading`
+  // (the message list — and therefore messagesContainerRef — doesn't
+  // exist in the DOM until loading flips to false, so we need this
+  // effect to re-run at that point too, or the very first scroll
+  // never happens).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }, [messages, loading]);
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
@@ -369,7 +382,7 @@ if (readError) {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
+    <main className="flex h-screen flex-col bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
       <div className="border-b border-white/10 p-6 pb-4">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
@@ -383,7 +396,7 @@ if (readError) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
         {messages.length === 0 ? (
           <p className="mt-10 text-center text-gray-500">
             Say hi 👻 — they won&apos;t know who you are.
