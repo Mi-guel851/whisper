@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { verifyRecoveryPhrase } from "@/lib/recoveryPhrase";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   const { username, phrase, newPassword } = await req.json();
@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
   }
 
   const cleanUsername = username.trim().toLowerCase();
+  const supabaseAdmin = getSupabaseAdmin();
 
   const { data: profile, error: findError } = await supabaseAdmin
     .from("profiles")
@@ -21,7 +22,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid username or recovery phrase." }, { status: 400 });
   }
 
-  const matches = await bcrypt.compare(phrase.trim(), profile.recovery_phrase_hash);
+  const matches = await verifyRecoveryPhrase(
+    phrase.trim(),
+    profile.recovery_phrase_hash
+  );
 
   if (!matches) {
     return NextResponse.json({ error: "Invalid username or recovery phrase." }, { status: 400 });

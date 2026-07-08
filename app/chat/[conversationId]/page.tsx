@@ -262,8 +262,8 @@ export default function ChatPage() {
                 prev.filter(
                   (r) =>
                     !(
-                      r.message_id === (payload.old as any).message_id &&
-                      r.user_id === (payload.old as any).user_id
+                      r.message_id === (payload.old as Partial<Reaction>).message_id &&
+                      r.user_id === (payload.old as Partial<Reaction>).user_id
                     )
                 )
               );
@@ -375,14 +375,14 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="flex h-screen flex-col bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
+    <main className="flex h-screen flex-col theme-bg-gradient text-white">
       <div className="border-b border-white/10 p-6 pb-4">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">

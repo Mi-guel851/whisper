@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { hashRecoveryPhrase } from "@/lib/recoveryPhrase";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   const { userId, phrase } = await req.json();
@@ -12,7 +12,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const hash = await bcrypt.hash(phrase.trim(), 10);
+  const hash = await hashRecoveryPhrase(phrase.trim());
+  const supabaseAdmin = getSupabaseAdmin();
 
   const { error } = await supabaseAdmin
     .from("profiles")

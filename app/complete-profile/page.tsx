@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
-import { Eye, EyeOff, ShieldCheck, Copy } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 
 export default function CompleteProfilePage() {
   const router = useRouter();
@@ -160,14 +160,14 @@ export default function CompleteProfilePage() {
 
   if (checking) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] flex items-center justify-center text-white px-4">
+    <main className="relative min-h-screen overflow-hidden theme-bg-gradient flex items-center justify-center text-white px-4">
 
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
@@ -265,7 +265,7 @@ export default function CompleteProfilePage() {
                 onChange={(e) => setConfirmedSaved(e.target.checked)}
                 className="mt-1 h-4 w-4 rounded border-white/20 bg-black/30"
               />
-              I've saved this recovery phrase somewhere secure. I understand it cannot be
+              I&apos;ve saved this recovery phrase somewhere secure. I understand it cannot be
               recovered if I lose it.
             </label>
 

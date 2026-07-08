@@ -12,51 +12,119 @@ export type Theme = {
   accentFrom: string;
   accentTo: string;
   accentText: string;
+  accentContrast: string;
+  surface: string;
+  surfaceStrong: string;
+  surfaceMuted: string;
+  border: string;
+  borderStrong: string;
+  text: string;
+  textMuted: string;
+  textSubtle: string;
+  divider: string;
+  shadow: string;
+  navBg: string;
+  navBorder: string;
+  navShadow: string;
+  navInactive: string;
+  navActiveText: string;
+  navPress: string;
   swatch: [string, string, string];
 };
 
 export const themes: Record<ThemeId, Theme> = {
   midnight: {
     id: "midnight",
-    name: "Midnight",
-    bgFrom: "#090014",
-    bgVia: "#170033",
-    bgTo: "#02000a",
-    blob1: "rgba(34, 211, 238, 0.2)",
-    blob2: "rgba(147, 51, 234, 0.2)",
-    blob3: "rgba(217, 70, 239, 0.1)",
-    accentFrom: "#a855f7",
+    name: "Aurora Midnight",
+    bgFrom: "#15062d",
+    bgVia: "#241052",
+    bgTo: "#041d34",
+    blob1: "rgba(34, 211, 238, 0.32)",
+    blob2: "rgba(168, 85, 247, 0.34)",
+    blob3: "rgba(244, 114, 182, 0.18)",
+    accentFrom: "#c084fc",
     accentTo: "#22d3ee",
-    accentText: "#d8b4fe",
-    swatch: ["#170033", "#a855f7", "#22d3ee"],
+    accentText: "#f0e7ff",
+    accentContrast: "#08111f",
+    surface: "rgba(255, 255, 255, 0.10)",
+    surfaceStrong: "rgba(255, 255, 255, 0.16)",
+    surfaceMuted: "rgba(255, 255, 255, 0.07)",
+    border: "rgba(255, 255, 255, 0.16)",
+    borderStrong: "rgba(255, 255, 255, 0.32)",
+    text: "#ffffff",
+    textMuted: "#d8cdf7",
+    textSubtle: "#a89bc5",
+    divider: "rgba(255, 255, 255, 0.10)",
+    shadow: "0 24px 70px rgba(4, 7, 31, 0.52)",
+    navBg: "rgba(17, 9, 44, 0.82)",
+    navBorder: "rgba(255, 255, 255, 0.18)",
+    navShadow: "0 -18px 60px rgba(34, 211, 238, 0.16), 0 -8px 30px rgba(0, 0, 0, 0.42)",
+    navInactive: "#b8acd5",
+    navActiveText: "#ffffff",
+    navPress: "rgba(255, 255, 255, 0.14)",
+    swatch: ["#241052", "#c084fc", "#22d3ee"],
   },
   pinkBlack: {
     id: "pinkBlack",
-    name: "Pink & Black",
-    bgFrom: "#0a0006",
-    bgVia: "#1a0010",
-    bgTo: "#000000",
-    blob1: "rgba(236, 72, 153, 0.25)",
-    blob2: "rgba(219, 39, 119, 0.2)",
-    blob3: "rgba(244, 114, 182, 0.12)",
-    accentFrom: "#ec4899",
-    accentTo: "#f472b6",
-    accentText: "#f9a8d4",
-    swatch: ["#000000", "#ec4899", "#f472b6"],
+    name: "Neon Rose",
+    bgFrom: "#210313",
+    bgVia: "#4a0d2f",
+    bgTo: "#160719",
+    blob1: "rgba(236, 72, 153, 0.36)",
+    blob2: "rgba(251, 113, 133, 0.30)",
+    blob3: "rgba(244, 114, 182, 0.20)",
+    accentFrom: "#fb7185",
+    accentTo: "#f9a8d4",
+    accentText: "#ffe4f1",
+    accentContrast: "#220411",
+    surface: "rgba(255, 255, 255, 0.11)",
+    surfaceStrong: "rgba(255, 255, 255, 0.17)",
+    surfaceMuted: "rgba(255, 255, 255, 0.075)",
+    border: "rgba(255, 228, 241, 0.18)",
+    borderStrong: "rgba(255, 228, 241, 0.34)",
+    text: "#ffffff",
+    textMuted: "#ffd1e5",
+    textSubtle: "#d9a3bd",
+    divider: "rgba(255, 228, 241, 0.11)",
+    shadow: "0 24px 70px rgba(74, 13, 47, 0.46)",
+    navBg: "rgba(42, 5, 25, 0.84)",
+    navBorder: "rgba(255, 228, 241, 0.20)",
+    navShadow: "0 -18px 60px rgba(236, 72, 153, 0.20), 0 -8px 30px rgba(0, 0, 0, 0.42)",
+    navInactive: "#e7b8cc",
+    navActiveText: "#ffffff",
+    navPress: "rgba(255, 228, 241, 0.15)",
+    swatch: ["#4a0d2f", "#fb7185", "#f9a8d4"],
   },
   ngl: {
     id: "ngl",
-    name: "NGL Yellow",
-    bgFrom: "#0d0d05",
-    bgVia: "#1a1a08",
-    bgTo: "#000000",
-    blob1: "rgba(250, 204, 21, 0.22)",
-    blob2: "rgba(234, 179, 8, 0.18)",
-    blob3: "rgba(253, 224, 71, 0.1)",
+    name: "Golden Glow",
+    bgFrom: "#2b2100",
+    bgVia: "#5a4200",
+    bgTo: "#111407",
+    blob1: "rgba(250, 204, 21, 0.38)",
+    blob2: "rgba(251, 146, 60, 0.26)",
+    blob3: "rgba(254, 240, 138, 0.18)",
     accentFrom: "#facc15",
-    accentTo: "#fde047",
-    accentText: "#fde68a",
-    swatch: ["#000000", "#facc15", "#fde047"],
+    accentTo: "#fde68a",
+    accentText: "#fff7c2",
+    accentContrast: "#211900",
+    surface: "rgba(255, 255, 255, 0.12)",
+    surfaceStrong: "rgba(255, 255, 255, 0.18)",
+    surfaceMuted: "rgba(255, 255, 255, 0.08)",
+    border: "rgba(254, 240, 138, 0.20)",
+    borderStrong: "rgba(254, 240, 138, 0.36)",
+    text: "#ffffff",
+    textMuted: "#fff0ad",
+    textSubtle: "#dbc477",
+    divider: "rgba(254, 240, 138, 0.12)",
+    shadow: "0 24px 70px rgba(90, 66, 0, 0.42)",
+    navBg: "rgba(45, 34, 3, 0.84)",
+    navBorder: "rgba(254, 240, 138, 0.22)",
+    navShadow: "0 -18px 60px rgba(250, 204, 21, 0.20), 0 -8px 30px rgba(0, 0, 0, 0.40)",
+    navInactive: "#e9d68b",
+    navActiveText: "#ffffff",
+    navPress: "rgba(254, 240, 138, 0.16)",
+    swatch: ["#5a4200", "#facc15", "#fde68a"],
   },
 };
 
