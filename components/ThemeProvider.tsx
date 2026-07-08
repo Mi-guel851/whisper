@@ -52,12 +52,18 @@ function applyTheme(theme: Theme) {
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeIdState] = useState<ThemeId>(() => {
-    if (typeof window === "undefined") return "midnight";
+  // Always start with the same default on both server and client so the
+  // first client render matches the server-rendered HTML exactly.
+  const [themeId, setThemeIdState] = useState<ThemeId>("midnight");
 
+  // After mount (client-only), read the saved preference and apply it.
+  // This runs after hydration, so it can safely diverge from the server render.
+  useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-    return saved && themes[saved] ? saved : "midnight";
-  });
+    if (saved && themes[saved]) {
+      setThemeIdState(saved);
+    }
+  }, []);
 
   useEffect(() => {
     applyTheme(themes[themeId]);

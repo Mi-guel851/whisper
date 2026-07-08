@@ -102,9 +102,8 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-xl font-bold text-white mb-2">7. Contact Us</h2>
             <p>
-              Questions about this policy or your data? Reach out at{"@whisper.anonymous.app@gmail.com "}
+              Questions about this policy or your data? Reach out at {"whisper.anonymous.app@gmail.com "}
               <a href="mailto:@whisper.anonymous.app@gmail.com" className="text-cyan-300 hover:text-cyan-200">
-                support@whisper.anonymous.app@gmail.com
                 
               </a>{" "}
             </p>

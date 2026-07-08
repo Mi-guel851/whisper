@@ -104,9 +104,9 @@ export default function TermsPage() {
             <h2 className="text-xl font-bold text-white mb-2">9. Contact</h2>
             <p>
               Questions about these terms? Contact us at{" "}
-              <a href="mailto:@whisper.anonymous.app@gmail.com" className="text-cyan-300 hover:text-cyan-200">
+              <a href="mailto: whisper.anonymous.app@gmail.com" className="text-cyan-300 hover:text-cyan-200">
                 support@whisper.anonymous.app@gmail.com
-                
+
               </a>{" "}
             </p>
           </section>

@@ -51,8 +51,8 @@ export default function PublicProfile() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("Image must be under 5MB.");
+    if (file.size > 1 * 1024 * 1024) {
+      showToast("Image must be under 1MB.");
       return;
     }
 

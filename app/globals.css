@@ -95,8 +95,8 @@ body {
   --theme-border: rgba(255, 255, 255, 0.16);
   --theme-border-strong: rgba(255, 255, 255, 0.32);
   --theme-text: #ffffff;
-  --theme-text-muted: #d8cdf7;
-  --theme-text-subtle: #a89bc5;
+  --theme-text-muted: #e4dbfb;
+  --theme-text-subtle: #c3b8e0;
   --theme-divider: rgba(255, 255, 255, 0.10);
   --theme-shadow: 0 24px 70px rgba(4, 7, 31, 0.52);
   --theme-nav-bg: rgba(17, 9, 44, 0.82);
