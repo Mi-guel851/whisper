@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
 import { ImagePlus, X, User } from "lucide-react";
 

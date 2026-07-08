@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Logo from "./Logo";
+import { House } from "lucide-react";
 
 export default function Navbar() {
   return (

@@ -40,7 +40,7 @@ export default function DashboardPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("profile_completed, terms_accepted")
+        .select("profile_completed")
         .eq("id", session.user.id)
         .single();
 
@@ -49,9 +49,7 @@ export default function DashboardPage() {
         return;
       }
 
-      if (!profile.terms_accepted) {
-        setShowTerms(true);
-      }
+      setShowTerms(true);
 
       setChecking(false);
     }

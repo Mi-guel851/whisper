@@ -162,6 +162,7 @@ export default function ChatPage() {
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -190,15 +191,16 @@ export default function ChatPage() {
         return;
       }
 
-      const readColumn = convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
-const { error: readError } = await supabase
-  .from("conversations")
-  .update({ [readColumn]: new Date().toISOString() })
-  .eq("id", conversationId);
+      const readColumn =
+        convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
+      const { error: readError } = await supabase
+        .from("conversations")
+        .update({ [readColumn]: new Date().toISOString() })
+        .eq("id", conversationId);
 
-if (readError) {
-  console.error("[chat] failed to mark conversation as read:", readError.message);
-}
+      if (readError) {
+        console.error("[chat] failed to mark conversation as read:", readError.message);
+      }
 
       const label = convo.user_a === session.user.id ? convo.user_a_label : convo.user_b_label;
       setOtherLabel(label);
@@ -293,9 +295,15 @@ if (readError) {
     };
   }, [conversationId, router]);
 
+  
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }, [messages, loading]);
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
