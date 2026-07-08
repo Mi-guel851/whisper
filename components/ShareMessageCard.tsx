@@ -173,7 +173,7 @@ export default function ShareMessageCard({
 
         <div
           ref={cardRef}
-          className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-[#1a0038] via-[#0d0020] to-[#02000A] p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+          className="relative overflow-hidden rounded-[2rem] border border-white/10 theme-bg-gradient p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
         >
           <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-500/20 blur-[60px]" />
           <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />

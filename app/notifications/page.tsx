@@ -89,7 +89,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#090014] pb-28 text-white">
+    <main className="min-h-screen theme-bg-gradient pb-28 text-white">
       <div className="p-6">
         <BackButton />
         <h1 className="mt-4 text-4xl font-black">📡 Activity</h1>

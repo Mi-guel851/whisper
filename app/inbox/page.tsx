@@ -55,14 +55,14 @@ export default function InboxPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
+    <main className="min-h-screen theme-bg-gradient text-white">
       <div className="max-w-2xl mx-auto px-6 py-10 pb-28">
         <BackButton />
 

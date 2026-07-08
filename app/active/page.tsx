@@ -125,14 +125,14 @@ export default function ActiveUsersPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
         Loading...
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white pb-28">
+    <main className="min-h-screen theme-bg-gradient text-white pb-28">
       <div className="p-6">
         <BackButton />
 
@@ -163,7 +163,7 @@ export default function ActiveUsersPage() {
                 <GlassPanel className="flex items-center gap-4 rounded-2xl p-4 hover:bg-white/5 transition">
                   <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
                     👻
-                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-400 border-2 border-[#090014]" />
+                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-400 border-2 border-[var(--theme-bg-from)]" />
                   </div>
 
                   <div className="flex-1">
