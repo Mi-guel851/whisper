@@ -1,4 +1,3 @@
-// app/privacy/page.tsx
 import GlassPanel from "@/components/GlassPanel";
 
 export const metadata = {
@@ -103,11 +102,11 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-xl font-bold text-white mb-2">7. Contact Us</h2>
             <p>
-              Questions about this policy or your data? Reach out at{" "}
-              <a href="mailto:support@whisper-anonymous.vercel.app" className="text-cyan-300 hover:text-cyan-200">
-                support@whisper-anonymous.vercel.app
+              Questions about this policy or your data? Reach out at{"@whisper.anonymous.app@gmail.com "}
+              <a href="mailto:@whisper.anonymous.app@gmail.com" className="text-cyan-300 hover:text-cyan-200">
+                support@whisper.anonymous.app@gmail.com
+                
               </a>{" "}
-              (replace with your actual support email).
             </p>
           </section>
 
