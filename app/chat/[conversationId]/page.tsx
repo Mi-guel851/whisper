@@ -281,12 +281,7 @@ export default function ChatPage() {
     };
   }, [conversationId, router]);
 
-  // Auto-scroll to the latest message.
-  // Depends on both `messages` (new message arrives) AND `loading`
-  // (the message list — and therefore messagesContainerRef — doesn't
-  // exist in the DOM until loading flips to false, so we need this
-  // effect to re-run at that point too, or the very first scroll
-  // never happens).
+  
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
