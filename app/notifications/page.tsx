@@ -5,8 +5,9 @@ import { supabase } from "@/lib/supabase/client";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import ShareMessageCard from "@/components/ShareMessageCard";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import GlassPanel from "@/components/GlassPanel";
-import { Heart, Download } from "lucide-react";
+import { Heart, Download, Trash2 } from "lucide-react";
 
 type Notification = {
   id: string;
@@ -20,6 +21,8 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [viewing, setViewing] = useState<{ message: string; imageUrl: string | null } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Notification | null>(null);
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -88,6 +91,44 @@ export default function NotificationsPage() {
     }
   }
 
+  function extractStoragePath(imageUrl: string): string | null {
+    const marker = "/message-images/";
+    const idx = imageUrl.indexOf(marker);
+    if (idx === -1) return null;
+    return imageUrl.slice(idx + marker.length);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const item = pendingDelete;
+
+    setDeleting(item.id);
+
+    if (item.image_url) {
+      const path = extractStoragePath(item.image_url);
+      if (path) {
+        const { error: storageError } = await supabase.storage
+          .from("message-images")
+          .remove([path]);
+        if (storageError) {
+          console.error("Failed to remove image from storage:", storageError.message);
+        }
+      }
+    }
+
+    const { error } = await supabase.from("messages").delete().eq("id", item.id);
+
+    setDeleting(null);
+    setPendingDelete(null);
+
+    if (error) {
+      console.error("Couldn't delete message:", error.message);
+      return;
+    }
+
+    setNotifications((prev) => prev.filter((n) => n.id !== item.id));
+  }
+
   return (
     <main className="min-h-screen theme-bg-gradient pb-28 text-white">
       <div className="p-6">
@@ -107,28 +148,40 @@ export default function NotificationsPage() {
           <div className="mt-8 space-y-3">
             {notifications.map((item) => (
               <GlassPanel key={item.id} className="rounded-2xl p-4">
-                <button
-                  onClick={() =>
-                    setViewing({ message: item.message || "", imageUrl: item.image_url })
-                  }
-                  className="flex w-full items-center gap-4 text-left"
-                >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-red-500">
-                    <Heart size={20} className="fill-white text-white" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-pink-300">New Message!</p>
-                    {item.message && (
-                      <p className="truncate text-sm text-gray-400">{item.message}</p>
-                    )}
-                    {!item.message && item.image_url && (
-                      <p className="truncate text-sm text-gray-400">📷 Image</p>
-                    )}
-                  </div>
+                <div className="flex w-full items-center gap-4">
+                  <button
+                    onClick={() =>
+                      setViewing({ message: item.message || "", imageUrl: item.image_url })
+                    }
+                    className="flex min-w-0 flex-1 items-center gap-4 text-left"
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-red-500">
+                      <Heart size={20} className="fill-white text-white" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-pink-300">New Message!</p>
+                      {item.message && (
+                        <p className="truncate text-sm text-gray-400">{item.message}</p>
+                      )}
+                      {!item.message && item.image_url && (
+                        <p className="truncate text-sm text-gray-400">📷 Image</p>
+                      )}
+                    </div>
+                  </button>
+
                   <span className="shrink-0 text-xs text-gray-500">
                     {new Date(item.created_at).toLocaleDateString()}
                   </span>
-                </button>
+
+                  <button
+                    onClick={() => setPendingDelete(item)}
+                    disabled={deleting === item.id}
+                    className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
+                    aria-label="Delete message"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
 
                 {item.image_url && (
                   <div className="relative mt-3">
@@ -158,6 +211,16 @@ export default function NotificationsPage() {
           message={viewing.message}
           imageUrl={viewing.imageUrl}
           onClose={() => setViewing(null)}
+        />
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete this message?"
+          description="This can't be undone. The message and any attached image will be permanently removed."
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+          loading={deleting === pendingDelete.id}
         />
       )}
 
