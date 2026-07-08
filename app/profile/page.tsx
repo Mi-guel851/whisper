@@ -5,7 +5,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Bell, Palette, ChevronRight } from "lucide-react";
+import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Palette, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 import BottomNavigation from "@/components/BottomNavigation";
@@ -190,17 +190,6 @@ export default function ProfilePage() {
   </div>
   <ChevronRight size={16} className="text-gray-600" />
 </Link>
-
-            <div className="flex items-center gap-4 p-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
-                <Palette size={18} />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-white">Appearance</p>
-                <p className="text-xs text-gray-500">Midnight</p>
-              </div>
-              <ChevronRight size={16} className="text-gray-600" />
-            </div>
           </GlassPanel>
         </div>
 

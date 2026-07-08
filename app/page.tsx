@@ -27,7 +27,7 @@ export default function Home() {
 
   if (checking) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014]">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient">
         <p className="text-gray-400 text-sm">Loading...</p>
       </main>
     );

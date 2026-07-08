@@ -6,9 +6,8 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { playNotificationSound } from "@/lib/sound";
-import { useToast } from "@/components/ToastProvider";
 import { presenceManager } from "@/lib/realtime/presence";
-import { House, Users, MessageCircle, User, Lightbulb } from "lucide-react";
+import { House, Users, MessageCircle, User, Gem } from "lucide-react";
 
 function uniqueChannelName(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -16,7 +15,6 @@ function uniqueChannelName(prefix: string) {
 
 export default function BottomNavigation() {
   const pathname = usePathname();
-  const { showToast } = useToast();
   const [unreadWhispers, setUnreadWhispers] = useState(0);
   const [unreadChats, setUnreadChats] = useState(0);
   const [myId, setMyId] = useState<string | null>(null);
@@ -147,21 +145,27 @@ export default function BottomNavigation() {
     setUnreadWhispers(0);
   }
 
-  function handleHintClick() {
-    showToast("✨ Premium features coming soon — get ready!");
-  }
-
   const nav = [
     { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined },
     { href: "/active", icon: Users, label: "Friends", showPresenceDot: true, badge: undefined },
     { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats },
     { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers },
     { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined },
+    { href: "/premium", icon: Gem, label: "Coins", showPresenceDot: false, badge: undefined },
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[#090014]/90 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-lg justify-around py-2.5">
+    <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 px-3 pb-3 sm:px-4 sm:pb-4">
+      <nav
+        aria-label="Primary navigation"
+        className="pointer-events-auto mx-auto max-w-xl rounded-[2rem] border px-2.5 py-2 shadow-2xl backdrop-blur-2xl transition-[background,border-color,box-shadow] duration-300 ease-out sm:px-3"
+        style={{
+          background: "var(--theme-nav-bg)",
+          borderColor: "var(--theme-nav-border)",
+          boxShadow: "var(--theme-nav-shadow)",
+        }}
+      >
+        <div className="grid grid-cols-6 items-center gap-1">
         {nav.map((item) => {
           const Icon = item.icon;
           const active = pathname.startsWith(item.href);
@@ -172,20 +176,25 @@ export default function BottomNavigation() {
               key={item.href}
               href={item.href}
               onClick={isActivity ? handleActivityClick : undefined}
-              className="relative flex flex-col items-center gap-1 text-[10px] font-semibold transition duration-300"
+              className="group relative flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1.5 py-1.5 text-[10px] font-bold transition duration-300 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-95"
             >
               <div
-                className={`flex h-9 w-9 items-center justify-center rounded-full transition-all duration-300 ${
-                  active
-                    ? "bg-gradient-to-br from-purple-500 to-cyan-400"
-                    : "bg-transparent"
+                className={`relative flex h-10 w-10 items-center justify-center rounded-2xl transition-all duration-300 ease-out ${
+                  active ? "scale-105 shadow-lg" : "group-hover:bg-white/10"
                 }`}
+                style={{
+                  background: active
+                    ? "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))"
+                    : "transparent",
+                  color: active ? "var(--theme-accent-contrast)" : "var(--theme-nav-inactive)",
+                  boxShadow: active ? "0 10px 26px color-mix(in srgb, var(--theme-accent-from) 32%, transparent)" : undefined,
+                }}
               >
                 {Icon ? (
                   <Icon
                     size={20}
                     strokeWidth={2.3}
-                    className={active ? "text-black" : "text-gray-500"}
+                    className="transition-colors duration-300"
                   />
                 ) : (
                   <Image
@@ -193,38 +202,32 @@ export default function BottomNavigation() {
                     alt="Whispers"
                     width={20}
                     height={20}
-                    className={active ? "" : "opacity-60"}
+                    className={`transition duration-300 ${active ? "drop-shadow" : "opacity-70 grayscale"}`}
                   />
                 )}
 
                 {item.showPresenceDot && anyoneElseOnline && (
-                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#090014] bg-green-400" />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 bg-green-400" style={{ borderColor: "var(--theme-nav-bg)" }} />
                 )}
 
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                  <span className="absolute -top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white shadow-lg shadow-rose-500/30">
                     {item.badge > 9 ? "9+" : item.badge}
                   </span>
                 )}
               </div>
 
-              <span className={active ? "text-white" : "text-gray-500"}>
+              <span
+                className="truncate transition-colors duration-300"
+                style={{ color: active ? "var(--theme-nav-active-text)" : "var(--theme-nav-inactive)" }}
+              >
                 {item.label}
               </span>
             </Link>
           );
         })}
-
-        <button
-          onClick={handleHintClick}
-          className="relative flex flex-col items-center gap-1 text-[10px] font-semibold text-gray-500 transition duration-300"
-        >
-          <div className="flex h-9 w-9 items-center justify-center rounded-full">
-            <Lightbulb size={20} strokeWidth={2.3} className="text-yellow-400/80" />
-          </div>
-          <span>Hint</span>
-        </button>
-      </div>
+        </div>
+      </nav>
     </div>
   );
 }
