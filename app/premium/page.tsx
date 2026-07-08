@@ -1,5 +1,6 @@
 "use client";
 
+import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -111,7 +112,10 @@ export default function PremiumPage() {
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.25em] text-cyan-200"><Sparkles size={14} /> Premium Wallet</p>
-              <h1 className="text-5xl font-black tracking-tight">🪙 Whisper Coins</h1>
+              <h1 className="flex items-center gap-3 text-5xl font-black tracking-tight">
+  <WhisperCoinIcon size={44} />
+  Whisper Coins
+</h1>
               <p className="mt-3 max-w-xl text-sm text-gray-300">Unlock sender reveals and one-time inbox chat access from one premium wallet.</p>
             </div>
             <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity }} className="rounded-[2rem] border border-yellow-200/30 bg-gradient-to-br from-yellow-200/25 via-pink-400/15 to-cyan-400/20 p-6 text-center shadow-2xl shadow-yellow-300/10">

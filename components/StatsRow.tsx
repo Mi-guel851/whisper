@@ -71,7 +71,7 @@ export default function StatsRow() {
     <div className="grid grid-cols-2 gap-4">
       <GlassPanel className="rounded-3xl p-5">
         <SectionLoadingBar loading={loading} />
-        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500">
+        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-300">
           <MessageSquare size={13} />
           Whispers
         </div>
@@ -82,7 +82,7 @@ export default function StatsRow() {
       </GlassPanel>
 
       <GlassPanel className="rounded-3xl p-5">
-        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500">
+        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-300">
           <Eye size={13} />
           Link Views
         </div>

@@ -60,14 +60,14 @@ export default function DashboardHeader() {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
           {getGreeting()}
         </p>
         <h1 className="mt-1 flex items-center gap-2 text-3xl font-black text-white">
           Hey, {name || "there"}
           <Image src="/ghost.png" alt="Whisper" width={28} height={28} />
         </h1>
-        <p className="mt-1 text-sm text-gray-400">
+        <p className="mt-1 text-sm text-gray-300">
           Your inbox is open. Whispers welcome.
         </p>
       </div>
