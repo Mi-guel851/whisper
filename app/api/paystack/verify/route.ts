@@ -56,11 +56,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Amount mismatch" }, { status: 400 });
     }
 
-    if (tx.customer?.email && tx.customer.email !== user.email) {
-      return NextResponse.json({ error: "Email mismatch" }, { status: 400 });
-    }
-
-    // Use service role client to credit coins + premium, bypassing RLS safely server-side
+    if (tx.customer?.email && tx.customer.email !== "whisper.anonymous.app@gmail.com") {
+  return NextResponse.json({ error: "Email mismatch" }, { status: 400 });
+}
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
