@@ -18,7 +18,7 @@ export default function GrantCoinsPage() {
 
   const [username, setUsername] = useState("");
   const [coinAmount, setCoinAmount] = useState("");
-  const [note, setNote] = useState("Beta bonus");
+  const [note, setNote] = useState("Premium Grant");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function GrantCoinsPage() {
     const { data, error } = await supabase.rpc("admin_grant_coins", {
       target_username: cleanUsername,
       coin_amount: amount,
-      grant_note: note.trim() || "Beta bonus",
+      grant_note: note.trim() || "Premium Grant",
     });
     setBusy(false);
 
@@ -183,7 +183,7 @@ export default function GrantCoinsPage() {
                 <input
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="Beta bonus"
+                  placeholder="Premium Grant"
                   className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
                 />
               </div>

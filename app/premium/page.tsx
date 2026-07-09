@@ -18,6 +18,8 @@ declare global {
   }
 }
 
+const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
+
 type Transaction = { id: string; amount: number; description: string; transaction_type: string; created_at: string };
 type Whisper = { id: string; message: string | null; sender_username: string | null; sender_email_name: string | null; created_at: string };
 
@@ -112,7 +114,7 @@ export default function PremiumPage() {
 
     const handler = window.PaystackPop.setup({
       key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
-      email: session.user.email,
+      email: PAYSTACK_MASKED_EMAIL,
       amount: 200000, // ₦2,000 in kobo
       currency: "NGN",
       ref: `whisper_${session.user.id}_${Date.now()}`,
@@ -204,10 +206,9 @@ export default function PremiumPage() {
                 whileHover={{ y: -6, scale: 1.01 }}
                 className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-8 text-center shadow-xl backdrop-blur-xl"
               >
-              
-                  <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-300 to-pink-300 px-3 py-1 text-[10px] font-black text-black">
-                    MOST POPULAR
-                  </span>
+                <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-300 to-pink-300 px-3 py-1 text-[10px] font-black text-black">
+                  MOST POPULAR
+                </span>
                 <Coins className="mx-auto mb-5 h-12 w-12 text-yellow-200" />
                 <p className="text-4xl font-black">{pkg.coins}</p>
                 <p className="text-sm text-gray-300">Whisper Coins</p>
