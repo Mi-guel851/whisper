@@ -12,6 +12,12 @@ import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
 
+declare global {
+  interface Window {
+    PaystackPop: any;
+  }
+}
+
 type Transaction = { id: string; amount: number; description: string; transaction_type: string; created_at: string };
 type Whisper = { id: string; message: string | null; sender_username: string | null; sender_email_name: string | null; created_at: string };
 
@@ -72,6 +78,12 @@ export default function PremiumPage() {
 
   async function buyCoins(coins: number, label: string) {
     if (!userId) return;
+
+    if (coins === 2000) {
+      payWithPaystack();
+      return;
+    }
+
     setBusy(`buy-${coins}`);
     const { data, error } = await supabase.rpc("purchase_whisper_coins", { coin_amount: coins, package_label: `${coins} Coins ${label}` });
     if (error) showToast(error.message);
@@ -81,6 +93,63 @@ export default function PremiumPage() {
       await refresh(userId);
     }
     setBusy(null);
+  }
+
+  async function payWithPaystack() {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.user.email) {
+      showToast("You need to be logged in with an email to purchase.");
+      return;
+    }
+
+    if (!window.PaystackPop) {
+      showToast("Payment system still loading, try again in a second.");
+      return;
+    }
+
+    setBusy("buy-2000");
+
+    const handler = window.PaystackPop.setup({
+      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
+      email: session.user.email,
+      amount: 200000, // ₦2,000 in kobo
+      currency: "NGN",
+      ref: `whisper_${session.user.id}_${Date.now()}`,
+      callback: (response: { reference: string }) => {
+        (async () => {
+          try {
+            const verifyRes = await fetch("/api/paystack/verify", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${session.access_token}`,
+              },
+              body: JSON.stringify({ reference: response.reference }),
+            });
+
+            const result = await verifyRes.json();
+
+            if (!verifyRes.ok) {
+              showToast(result.error || "Verification failed.");
+            } else {
+              setBalance(result.balance || 0);
+              showToast("🎉 Whisper Vault unlocked! Premium active for 30 days.");
+              await refresh(userId);
+            }
+          } catch {
+            showToast("Something went wrong verifying your payment.");
+          } finally {
+            setBusy(null);
+          }
+        })();
+      },
+      onClose: () => {
+        setBusy(null);
+      },
+    });
+
+    handler.openIframe();
   }
 
   async function revealSender(messageId: string) {
@@ -128,14 +197,27 @@ export default function PremiumPage() {
 
         <section className="mt-8">
           <h2 className="mb-4 flex items-center gap-2 text-2xl font-black"><Gem className="text-pink-300" /> Buy Coins</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex justify-center">
             {COIN_PACKAGES.map((pkg) => (
-              <motion.div key={pkg.coins} whileHover={{ y: -6, scale: 1.02 }} className="relative overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-5 shadow-xl backdrop-blur-xl">
-                {pkg.popular && <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-300 to-pink-300 px-3 py-1 text-[10px] font-black text-black">MOST POPULAR</span>}
-                <Coins className="mb-5 h-9 w-9 text-yellow-200" />
-                <p className="text-3xl font-black">{pkg.coins}</p>
+              <motion.div
+                key={pkg.coins}
+                whileHover={{ y: -6, scale: 1.01 }}
+                className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-8 text-center shadow-xl backdrop-blur-xl"
+              >
+              
+                  <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-300 to-pink-300 px-3 py-1 text-[10px] font-black text-black">
+                    MOST POPULAR
+                  </span>
+                <Coins className="mx-auto mb-5 h-12 w-12 text-yellow-200" />
+                <p className="text-4xl font-black">{pkg.coins}</p>
                 <p className="text-sm text-gray-300">Whisper Coins</p>
-                <button onClick={() => buyCoins(pkg.coins, pkg.label)} disabled={busy === `buy-${pkg.coins}`} className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-4 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60">{busy === `buy-${pkg.coins}` ? "Adding..." : "Buy"}</button>
+                <button
+                  onClick={() => buyCoins(pkg.coins, pkg.label)}
+                  disabled={busy === `buy-${pkg.coins}`}
+                  className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-4 py-4 text-lg font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+                >
+                  {busy === `buy-${pkg.coins}` ? "Adding..." : "Buy"}
+                </button>
               </motion.div>
             ))}
           </div>
