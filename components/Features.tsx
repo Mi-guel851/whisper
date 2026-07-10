@@ -55,9 +55,9 @@ function TiltCard({ icon: Icon, title, desc }: { icon: LucideIcon; title: string
 
 export default function Features() {
   return (
-    <section id="features" className="relative mx-auto max-w-7xl px-8 py-24">
-      <div className="mb-16 text-center">
-        <h2 className="text-5xl font-black text-white">
+    <section id="features" className="relative mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24">
+      <div className="mb-10 text-center sm:mb-16">
+        <h2 className="text-3xl font-black text-white sm:text-5xl">
           Everything you need,
           <span className="block bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
             nothing you don&apos;t.

@@ -59,7 +59,7 @@ export default function PhoneMockup() {
       <div className="absolute -inset-12 rounded-full bg-cyan-500/20 blur-[120px]" />
 
       <div
-  className="relative w-[340px] rounded-[36px] overflow-hidden animate-[phoneTilt_7s_ease-in-out_infinite]"
+  className="relative w-[85vw] max-w-[340px] rounded-[36px] overflow-hidden animate-[phoneTilt_7s_ease-in-out_infinite]"
   style={{
     transformStyle: "preserve-3d",
     background: "rgba(11,0,22,0.5)",
