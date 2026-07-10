@@ -6,7 +6,19 @@ import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
 import CountryPhoneInput, { type CountryPhoneValue } from "@/components/CountryPhoneInput";
+import { COUNTRIES } from "@/lib/countries";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+
+function countryCodeFromProfile(countryName: string | null | undefined, fallbackCode: string | null | undefined) {
+  if (fallbackCode) return fallbackCode;
+  if (!countryName) return "NG";
+
+  return COUNTRIES.find((country) => country.name === countryName)?.code || "NG";
+}
+
+function countryNameFromCode(countryCode: string) {
+  return COUNTRIES.find((country) => country.code === countryCode)?.name || "Nigeria";
+}
 
 export default function CompleteProfilePage() {
   const router = useRouter();
@@ -57,7 +69,7 @@ export default function CompleteProfilePage() {
       setUserId(session.user.id);
       setUsername(profile?.username || "");
       setCountryPhone({
-        countryCode: profile?.country || profile?.country_code || "NG",
+        countryCode: countryCodeFromProfile(profile?.country, profile?.country_code),
         dialCode: profile?.dial_code || "+234",
         phoneNumber: profile?.phone_number || "",
       });
@@ -124,7 +136,7 @@ export default function CompleteProfilePage() {
       .from("profiles")
       .update({
         username: cleanUsername,
-        country: countryPhone.countryCode,
+        country: countryNameFromCode(countryPhone.countryCode),
         country_code: countryPhone.countryCode,
         dial_code: countryPhone.dialCode,
         phone_number: countryPhone.phoneNumber,
