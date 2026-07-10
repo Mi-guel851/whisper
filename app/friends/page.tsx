@@ -2,13 +2,15 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Clock, MessageCircle, Search, UserPlus, Users, X } from "lucide-react";
+import { Check, Clock, Globe2, MessageCircle, Search, UserPlus, Users, X } from "lucide-react";
 
 import { supabase } from "@/lib/supabase/client";
 import { presenceManager } from "@/lib/realtime/presence";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { useToast } from "@/components/ToastProvider";
 
 type FriendTab = "friends" | "requests" | "active";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
@@ -18,10 +20,11 @@ type ProfileSummary = {
   username: string;
   display_name: string | null;
   avatar_url: string | null;
+  country: string | null;
 };
 
 type SearchResult = ProfileSummary & {
-  relationship: "none" | "friends" | "pending";
+  relationship: "none" | "friends" | "pending" | "incoming" | "blocked";
 };
 
 type RawFriendRow = Omit<FriendRow, "friend"> & { friend: ProfileSummary | ProfileSummary[] | null };
@@ -110,7 +113,9 @@ function Avatar({ profile, online }: { profile: ProfileSummary | null; online?: 
 function FriendsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { showToast } = useToast();
   const [myId, setMyId] = useState("");
+  const [myCountry, setMyCountry] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [incoming, setIncoming] = useState<FriendRequestRow[]>([]);
@@ -119,13 +124,17 @@ function FriendsPageContent() {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [foreignUsers, setForeignUsers] = useState<ProfileSummary[]>([]);
+  const [foreignLimit, setForeignLimit] = useState(5);
+  const [foreignLoading, setForeignLoading] = useState(false);
+  const [connectTarget, setConnectTarget] = useState<ProfileSummary | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadFriends = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from("friends")
-      .select("id,user_id,friend_id,created_at,friend:profiles!friends_friend_id_fkey(id,username,display_name,avatar_url)")
+      .select("id,user_id,friend_id,created_at,friend:profiles!friends_friend_id_fkey(id,username,display_name,avatar_url,country)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -136,12 +145,12 @@ function FriendsPageContent() {
     const [incomingRes, outgoingRes] = await Promise.all([
       supabase
         .from("friend_requests")
-        .select("id,requester_id,receiver_id,status,created_at,updated_at,requester:profiles!friend_requests_requester_id_fkey(id,username,display_name,avatar_url),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url)")
+        .select("id,requester_id,receiver_id,status,created_at,updated_at,requester:profiles!friend_requests_requester_id_fkey(id,username,display_name,avatar_url,country),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url,country)")
         .eq("receiver_id", userId)
         .order("created_at", { ascending: false }),
       supabase
         .from("friend_requests")
-        .select("id,requester_id,receiver_id,status,created_at,updated_at,requester:profiles!friend_requests_requester_id_fkey(id,username,display_name,avatar_url),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url)")
+        .select("id,requester_id,receiver_id,status,created_at,updated_at,requester:profiles!friend_requests_requester_id_fkey(id,username,display_name,avatar_url,country),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url,country)")
         .eq("requester_id", userId)
         .order("created_at", { ascending: false }),
     ]);
@@ -169,6 +178,9 @@ function FriendsPageContent() {
 
       if (cancelled) return;
       setMyId(session.user.id);
+      const { data: myProfile } = await supabase.from("profiles").select("country").eq("id", session.user.id).maybeSingle();
+      if (cancelled) return;
+      setMyCountry(myProfile?.country || null);
       await presenceManager.connect(session.user.id);
       unsubscribePresence = presenceManager.subscribe((users) => {
         setOnlineIds(new Set(users.map((user) => user.id)));
@@ -199,7 +211,7 @@ function FriendsPageContent() {
   }, [refreshAll]);
 
   useEffect(() => {
-    if (!myId) return;
+    if (!myId || !myCountry) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const cleanQuery = query.trim().toLowerCase();
@@ -212,12 +224,7 @@ function FriendsPageContent() {
 
       setSearching(true);
       const { data } = await supabase
-        .from("profiles")
-        .select("id,username,display_name,avatar_url")
-        .ilike("username", `%${cleanQuery}%`)
-        .neq("id", myId)
-        .order("username", { ascending: true })
-        .limit(10);
+        .rpc("search_same_country_friend_candidates", { search_query: cleanQuery, result_limit: 10 });
 
       const seen = new Set<string>();
       const rows = ((data || []) as ProfileSummary[]).filter((profile) => {
@@ -227,22 +234,42 @@ function FriendsPageContent() {
       });
 
       const friendIds = new Set(friends.map((friend) => friend.friend_id));
-      const pendingIds = new Set([
-        ...incoming.filter((request) => request.status === "pending").map((request) => request.requester_id),
-        ...outgoing.filter((request) => request.status === "pending").map((request) => request.receiver_id),
-      ]);
+      const incomingPendingIds = new Set(incoming.filter((request) => request.status === "pending").map((request) => request.requester_id));
+      const outgoingPendingIds = new Set(outgoing.filter((request) => request.status === "pending").map((request) => request.receiver_id));
 
-      setResults(rows.map((profile) => ({
-        ...profile,
-        relationship: friendIds.has(profile.id) ? "friends" : pendingIds.has(profile.id) ? "pending" : "none",
-      })));
+      setResults(rows
+        .filter((profile) => !friendIds.has(profile.id) && !outgoingPendingIds.has(profile.id) && !incomingPendingIds.has(profile.id))
+        .map((profile) => ({
+          ...profile,
+          relationship: friendIds.has(profile.id) ? "friends" : incomingPendingIds.has(profile.id) ? "incoming" : outgoingPendingIds.has(profile.id) ? "pending" : "none",
+        })));
       setSearching(false);
     }, 300);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [friends, incoming, myId, outgoing, query]);
+  }, [friends, incoming, myCountry, myId, outgoing, query]);
+
+  useEffect(() => {
+    if (!myId || !myCountry) return;
+
+    async function loadForeignUsers() {
+      setForeignLoading(true);
+      const { data, error } = await supabase
+        .rpc("list_foreign_connection_candidates", { result_limit: foreignLimit });
+
+      if (error) {
+        console.error(error.message);
+        setForeignUsers([]);
+      } else {
+        setForeignUsers((data || []) as ProfileSummary[]);
+      }
+      setForeignLoading(false);
+    }
+
+    loadForeignUsers();
+  }, [foreignLimit, myCountry, myId]);
 
   const tab = normalizeTab(searchParams.get("tab"));
 
@@ -257,8 +284,15 @@ function FriendsPageContent() {
   async function addFriend(profileId: string) {
     if (!myId) return;
     setBusyId(profileId);
-    const { error } = await supabase.from("friend_requests").insert({ requester_id: myId, receiver_id: profileId });
-    if (error) console.error(error.message);
+    const { data, error } = await supabase.rpc("send_friend_request", { target_user: profileId });
+    if (error) {
+      showToast(error.message);
+    } else if (data) {
+      router.push(`/chat/${data}`);
+      showToast("Friend request accepted. You can chat for free now.");
+    } else {
+      showToast("Friend request sent.");
+    }
     await refreshAll(myId);
     setBusyId(null);
   }
@@ -268,17 +302,37 @@ function FriendsPageContent() {
     setBusyId(requestId);
     if (action === "accepted") {
       const { error } = await supabase.rpc("accept_friend_request", { request_id: requestId });
-      if (error) console.error(error.message);
+      if (error) showToast(error.message);
+      else showToast("Friend request accepted. You can chat for free now.");
     } else {
       const { error } = await supabase
         .from("friend_requests")
         .update({ status: "rejected", updated_at: new Date().toISOString() })
         .eq("id", requestId)
         .eq("receiver_id", myId);
-      if (error) console.error(error.message);
+      if (error) showToast(error.message);
+      else showToast("Friend request rejected.");
     }
     await refreshAll(myId);
     setBusyId(null);
+  }
+
+
+  async function connectForeignFriend() {
+    if (!connectTarget || !myId) return;
+
+    setBusyId(connectTarget.id);
+    const { data, error } = await supabase.rpc("connect_foreign_friend", { target_user: connectTarget.id });
+    if (error) {
+      showToast(error.message.includes("Not enough") ? "Not enough coins." : error.message);
+    } else {
+      showToast("Connected! You can chat for free now.");
+      await refreshAll(myId);
+      setForeignLimit(5);
+      if (data) router.push(`/chat/${data}`);
+    }
+    setBusyId(null);
+    setConnectTarget(null);
   }
 
   async function startChat(friendId: string) {
@@ -328,11 +382,37 @@ function FriendsPageContent() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">@{profile.username}</p>
                     {profile.display_name && <p className="truncate text-xs text-gray-400">{profile.display_name}</p>}
+                    {profile.country && <p className="truncate text-xs text-cyan-200/80">{profile.country}</p>}
                   </div>
-                  {profile.relationship === "friends" ? <span className="flex items-center gap-1 text-sm font-bold text-green-300"><Check size={16} /> Friends</span> : profile.relationship === "pending" ? <span className="text-sm font-bold text-yellow-300">Pending</span> : <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"><UserPlus size={14} className="mr-1 inline" /> Add</button>}
+                  {profile.relationship === "friends" ? <span className="flex items-center gap-1 text-sm font-bold text-green-300"><Check size={16} /> Friends</span> : profile.relationship === "pending" ? <span className="text-sm font-bold text-yellow-300">Pending</span> : profile.relationship === "incoming" ? <span className="text-sm font-bold text-green-300">Accept</span> : profile.relationship === "blocked" ? <span className="text-sm font-bold text-rose-300">Blocked</span> : <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"><UserPlus size={14} className="mr-1 inline" /> Add Friend</button>}
                 </div>
               ))}
             </div>
+          )}
+        </GlassPanel>
+
+        <GlassPanel className="mt-6 rounded-3xl p-4">
+          <div className="flex items-center gap-3">
+            <Globe2 className="text-purple-200" size={22} />
+            <div>
+              <h2 className="text-lg font-black">Connect With Foreigners</h2>
+              <p className="text-xs text-gray-400">Foreign connections cost 50 Coins. Friend chat is permanently free after connecting.</p>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {foreignLoading && foreignUsers.length === 0 ? <p className="text-sm text-gray-400">Loading foreigners...</p> : foreignUsers.length === 0 ? <p className="text-sm text-gray-400">No foreign users available right now.</p> : foreignUsers.map((profile) => (
+              <div key={profile.id} className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
+                <Avatar profile={profile} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">@{profile.username}</p>
+                  {profile.country && <p className="truncate text-xs text-cyan-200/80">{profile.country}</p>}
+                </div>
+                <button onClick={() => setConnectTarget(profile)} disabled={busyId === profile.id} className="rounded-xl bg-purple-300 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60">Connect</button>
+              </div>
+            ))}
+          </div>
+          {foreignUsers.length >= foreignLimit && (
+            <button onClick={() => setForeignLimit((current) => current + 5)} className="mt-4 w-full rounded-2xl bg-white/10 py-3 text-sm font-bold transition hover:bg-white/15">Show More</button>
           )}
         </GlassPanel>
 
@@ -342,6 +422,17 @@ function FriendsPageContent() {
 
         {tab === "requests" && <section className="mt-6 space-y-6"><RequestList title="Incoming Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onRespond={respond} /><RequestList title="Outgoing Requests" empty="No outgoing requests." requests={outgoing} mode="outgoing" busyId={busyId} onRespond={respond} /></section>}
       </div>
+      {connectTarget && (
+        <ConfirmDialog
+          title="Connect with this user?"
+          description={`Connect with @${connectTarget.username} for 50 Coins. Messaging is permanently free after you become friends.`}
+          confirmLabel="Connect"
+          cancelLabel="Cancel"
+          loading={busyId === connectTarget.id}
+          onConfirm={connectForeignFriend}
+          onCancel={() => setConnectTarget(null)}
+        />
+      )}
       <BottomNavigation />
     </main>
   );
