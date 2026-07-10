@@ -2,13 +2,14 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Ban, Check, Clock, MessageCircle, Search, User, UserPlus, Users, X } from "lucide-react";
+import { Ban, Check, Clock, Globe2, MessageCircle, Search, User, UserPlus, Users, X } from "lucide-react";
 
 import { supabase } from "@/lib/supabase/client";
 import { presenceManager } from "@/lib/realtime/presence";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
+import { useToast } from "@/components/ToastProvider";
 
 type FriendTab = "friends" | "requests" | "active";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
@@ -22,6 +23,7 @@ type ProfileSummary = {
 };
 
 type SearchResult = ProfileSummary;
+type ForeignProfile = ProfileSummary;
 type RawFriendRow = Omit<FriendRow, "friend"> & { friend: ProfileSummary | ProfileSummary[] | null };
 type RawFriendRequestRow = Omit<FriendRequestRow, "requester" | "receiver"> & {
   requester: ProfileSummary | ProfileSummary[] | null;
@@ -96,6 +98,7 @@ function Avatar({ profile, online }: { profile: ProfileSummary | null; online?: 
 function FriendsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { showToast } = useToast();
   const [myId, setMyId] = useState("");
   const [myCountry, setMyCountry] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,8 +109,20 @@ function FriendsPageContent() {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [foreignUsers, setForeignUsers] = useState<ForeignProfile[]>([]);
+  const [foreignLimit, setForeignLimit] = useState(5);
+  const [loadingForeign, setLoadingForeign] = useState(false);
+  const [hasMoreForeignUsers, setHasMoreForeignUsers] = useState(false);
+  const [coinBalance, setCoinBalance] = useState<number | null>(null);
+  const [confirmForeignUser, setConfirmForeignUser] = useState<ForeignProfile | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadCoinBalance = useCallback(async (userId: string) => {
+    await supabase.rpc("ensure_coin_wallet", { target_user: userId });
+    const { data } = await supabase.from("coins").select("balance").eq("user_id", userId).maybeSingle();
+    setCoinBalance(data?.balance ?? 0);
+  }, []);
 
   const loadFriends = useCallback(async (userId: string) => {
     const { data } = await supabase
@@ -138,6 +153,7 @@ function FriendsPageContent() {
     let cancelled = false;
     let requestChannel: ReturnType<typeof supabase.channel> | null = null;
     let friendsChannel: ReturnType<typeof supabase.channel> | null = null;
+    let coinsChannel: ReturnType<typeof supabase.channel> | null = null;
     let unsubscribePresence: (() => void) | undefined;
 
     async function init() {
@@ -152,7 +168,7 @@ function FriendsPageContent() {
       setMyCountry(currentProfile?.country ?? null);
       await presenceManager.connect(session.user.id);
       unsubscribePresence = presenceManager.subscribe((users) => setOnlineIds(new Set(users.map((user) => user.id))));
-      await refreshAll(session.user.id);
+      await Promise.all([refreshAll(session.user.id), loadCoinBalance(session.user.id)]);
       if (cancelled) return;
       setLoading(false);
 
@@ -165,6 +181,11 @@ function FriendsPageContent() {
         .channel(uniqueChannelName(`friends-${session.user.id}`))
         .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${session.user.id}` }, () => refreshAll(session.user.id))
         .subscribe();
+
+      coinsChannel = supabase
+        .channel(uniqueChannelName(`coins-${session.user.id}`))
+        .on("postgres_changes", { event: "*", schema: "public", table: "coins", filter: `user_id=eq.${session.user.id}` }, () => loadCoinBalance(session.user.id))
+        .subscribe();
     }
 
     init();
@@ -174,8 +195,9 @@ function FriendsPageContent() {
       unsubscribePresence?.();
       if (requestChannel) supabase.removeChannel(requestChannel);
       if (friendsChannel) supabase.removeChannel(friendsChannel);
+      if (coinsChannel) supabase.removeChannel(coinsChannel);
     };
-  }, [refreshAll]);
+  }, [loadCoinBalance, refreshAll]);
 
   useEffect(() => {
     if (!myId) return;
@@ -216,6 +238,53 @@ function FriendsPageContent() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [friends, incoming, myCountry, myId, outgoing, query]);
+
+
+
+  useEffect(() => {
+    if (!myId || !myCountry) return;
+
+    let cancelled = false;
+
+    async function loadForeignUsers() {
+      setLoadingForeign(true);
+      const [{ data }, { data: blockedRows }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id,username,display_name,avatar_url,country")
+          .neq("country", myCountry)
+          .neq("id", myId)
+          .order("username", { ascending: true })
+          .limit(Math.max((foreignLimit + 1) * 4, 30)),
+        supabase.from("blocked_users").select("blocker_id,blocked_id").or(`blocker_id.eq.${myId},blocked_id.eq.${myId}`),
+      ]);
+
+      if (cancelled) return;
+
+      const friendIds = new Set(friends.map((friend) => friend.friend_id));
+      const pendingIds = new Set([
+        ...incoming.filter((request) => request.status === "pending").map((request) => request.requester_id),
+        ...outgoing.filter((request) => request.status === "pending").map((request) => request.receiver_id),
+      ]);
+      const blockedIds = new Set((blockedRows || []).map((row) => (row.blocker_id === myId ? row.blocked_id : row.blocker_id)));
+      const seen = new Set<string>();
+      const visible = ((data || []) as ForeignProfile[]).filter((profile) => {
+        if (seen.has(profile.id) || friendIds.has(profile.id) || pendingIds.has(profile.id) || blockedIds.has(profile.id)) return false;
+        seen.add(profile.id);
+        return true;
+      });
+
+      setForeignUsers(visible.slice(0, foreignLimit));
+      setHasMoreForeignUsers(visible.length > foreignLimit);
+      setLoadingForeign(false);
+    }
+
+    loadForeignUsers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [foreignLimit, friends, incoming, myCountry, myId, outgoing]);
 
   const tab = normalizeTab(searchParams.get("tab"));
   const activeFriends = useMemo<OnlineFriend[]>(() => friends.map((friend) => ({ ...friend, isOnline: onlineIds.has(friend.friend_id) })).filter((friend) => friend.isOnline), [friends, onlineIds]);
@@ -269,6 +338,33 @@ function FriendsPageContent() {
     setBusyId(null);
   }
 
+
+
+  async function confirmConnectWithForeigner() {
+    if (!myId || !confirmForeignUser) return;
+    if ((coinBalance ?? 0) < 50) {
+      showToast("Not enough coins.");
+      setConfirmForeignUser(null);
+      return;
+    }
+
+    const targetUser = confirmForeignUser;
+    setBusyId(targetUser.id);
+    const { data: newBalance, error } = await supabase.rpc("connect_with_foreigner", { target_user_id: targetUser.id });
+
+    if (error) {
+      showToast(error.message.includes("Not enough") ? "Not enough coins." : error.message);
+    } else {
+      setCoinBalance(typeof newBalance === "number" ? newBalance : coinBalance);
+      setForeignUsers((prev) => prev.filter((profile) => profile.id !== targetUser.id));
+      await Promise.all([refreshAll(myId), loadCoinBalance(myId)]);
+      showToast(`Connected with @${targetUser.username}.`);
+    }
+
+    setBusyId(null);
+    setConfirmForeignUser(null);
+  }
+
   if (loading) return <main className="flex min-h-screen items-center justify-center theme-bg-gradient text-white">Loading...</main>;
 
   return (
@@ -306,11 +402,63 @@ function FriendsPageContent() {
           )}
         </GlassPanel>
 
+        <GlassPanel className="mt-6 rounded-3xl p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Globe2 className="text-purple-300" size={22} />
+              <div>
+                <h2 className="text-lg font-black">Connect with Foreigners</h2>
+                <p className="text-xs text-gray-400">Connect instantly with users outside {myCountry || "your country"} for 50 Coins.</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-yellow-300/10 px-3 py-1 text-xs font-black text-yellow-200">{coinBalance ?? 0} Coins</span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {loadingForeign ? <p className="text-sm text-gray-400">Loading foreigners...</p> : foreignUsers.length === 0 ? <p className="text-sm text-gray-400">No foreign users available right now.</p> : foreignUsers.map((profile) => (
+              <div key={profile.id} className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
+                <Avatar profile={profile} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">@{profile.username}</p>
+                  <p className="truncate text-xs text-gray-400">{profile.country || "Country unavailable"}</p>
+                </div>
+                <button onClick={() => setConfirmForeignUser(profile)} disabled={busyId === profile.id} className="rounded-xl bg-purple-300 px-3 py-2 text-xs font-black text-[#10051f] disabled:opacity-60">Connect</button>
+              </div>
+            ))}
+          </div>
+
+          {hasMoreForeignUsers && (
+            <button onClick={() => setForeignLimit((limit) => limit + 5)} className="mt-4 w-full rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+              Show More
+            </button>
+          )}
+        </GlassPanel>
+
+
         {tab === "friends" && <section className="mt-6 space-y-3">{friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet. Search by username to add someone.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} online={onlineIds.has(friend.friend_id)} onChat={() => startChat(friend.friend_id)} onBlock={() => blockFriend(friend.friend_id)} />)}</section>}
         {tab === "active" && <section className="mt-6 space-y-3">{activeFriends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends are online right now.</GlassPanel> : activeFriends.map((friend) => <FriendCard key={friend.id} friend={friend} online onChat={() => startChat(friend.friend_id)} onBlock={() => blockFriend(friend.friend_id)} />)}</section>}
         {tab === "requests" && <section className="mt-6 space-y-6"><RequestList title="Incoming Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onRespond={respond} /><RequestList title="Outgoing Requests" empty="No outgoing requests." requests={outgoing} mode="outgoing" busyId={busyId} onRespond={respond} /></section>}
       </div>
       <BottomNavigation />
+      {confirmForeignUser && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <GlassPanel strong className="w-full max-w-sm rounded-3xl p-6 text-center">
+            <h2 className="text-xl font-black text-white">Connect with this user?</h2>
+            <div className="mt-4 rounded-2xl bg-white/5 p-4">
+              <Avatar profile={confirmForeignUser} />
+              <p className="mt-3 font-semibold">@{confirmForeignUser.username}</p>
+              <p className="text-xs text-gray-400">{confirmForeignUser.country || "Country unavailable"}</p>
+            </div>
+            <p className="mt-5 text-sm font-bold text-gray-300">Cost</p>
+            <p className="text-2xl font-black text-yellow-200">50 Coins</p>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setConfirmForeignUser(null)} disabled={busyId === confirmForeignUser.id} className="flex-1 rounded-2xl bg-white/10 p-3 font-semibold text-white transition hover:bg-white/20 disabled:opacity-60">Cancel</button>
+              <button onClick={confirmConnectWithForeigner} disabled={busyId === confirmForeignUser.id} className="flex-1 rounded-2xl bg-purple-300 p-3 font-black text-[#10051f] transition hover:bg-purple-200 disabled:opacity-60">{busyId === confirmForeignUser.id ? "Connecting..." : "Connect"}</button>
+            </div>
+          </GlassPanel>
+        </div>
+      )}
+
     </main>
   );
 }
