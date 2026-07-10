@@ -6,7 +6,19 @@ import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
 import CountryPhoneInput, { type CountryPhoneValue } from "@/components/CountryPhoneInput";
+import { COUNTRIES } from "@/lib/countries";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+
+function countryCodeFromProfile(countryName: string | null | undefined, fallbackCode: string | null | undefined) {
+  if (fallbackCode) return fallbackCode;
+  if (!countryName) return "NG";
+
+  return COUNTRIES.find((country) => country.name === countryName)?.code || "NG";
+}
+
+function countryNameFromCode(countryCode: string) {
+  return COUNTRIES.find((country) => country.code === countryCode)?.name || "Nigeria";
+}
 
 export default function CompleteProfilePage() {
   const router = useRouter();
@@ -45,7 +57,7 @@ export default function CompleteProfilePage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username, profile_completed")
+        .select("username, profile_completed, country, country_code, dial_code, phone_number")
         .eq("id", session.user.id)
         .single();
 
@@ -56,6 +68,11 @@ export default function CompleteProfilePage() {
 
       setUserId(session.user.id);
       setUsername(profile?.username || "");
+      setCountryPhone({
+        countryCode: countryCodeFromProfile(profile?.country, profile?.country_code),
+        dialCode: profile?.dial_code || "+234",
+        phoneNumber: profile?.phone_number || "",
+      });
       setChecking(false);
     }
 
@@ -119,6 +136,7 @@ export default function CompleteProfilePage() {
       .from("profiles")
       .update({
         username: cleanUsername,
+        country: countryNameFromCode(countryPhone.countryCode),
         country_code: countryPhone.countryCode,
         dial_code: countryPhone.dialCode,
         phone_number: countryPhone.phoneNumber,
