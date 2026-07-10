@@ -633,15 +633,15 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
+      <main className="flex h-screen items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen flex-col theme-bg-gradient text-white">
-      <div className="border-b border-white/10 p-6 pb-4">
+    <main className="flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
+      <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
@@ -706,7 +706,7 @@ export default function ChatPage() {
       </div>
 
       {replyingTo && (
-        <div className="mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
+        <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
           <p className="truncate text-xs text-gray-300">
             Replying to: {replyingTo.content || "📷 Photo"}
           </p>
@@ -716,7 +716,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      <form onSubmit={sendMessage} className="p-6 pt-0">
+      <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
           <input
             ref={fileInputRef}
