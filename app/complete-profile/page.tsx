@@ -45,7 +45,7 @@ export default function CompleteProfilePage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username, profile_completed")
+        .select("username, profile_completed, country, country_code, dial_code, phone_number")
         .eq("id", session.user.id)
         .single();
 
@@ -56,6 +56,11 @@ export default function CompleteProfilePage() {
 
       setUserId(session.user.id);
       setUsername(profile?.username || "");
+      setCountryPhone({
+        countryCode: profile?.country || profile?.country_code || "NG",
+        dialCode: profile?.dial_code || "+234",
+        phoneNumber: profile?.phone_number || "",
+      });
       setChecking(false);
     }
 
@@ -119,6 +124,7 @@ export default function CompleteProfilePage() {
       .from("profiles")
       .update({
         username: cleanUsername,
+        country: countryPhone.countryCode,
         country_code: countryPhone.countryCode,
         dial_code: countryPhone.dialCode,
         phone_number: countryPhone.phoneNumber,
