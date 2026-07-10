@@ -50,7 +50,18 @@ create policy "Users can view related friend requests" on public.friend_requests
 
 drop policy if exists "Users can send friend requests" on public.friend_requests;
 create policy "Users can send friend requests" on public.friend_requests
-  for insert with check (auth.uid() = requester_id and requester_id <> receiver_id and status = 'pending');
+  for insert with check (
+    auth.uid() = requester_id
+    and requester_id <> receiver_id
+    and status = 'pending'
+    and (select p1.country from public.profiles p1 where p1.id = requester_id) is not distinct from (select p2.country from public.profiles p2 where p2.id = receiver_id)
+    and not exists (
+      select 1 from public.blocked_users b
+      where (b.blocker_id = requester_id and b.blocked_id = receiver_id)
+         or (b.blocker_id = receiver_id and b.blocked_id = requester_id)
+    )
+    and not exists (select 1 from public.friends f where f.user_id = requester_id and f.friend_id = receiver_id)
+  );
 
 drop policy if exists "Receivers can update friend requests" on public.friend_requests;
 create policy "Receivers can update friend requests" on public.friend_requests
@@ -111,3 +122,123 @@ begin
   return conversation_id;
 end;
 $$;
+
+-- Friend request workflow helpers and guards.
+drop policy if exists "Requesters can cancel own pending friend requests" on public.friend_requests;
+create policy "Requesters can cancel own pending friend requests" on public.friend_requests
+  for update using (auth.uid() = requester_id and status = 'pending')
+  with check (auth.uid() = requester_id and status = 'cancelled');
+
+create or replace function public.send_friend_request(target_user_id uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  request_id uuid;
+  sender_country text;
+  receiver_country text;
+begin
+  if auth.uid() is null then raise exception 'Not authenticated'; end if;
+  if target_user_id = auth.uid() then raise exception 'Cannot add yourself'; end if;
+
+  select country into sender_country from public.profiles where id = auth.uid();
+  select country into receiver_country from public.profiles where id = target_user_id;
+
+  if receiver_country is null then raise exception 'User not found'; end if;
+  if sender_country is distinct from receiver_country then raise exception 'You can only add users in your country'; end if;
+
+  if exists (
+    select 1 from public.blocked_users
+    where (blocker_id = auth.uid() and blocked_id = target_user_id)
+       or (blocker_id = target_user_id and blocked_id = auth.uid())
+  ) then
+    raise exception 'Cannot send request';
+  end if;
+
+  if exists (select 1 from public.friends where user_id = auth.uid() and friend_id = target_user_id) then
+    raise exception 'Already friends';
+  end if;
+
+  select id into request_id
+  from public.friend_requests
+  where status = 'pending'
+    and least(requester_id, receiver_id) = least(auth.uid(), target_user_id)
+    and greatest(requester_id, receiver_id) = greatest(auth.uid(), target_user_id)
+  limit 1;
+
+  if request_id is not null then
+    return request_id;
+  end if;
+
+  insert into public.friend_requests (requester_id, receiver_id, status)
+  values (auth.uid(), target_user_id, 'pending')
+  returning id into request_id;
+
+  return request_id;
+end;
+$$;
+
+create or replace function public.ensure_friend_conversation(friend_user_id uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  user_a uuid;
+  user_b uuid;
+  conversation_id uuid;
+  my_username text;
+  friend_username text;
+begin
+  if auth.uid() is null then raise exception 'Not authenticated'; end if;
+
+  if not exists (select 1 from public.friends where user_id = auth.uid() and friend_id = friend_user_id) then
+    raise exception 'Friendship not found';
+  end if;
+
+  select least(auth.uid(), friend_user_id), greatest(auth.uid(), friend_user_id) into user_a, user_b;
+  select username into my_username from public.profiles where id = auth.uid();
+  select username into friend_username from public.profiles where id = friend_user_id;
+
+  insert into public.conversations (user_a, user_b, user_a_label, user_b_label, last_message_at)
+  values (
+    user_a,
+    user_b,
+    case when user_a = auth.uid() then coalesce(friend_username, 'Friend') else coalesce(my_username, 'Friend') end,
+    case when user_b = auth.uid() then coalesce(friend_username, 'Friend') else coalesce(my_username, 'Friend') end,
+    now()
+  )
+  on conflict (user_a, user_b) do update set last_message_at = public.conversations.last_message_at
+  returning id into conversation_id;
+
+  insert into public.chat_unlocks (user_id, conversation_id)
+  values (auth.uid(), conversation_id), (friend_user_id, conversation_id)
+  on conflict (user_id, conversation_id) do nothing;
+
+  return conversation_id;
+end;
+$$;
+
+create or replace function public.can_send_direct_message(target_conversation_id uuid, target_sender_id uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select exists (
+    select 1
+    from public.conversations c
+    where c.id = target_conversation_id
+      and target_sender_id in (c.user_a, c.user_b)
+      and not exists (
+        select 1
+        from public.blocked_users b
+        where (b.blocker_id = c.user_a and b.blocked_id = c.user_b)
+           or (b.blocker_id = c.user_b and b.blocked_id = c.user_a)
+      )
+  );
+$$;
+
+drop policy if exists "Conversation members can send unblocked direct messages" on public.direct_messages;
+create policy "Conversation members can send unblocked direct messages" on public.direct_messages
+  for insert with check (auth.uid() = sender_id and public.can_send_direct_message(conversation_id, sender_id));
+
+
+drop policy if exists "Users can view related blocks" on public.blocked_users;
+create policy "Users can view related blocks" on public.blocked_users
+  for select using (auth.uid() = blocker_id or auth.uid() = blocked_id);
+
+drop policy if exists "Users can block others" on public.blocked_users;
+create policy "Users can block others" on public.blocked_users
+  for insert with check (auth.uid() = blocker_id and blocker_id <> blocked_id);
