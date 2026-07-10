@@ -33,8 +33,6 @@ create table if not exists public.anonymous_sender_reveals (
 );
 
 alter table public.messages add column if not exists sender_user_id uuid references auth.users(id) on delete set null;
-alter table public.messages add column if not exists sender_username text;
-alter table public.messages add column if not exists sender_email_name text;
 
 alter table public.coins enable row level security;
 alter table public.coin_transactions enable row level security;
@@ -124,3 +122,13 @@ begin
   return current_balance;
 end;
 $$;
+
+alter table public.messages add column if not exists sender_is_registered boolean not null default false;
+alter table public.messages add column if not exists browser text;
+alter table public.messages add column if not exists device_type text;
+alter table public.messages add column if not exists operating_system text;
+alter table public.messages add column if not exists country text;
+alter table public.messages add column if not exists region text;
+alter table public.messages add column if not exists city text;
+alter table public.messages add column if not exists language text;
+alter table public.messages add column if not exists metadata_collected_at timestamptz;

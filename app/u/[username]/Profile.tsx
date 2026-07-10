@@ -103,29 +103,26 @@ export default function PublicProfile() {
       data: { session },
     } = await supabase.auth.getSession();
 
-    let senderUsername: string | null = null;
-    if (session?.user.id) {
-      const { data: senderProfile } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("id", session.user.id)
-        .maybeSingle();
-      senderUsername = senderProfile?.username || null;
-    }
-
-    const { error } = await supabase.from("messages").insert({
-      recipient_id: receiverId,
-      message: message.trim() || null,
-      image_url: imageUrl,
-      sender_user_id: session?.user.id || null,
-      sender_username: senderUsername,
-      sender_email_name: sanitizeGmailName(session?.user.email),
+    const response = await fetch("/api/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({
+        recipient_id: receiverId,
+        message: message.trim() || null,
+        image_url: imageUrl,
+      }),
     });
+
+    const result = await response.json().catch(() => null) as { error?: string } | null;
+    const error = response.ok ? null : result?.error || "Message failed to send.";
 
     setLoading(false);
 
     if (error) {
-      showToast(error.message);
+      showToast(error);
       return;
     }
 

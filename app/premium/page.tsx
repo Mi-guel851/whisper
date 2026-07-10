@@ -21,7 +21,20 @@ declare global {
 const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
 type Transaction = { id: string; amount: number; description: string; transaction_type: string; created_at: string };
-type Whisper = { id: string; message: string | null; sender_username: string | null; sender_email_name: string | null; created_at: string };
+type Whisper = {
+  id: string;
+  message: string | null;
+  browser: string | null;
+  device_type: string | null;
+  operating_system: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  language: string | null;
+  sender_is_registered: boolean | null;
+  metadata_collected_at: string | null;
+  created_at: string;
+};
 
 type Reveal = { message_id: string };
 
@@ -55,7 +68,7 @@ export default function PremiumPage() {
     const [{ data: wallet }, { data: txs }, { data: msgs }, { data: unlocked }] = await Promise.all([
       supabase.from("coins").select("balance").eq("user_id", uid).maybeSingle(),
       supabase.from("coin_transactions").select("id,amount,description,transaction_type,created_at").eq("user_id", uid).order("created_at", { ascending: false }).limit(12),
-      supabase.from("messages").select("id,message,sender_username,sender_email_name,created_at").eq("recipient_id", uid).order("created_at", { ascending: false }).limit(6),
+      supabase.from("messages").select("id,message,browser,device_type,operating_system,country,region,city,language,sender_is_registered,metadata_collected_at,created_at").eq("recipient_id", uid).order("created_at", { ascending: false }).limit(6),
       supabase.from("anonymous_sender_reveals").select("message_id").eq("user_id", uid),
     ]);
     setBalance(wallet?.balance || 0);
@@ -226,14 +239,25 @@ export default function PremiumPage() {
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
           <GlassPanel className="rounded-3xl p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><Eye className="text-cyan-300" /> Reveal anonymous sender</h2>
-            <p className="mb-4 text-sm text-gray-400">Costs {REVEAL_SENDER_COST} coins. Reveals only username and Gmail alphabetic name — never the full email or domain.</p>
+            <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><Eye className="text-cyan-300" /> Reveal premium clues</h2>
+            <p className="mb-4 text-sm text-gray-400">Costs {REVEAL_SENDER_COST} coins. Reveals only broad sender clues collected at submission time — never email addresses, IP addresses, or exact location.</p>
             <div className="space-y-3">
               {whispers.length === 0 ? <p className="text-sm text-gray-400">No whispers yet.</p> : whispers.map((msg) => {
                 const unlocked = revealedIds.has(msg.id);
                 return <div key={msg.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
                   <p className="truncate text-sm text-gray-300">{msg.message || "📷 Image whisper"}</p>
-                  {unlocked ? <div className="mt-3 grid gap-2 rounded-2xl bg-emerald-400/10 p-3 text-sm"><span>Username: <b>{msg.sender_username || "Unknown"}</b></span><span>Email name: <b>{msg.sender_email_name || "Unavailable"}</b></span></div> : <button onClick={() => revealSender(msg.id)} disabled={busy === `reveal-${msg.id}`} className="mt-3 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-white/15 disabled:opacity-60"><LockKeyhole className="mr-2 inline h-4 w-4" /> Unlock for {REVEAL_SENDER_COST}</button>}
+                  {unlocked ? (
+                    <div className="mt-3 grid gap-2 rounded-2xl bg-emerald-400/10 p-3 text-sm sm:grid-cols-2">
+                      <span>Browser: <b>{msg.browser || "Unknown"}</b></span>
+                      <span>Device: <b>{msg.device_type || "Unknown"}</b></span>
+                      <span>OS: <b>{msg.operating_system || "Unknown"}</b></span>
+                      <span>Country: <b>{msg.country || "Unknown"}</b></span>
+                      <span>Region: <b>{msg.region || "Unknown"}</b></span>
+                      <span>City: <b>{msg.city || "Unknown"}</b></span>
+                      <span>Language: <b>{msg.language || "Unknown"}</b></span>
+                      <span>Registered: <b>{msg.sender_is_registered ? "Yes" : "No"}</b></span>
+                    </div>
+                  ) : <button onClick={() => revealSender(msg.id)} disabled={busy === `reveal-${msg.id}`} className="mt-3 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-white/15 disabled:opacity-60"><LockKeyhole className="mr-2 inline h-4 w-4" /> Unlock for {REVEAL_SENDER_COST}</button>}
                 </div>;
               })}
             </div>
