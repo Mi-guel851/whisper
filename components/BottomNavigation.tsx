@@ -18,7 +18,7 @@ export default function BottomNavigation() {
   const [unreadWhispers, setUnreadWhispers] = useState(0);
   const [unreadChats, setUnreadChats] = useState(0);
   const [myId, setMyId] = useState<string | null>(null);
-  const [anyoneElseOnline, setAnyoneElseOnline] = useState(false);
+  const [anyFriendOnline, setAnyFriendOnline] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,16 +68,34 @@ export default function BottomNavigation() {
     };
   }, []);
 
-  // Friends green dot — reuses the shared presence singleton, no new channel opened
+  // Friends green dot — reuses the shared presence singleton and only counts accepted friends.
   useEffect(() => {
     if (!myId) return;
 
+    let friendIds = new Set<string>();
+    let cancelled = false;
+
+    async function loadFriends() {
+      const { data } = await supabase
+        .from("friends")
+        .select("friend_id")
+        .eq("user_id", myId);
+
+      if (cancelled) return;
+      friendIds = new Set((data || []).map((friend) => friend.friend_id as string));
+      setAnyFriendOnline(presenceManager.getUsers().some((user) => friendIds.has(user.id)));
+    }
+
+    loadFriends();
+
     const unsubscribe = presenceManager.subscribe((users) => {
-      const othersOnline = users.some((u) => u.id !== myId);
-      setAnyoneElseOnline(othersOnline);
+      setAnyFriendOnline(users.some((user) => friendIds.has(user.id)));
     });
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [myId]);
 
   // Inbox red dot — any conversation with unread replies
@@ -147,7 +165,7 @@ export default function BottomNavigation() {
 
   const nav = [
     { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined },
-    { href: "/active", icon: Users, label: "Friends", showPresenceDot: true, badge: undefined },
+    { href: "/friends", icon: Users, label: "Friends", showPresenceDot: true, badge: undefined },
     { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats },
     { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers },
     { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined },
@@ -168,7 +186,7 @@ export default function BottomNavigation() {
         <div className="grid grid-cols-6 items-center gap-1">
         {nav.map((item) => {
           const Icon = item.icon;
-          const active = pathname.startsWith(item.href);
+          const active = pathname.startsWith(item.href) || (item.href === "/friends" && pathname.startsWith("/active"));
           const isActivity = item.href === "/notifications";
 
           return (
@@ -206,7 +224,7 @@ export default function BottomNavigation() {
                   />
                 )}
 
-                {item.showPresenceDot && anyoneElseOnline && (
+                {item.showPresenceDot && anyFriendOnline && (
                   <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 bg-green-400" style={{ borderColor: "var(--theme-nav-bg)" }} />
                 )}
 

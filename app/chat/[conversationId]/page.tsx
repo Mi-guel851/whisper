@@ -192,6 +192,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [chatUnlocked, setChatUnlocked] = useState(false);
+  const [isFriendConversation, setIsFriendConversation] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const [isPremium, setIsPremium] = useState(false);
@@ -253,13 +254,23 @@ export default function ChatPage() {
         .maybeSingle();
       setIsPremium(Boolean(wallet?.premium_expires_at && new Date(wallet.premium_expires_at) > new Date()));
 
+      const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
+      const { data: friendship } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .eq("friend_id", otherUserId)
+        .maybeSingle();
+      const friendConversation = Boolean(friendship);
+      setIsFriendConversation(friendConversation);
+
       const { data: unlock } = await supabase
         .from("chat_unlocks")
         .select("id")
         .eq("user_id", session.user.id)
         .eq("conversation_id", conversationId)
         .maybeSingle();
-      setChatUnlocked(Boolean(unlock));
+      setChatUnlocked(friendConversation || Boolean(unlock));
 
       const { data: msgs } = await supabase
         .from("direct_messages")
@@ -579,14 +590,14 @@ export default function ChatPage() {
       </div>
 
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-        {!chatUnlocked && (
+        {!chatUnlocked && !isFriendConversation && (
           <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
               <LockKeyhole className="text-cyan-200" />
             </div>
             <h2 className="text-2xl font-black">Chat locked</h2>
             <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
-              Unlock this anonymous conversation once to send messages normally. No per-message coin charges.
+              {isFriendConversation ? "Accepted friends can message here for free." : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
             </p>
             <button
               onClick={unlockChat}
