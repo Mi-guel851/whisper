@@ -53,7 +53,9 @@ function messageFontSize(length: number) {
   if (length <= 40) return "text-3xl";
   if (length <= 90) return "text-2xl";
   if (length <= 150) return "text-xl";
-  return "text-base";
+  if (length <= 220) return "text-base";
+  if (length <= 320) return "text-sm";
+  return "text-xs";
 }
 
 export default function ShareMessageCard({
@@ -131,9 +133,6 @@ export default function ShareMessageCard({
       return;
     }
 
-    // Instagram / Snapchat / TikTok: no web API accepts an arbitrary image directly.
-    // Best-effort: try native share sheet first (works great on mobile Safari/Chrome),
-    // otherwise save the image and open the app so it can be attached manually.
     const file = new File([blob], "whisper-message.png", { type: "image/png" });
 
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
@@ -173,18 +172,20 @@ export default function ShareMessageCard({
 
         <div
           ref={cardRef}
-          className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-[#1a0038] via-[#0d0020] to-[#02000A] p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+          className="relative flex h-[440px] w-full flex-col overflow-hidden rounded-[2rem] border border-white/10 theme-bg-gradient p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
         >
           <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-500/20 blur-[60px]" />
           <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />
 
-          <div className="relative flex flex-col items-center text-center">
+          <div className="relative flex h-full flex-col items-center text-center">
             <Image src="/ghost.png" alt="Whisper" width={44} height={44} />
             <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-gray-400">
               Whisper
             </p>
 
-            <div className="mt-8 flex min-h-[120px] w-full flex-col items-center justify-center">
+            <div
+              className="mt-8 flex w-full flex-1 flex-col items-center justify-center overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
               {message && (
                 <p
                   className={`font-extrabold leading-snug text-white break-words ${messageFontSize(
@@ -209,7 +210,7 @@ export default function ShareMessageCard({
               )}
             </div>
 
-            <div className="mt-8 h-px w-16 bg-white/10" />
+            <div className="mt-6 h-px w-16 bg-white/10" />
             <p className="mt-4 text-xs font-semibold text-gray-500">
               Anonymous message · whisper.app
             </p>

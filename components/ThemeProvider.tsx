@@ -12,26 +12,58 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | null>(null);
 const STORAGE_KEY = "whisper-theme";
 
+const cssVariableMap: Record<keyof Omit<Theme, "id" | "name" | "swatch">, string> = {
+  bgFrom: "--theme-bg-from",
+  bgVia: "--theme-bg-via",
+  bgTo: "--theme-bg-to",
+  blob1: "--theme-blob-1",
+  blob2: "--theme-blob-2",
+  blob3: "--theme-blob-3",
+  accentFrom: "--theme-accent-from",
+  accentTo: "--theme-accent-to",
+  accentText: "--theme-accent-text",
+  accentContrast: "--theme-accent-contrast",
+  surface: "--theme-surface",
+  surfaceStrong: "--theme-surface-strong",
+  surfaceMuted: "--theme-surface-muted",
+  border: "--theme-border",
+  borderStrong: "--theme-border-strong",
+  text: "--theme-text",
+  textMuted: "--theme-text-muted",
+  textSubtle: "--theme-text-subtle",
+  divider: "--theme-divider",
+  shadow: "--theme-shadow",
+  navBg: "--theme-nav-bg",
+  navBorder: "--theme-nav-border",
+  navShadow: "--theme-nav-shadow",
+  navInactive: "--theme-nav-inactive",
+  navActiveText: "--theme-nav-active-text",
+  navPress: "--theme-nav-press",
+};
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  root.style.setProperty("--theme-bg-from", theme.bgFrom);
-  root.style.setProperty("--theme-bg-via", theme.bgVia);
-  root.style.setProperty("--theme-bg-to", theme.bgTo);
-  root.style.setProperty("--theme-blob-1", theme.blob1);
-  root.style.setProperty("--theme-blob-2", theme.blob2);
-  root.style.setProperty("--theme-blob-3", theme.blob3);
-  root.style.setProperty("--theme-accent-from", theme.accentFrom);
-  root.style.setProperty("--theme-accent-to", theme.accentTo);
-  root.style.setProperty("--theme-accent-text", theme.accentText);
+
+  for (const [themeKey, cssVariable] of Object.entries(cssVariableMap) as [keyof typeof cssVariableMap, string][]) {
+    root.style.setProperty(cssVariable, theme[themeKey]);
+  }
+
+  root.dataset.theme = theme.id;
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeIdState] = useState<ThemeId>(() => {
-    if (typeof window === "undefined") return "midnight";
+  // Always start with the same default on both server and client so the
+  // first client render matches the server-rendered HTML exactly.
+  const [themeId, setThemeIdState] = useState<ThemeId>("midnight");
 
+  // After mount (client-only), read the saved preference and apply it.
+  // This runs after hydration, so it can safely diverge from the server render.
+  useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-    return saved && themes[saved] ? saved : "midnight";
-  });
+    if (saved && themes[saved]) {
+      setThemeIdState(saved);
+    }
+  }, []);
 
   useEffect(() => {
     applyTheme(themes[themeId]);

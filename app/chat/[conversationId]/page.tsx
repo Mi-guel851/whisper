@@ -6,14 +6,19 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
-import { Send, X, CornerUpLeft } from "lucide-react";
+import { UNLOCK_CHAT_COST } from "@/lib/coins";
+import { useToast } from "@/components/ToastProvider";
+import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2 } from "lucide-react";
 
 type Message = {
   id: string;
   sender_id: string;
-  content: string;
+  content: string | null;
   created_at: string;
   reply_to_id: string | null;
+  image_path: string | null;
+  is_view_once: boolean;
+  image_viewed_at: string | null;
 };
 
 type Reaction = {
@@ -37,6 +42,8 @@ function MessageBubble({
   startPress,
   cancelPress,
   onSwipeReply,
+  onViewPhoto,
+  viewingPhotoId,
 }: {
   msg: Message;
   isMe: boolean;
@@ -49,9 +56,12 @@ function MessageBubble({
   startPress: (id: string) => void;
   cancelPress: () => void;
   onSwipeReply: (msg: Message) => void;
+  onViewPhoto: (msg: Message) => void;
+  viewingPhotoId: string | null;
 }) {
   const x = useMotionValue(0);
   const replyIconOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
+  const isPhotoMessage = msg.is_view_once;
 
   return (
     <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
@@ -65,7 +75,7 @@ function MessageBubble({
 
         <motion.div
           style={{ x }}
-          drag="x"
+          drag={isPhotoMessage ? false : "x"}
           dragDirectionLock
           dragConstraints={{ left: 0, right: 90 }}
           dragElastic={0.15}
@@ -77,10 +87,10 @@ function MessageBubble({
             }
             animate(x, 0, { type: "spring", stiffness: 500, damping: 40 });
           }}
-          onMouseDown={() => startPress(msg.id)}
+          onMouseDown={() => !isPhotoMessage && startPress(msg.id)}
           onMouseUp={cancelPress}
           onMouseLeave={cancelPress}
-          onTouchStart={() => startPress(msg.id)}
+          onTouchStart={() => !isPhotoMessage && startPress(msg.id)}
           onTouchEnd={cancelPress}
         >
           <GlassPanel
@@ -90,10 +100,36 @@ function MessageBubble({
           >
             {repliedMsg && (
               <div className="mb-2 border-l-2 border-cyan-400 pl-2 text-xs text-gray-400 truncate">
-                {repliedMsg.content}
+                {repliedMsg.content || "📷 Photo"}
               </div>
             )}
-            <p className="text-sm text-gray-100 break-words">{msg.content}</p>
+
+            {isPhotoMessage ? (
+              msg.image_viewed_at ? (
+                <p className="flex items-center gap-2 text-sm text-gray-400 italic">
+                  <Eye size={14} /> Photo viewed
+                </p>
+              ) : isMe ? (
+                <p className="flex items-center gap-2 text-sm text-gray-300">
+                  <ImagePlus size={14} /> Photo sent (view once)
+                </p>
+              ) : (
+                <button
+                  onClick={() => onViewPhoto(msg)}
+                  disabled={viewingPhotoId === msg.id}
+                  className="flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-cyan-100 disabled:opacity-60"
+                >
+                  {viewingPhotoId === msg.id ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <ImagePlus size={14} />
+                  )}
+                  {viewingPhotoId === msg.id ? "Loading..." : "Tap to view photo (once)"}
+                </button>
+              )
+            ) : (
+              <p className="text-sm text-gray-100 break-words">{msg.content}</p>
+            )}
           </GlassPanel>
         </motion.div>
 
@@ -107,7 +143,7 @@ function MessageBubble({
           </div>
         )}
 
-        {actionMenuFor === msg.id && (
+        {!isPhotoMessage && actionMenuFor === msg.id && (
           <div className={`absolute z-20 -top-14 ${isMe ? "right-0" : "left-0"}`}>
             <GlassPanel strong className="flex items-center gap-1 rounded-full px-2 py-2">
               {EMOJIS.map((emoji) => (
@@ -145,6 +181,7 @@ function MessageBubble({
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
+  const { showToast } = useToast();
   const conversationId = params.conversationId as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -154,9 +191,17 @@ export default function ChatPage() {
   const [myId, setMyId] = useState("");
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [chatUnlocked, setChatUnlocked] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
+  const [isPremium, setIsPremium] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [viewingPhotoId, setViewingPhotoId] = useState<string | null>(null);
+  const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -185,18 +230,36 @@ export default function ChatPage() {
         return;
       }
 
-      const readColumn = convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
-const { error: readError } = await supabase
-  .from("conversations")
-  .update({ [readColumn]: new Date().toISOString() })
-  .eq("id", conversationId);
+      const readColumn =
+        convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
+      const { error: readError } = await supabase
+        .from("conversations")
+        .update({ [readColumn]: new Date().toISOString() })
+        .eq("id", conversationId);
 
-if (readError) {
-  console.error("[chat] failed to mark conversation as read:", readError.message);
-}
+      if (readError) {
+        console.error("[chat] failed to mark conversation as read:", readError.message);
+      }
 
       const label = convo.user_a === session.user.id ? convo.user_a_label : convo.user_b_label;
       setOtherLabel(label);
+
+      await supabase.rpc("ensure_coin_wallet", { target_user: session.user.id });
+
+      const { data: wallet } = await supabase
+        .from("coins")
+        .select("premium_expires_at")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      setIsPremium(Boolean(wallet?.premium_expires_at && new Date(wallet.premium_expires_at) > new Date()));
+
+      const { data: unlock } = await supabase
+        .from("chat_unlocks")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .eq("conversation_id", conversationId)
+        .maybeSingle();
+      setChatUnlocked(Boolean(unlock));
 
       const { data: msgs } = await supabase
         .from("direct_messages")
@@ -226,6 +289,19 @@ if (readError) {
           },
           (payload) => {
             setMessages((prev) => [...prev, payload.new as Message]);
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "direct_messages",
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          (payload) => {
+            const updated = payload.new as Message;
+            setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
           }
         )
         .subscribe();
@@ -280,12 +356,20 @@ if (readError) {
   }, [conversationId, router]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (loading) return;
+    const timer = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [messages, loading]);
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = input.trim();
+    if (!chatUnlocked) {
+      showToast(`Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
+      return;
+    }
     if (!trimmed || !myId) return;
 
     setInput("");
@@ -305,6 +389,105 @@ if (readError) {
         .update({ last_message_at: new Date().toISOString() })
         .eq("id", conversationId);
     }
+  }
+
+  function triggerPhotoPicker() {
+    if (!chatUnlocked) {
+      showToast(`Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      return;
+    }
+    if (!isPremium) {
+      showToast("View-once photos are a premium feature. Visit the Coins page to unlock premium.");
+      return;
+    }
+    fileInputRef.current?.click();
+  }
+
+  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !myId) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Please select an image file.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast("Image too large — max 8MB.");
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("view-once-photos")
+        .upload(path, file, { contentType: file.type });
+
+      if (uploadError) {
+        showToast(uploadError.message);
+        return;
+      }
+
+      const { error: insertError } = await supabase.from("direct_messages").insert({
+        conversation_id: conversationId,
+        sender_id: myId,
+        content: null,
+        reply_to_id: null,
+        image_path: path,
+        is_view_once: true,
+      });
+
+      if (insertError) {
+        showToast(insertError.message);
+        return;
+      }
+
+      await supabase
+        .from("conversations")
+        .update({ last_message_at: new Date().toISOString() })
+        .eq("id", conversationId);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handleViewPhoto(msg: Message) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    setViewingPhotoId(msg.id);
+    try {
+      const res = await fetch("/api/photos/view", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ messageId: msg.id }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Couldn't load photo.");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setPhotoModalUrl(url);
+    } catch {
+      showToast("Something went wrong loading the photo.");
+    } finally {
+      setViewingPhotoId(null);
+    }
+  }
+
+  function closePhotoModal() {
+    if (photoModalUrl) URL.revokeObjectURL(photoModalUrl);
+    setPhotoModalUrl(null);
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -335,6 +518,18 @@ if (readError) {
     }
   }
 
+  async function unlockChat() {
+    setUnlocking(true);
+    const { error } = await supabase.rpc("unlock_chat_with_coins", { target_conversation_id: conversationId });
+    if (error) {
+      showToast(error.message);
+    } else {
+      setChatUnlocked(true);
+      showToast("Inbox chat unlocked permanently.");
+    }
+    setUnlocking(false);
+  }
+
   function getReactionsFor(messageId: string) {
     const grouped: Record<string, number> = {};
     reactions
@@ -362,14 +557,14 @@ if (readError) {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white">
+    <main className="flex min-h-screen flex-col theme-bg-gradient text-white">
       <div className="border-b border-white/10 p-6 pb-4">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
@@ -383,7 +578,26 @@ if (readError) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+        {!chatUnlocked && (
+          <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
+              <LockKeyhole className="text-cyan-200" />
+            </div>
+            <h2 className="text-2xl font-black">Chat locked</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
+              Unlock this anonymous conversation once to send messages normally. No per-message coin charges.
+            </p>
+            <button
+              onClick={unlockChat}
+              disabled={unlocking}
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+            >
+              <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
+            </button>
+          </GlassPanel>
+        )}
+
         {messages.length === 0 ? (
           <p className="mt-10 text-center text-gray-500">
             Say hi 👻 — they won&apos;t know who you are.
@@ -403,6 +617,8 @@ if (readError) {
               startPress={startPress}
               cancelPress={cancelPress}
               onSwipeReply={setReplyingTo}
+              onViewPhoto={handleViewPhoto}
+              viewingPhotoId={viewingPhotoId}
             />
           ))
         )}
@@ -412,7 +628,7 @@ if (readError) {
       {replyingTo && (
         <div className="mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
           <p className="truncate text-xs text-gray-300">
-            Replying to: {replyingTo.content}
+            Replying to: {replyingTo.content || "📷 Photo"}
           </p>
           <button onClick={() => setReplyingTo(null)}>
             <X size={14} className="text-gray-400" />
@@ -423,19 +639,61 @@ if (readError) {
       <form onSubmit={sendMessage} className="p-6 pt-0">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
           <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePhotoSelected}
+          />
+          <button
+            type="button"
+            onClick={triggerPhotoPicker}
+            disabled={uploadingPhoto}
+            title={isPremium ? "Send a view-once photo" : "Premium feature — unlock in Coins"}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
+          >
+            {uploadingPhoto ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
+          </button>
+          <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Message anonymously..."
-            className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500"
+            placeholder={chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
+            disabled={!chatUnlocked}
+            className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
           />
           <button
             type="submit"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500"
+            disabled={!chatUnlocked}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send size={16} className="text-black" />
           </button>
         </div>
       </form>
+
+      {photoModalUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={closePhotoModal}
+        >
+          <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={photoModalUrl}
+              alt="View-once photo"
+              className="max-h-[80vh] max-w-full rounded-2xl object-contain"
+            />
+            <p className="mt-3 text-center text-xs text-gray-400">
+              This photo won&apos;t be available again after you close this view.
+            </p>
+            <button
+              onClick={closePhotoModal}
+              className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

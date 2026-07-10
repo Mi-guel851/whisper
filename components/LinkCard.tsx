@@ -81,7 +81,7 @@ export default function LinkCard() {
       </h2>
 
       <div className="mt-5 flex items-center gap-2 rounded-2xl bg-black/30 px-4 py-3">
-        <Link2 size={16} className="shrink-0 text-gray-500" />
+        <Link2 size={16} className="shrink-0 text-gray-300" />
         <span className="truncate text-sm text-gray-200">
           {displayPath || "Generating link..."}
         </span>

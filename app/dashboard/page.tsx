@@ -40,7 +40,7 @@ export default function DashboardPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("profile_completed, terms_accepted")
+        .select("profile_completed")
         .eq("id", session.user.id)
         .single();
 
@@ -49,9 +49,7 @@ export default function DashboardPage() {
         return;
       }
 
-      if (!profile.terms_accepted) {
-        setShowTerms(true);
-      }
+      setShowTerms(true);
 
       setChecking(false);
     }
@@ -72,7 +70,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#05010F] via-[#120022] to-[#030008] pb-36">
+    <main className="relative min-h-screen overflow-hidden theme-bg-gradient pb-36">
       <div className="pointer-events-none absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[180px]" />
       <div className="pointer-events-none absolute top-1/3 right-[-150px] h-[420px] w-[420px] rounded-full bg-purple-600/10 blur-[180px]" />
 

@@ -136,7 +136,7 @@ export default function ActivityChart() {
 
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
             Last 7 Days
           </p>
           <h2 className="mt-1 text-xl font-bold text-white">

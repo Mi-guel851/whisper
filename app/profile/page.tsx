@@ -5,7 +5,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Bell, Palette, ChevronRight } from "lucide-react";
+import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Palette, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 import BottomNavigation from "@/components/BottomNavigation";
@@ -99,14 +99,14 @@ export default function ProfilePage() {
             {displayName || "New User"}
           </h1>
           <p className="text-purple-300">@{username || "username"}</p>
-          <p className="mt-2 text-sm text-gray-400">
+          <p className="mt-2 text-sm text-gray-300">
             {bio || "Just here for the honest whispers ✨"}
           </p>
         </GlassPanel>
 
         <div className="mt-4 space-y-4">
           <GlassPanel className="rounded-2xl p-4">
-            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
+            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-300">
               <User size={12} />
               Display Name
             </label>
@@ -114,30 +114,30 @@ export default function ProfilePage() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your name"
-              className="mt-2 w-full bg-transparent text-lg font-semibold text-white outline-none placeholder:text-gray-600"
+              className="mt-2 w-full bg-transparent text-lg font-semibold text-white outline-none placeholder:text-gray-500"
             />
           </GlassPanel>
 
           <GlassPanel className="rounded-2xl p-4">
-            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
+            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-300">
               <AtSign size={12} />
               Username
             </label>
             <div className="mt-2 flex items-center text-lg">
-              <span className="text-gray-500">whisper.app/u/</span>
+              <span className="text-gray-400">whisper.app/u/</span>
               <input
                 value={username}
                 onChange={(e) =>
                   setUsername(e.target.value.replace(/\s+/g, "").toLowerCase())
                 }
                 placeholder="username"
-                className="flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-600"
+                className="flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-500"
               />
             </div>
           </GlassPanel>
 
           <GlassPanel className="rounded-2xl p-4">
-            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
+            <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-300">
               <Sparkles size={12} />
               Bio
             </label>
@@ -146,9 +146,9 @@ export default function ProfilePage() {
               onChange={(e) => setBio(e.target.value.slice(0, BIO_LIMIT))}
               placeholder="Tell people a little about yourself..."
               rows={3}
-              className="mt-2 w-full resize-none bg-transparent text-white outline-none placeholder:text-gray-600"
+              className="mt-2 w-full resize-none bg-transparent text-white outline-none placeholder:text-gray-500"
             />
-            <div className="text-right text-xs text-gray-500">
+            <div className="text-right text-xs text-gray-400">
               {bio.length}/{BIO_LIMIT}
             </div>
           </GlassPanel>
@@ -164,43 +164,32 @@ export default function ProfilePage() {
         </div>
 
         <div className="mt-8">
-          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-500">
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-300">
             Account
           </p>
 
           <GlassPanel className="divide-y divide-white/5 rounded-2xl">
-            <div className="flex items-center gap-4 p-4">
+            <Link href="/privacy" className="flex items-center gap-4 p-4">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <ShieldCheck size={18} />
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-white">Privacy & safety</p>
-                <p className="text-xs text-gray-500">Fully protected</p>
+                <p className="text-xs text-gray-400">Fully protected</p>
               </div>
-              <ChevronRight size={16} className="text-gray-600" />
-            </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
 
             <Link href="/appearance" className="flex items-center gap-4 p-4">
-  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
-    <Palette size={18} />
-  </div>
-  <div className="flex-1">
-    <p className="font-semibold text-white">Appearance</p>
-    <p className="text-xs text-gray-500">{theme.name}</p>
-  </div>
-  <ChevronRight size={16} className="text-gray-600" />
-</Link>
-
-            <div className="flex items-center gap-4 p-4">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <Palette size={18} />
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-white">Appearance</p>
-                <p className="text-xs text-gray-500">Midnight</p>
+                <p className="text-xs text-gray-400">{theme.name}</p>
               </div>
-              <ChevronRight size={16} className="text-gray-600" />
-            </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
           </GlassPanel>
         </div>
 

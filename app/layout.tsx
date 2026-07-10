@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import SplashScreen from "@/components/SplashScreen";
 import ToastProvider from "@/components/ToastProvider";
@@ -19,6 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
         <NextTopLoader color="linear-gradient(to right, #22d3ee, #a855f7)" height={3} showSpinner={false} />
         <ClickHaptics />
         <ThemeProvider>

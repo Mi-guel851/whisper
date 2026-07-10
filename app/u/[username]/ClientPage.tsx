@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
 import { ImagePlus, X, User } from "lucide-react";
 
 export default function PublicProfile() {
   const params = useParams();
-  const router = useRouter();
   const username = params.username as string;
   const { showToast } = useToast();
 
@@ -51,8 +51,8 @@ export default function PublicProfile() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("Image must be under 5MB.");
+    if (file.size > 1 * 1024 * 1024) {
+      showToast("Image must be under 1MB.");
       return;
     }
 
@@ -99,10 +99,27 @@ export default function PublicProfile() {
       imageUrl = publicUrlData.publicUrl;
     }
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    let senderUsername: string | null = null;
+    if (session?.user.id) {
+      const { data: senderProfile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      senderUsername = senderProfile?.username || null;
+    }
+
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
       message: message.trim() || null,
       image_url: imageUrl,
+      sender_user_id: session?.user.id || null,
+      sender_username: senderUsername,
+      sender_email_name: sanitizeGmailName(session?.user.email),
     });
 
     setLoading(false);
@@ -120,7 +137,7 @@ export default function PublicProfile() {
 
   if (checkingProfile) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
@@ -128,7 +145,7 @@ export default function PublicProfile() {
 
   if (!receiverId) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#090014] text-white text-center px-6">
+      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white text-center px-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">User not found</h1>
           <p className="text-gray-400">@{username} doesn&apos;t exist on Whisper.</p>
@@ -138,7 +155,7 @@ export default function PublicProfile() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#090014] via-[#170033] to-[#02000A] text-white px-4">
+    <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white px-4">
       <div className="w-full max-w-lg rounded-3xl bg-white/10 p-8 backdrop-blur-xl">
 
         <div className="flex items-center gap-4">
