@@ -14,6 +14,13 @@ import { useToast } from "@/components/ToastProvider";
 type FriendTab = "friends" | "requests" | "active";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
 
+type RelatedUserIds = {
+  friendIds: Set<string>;
+  pendingIds: Set<string>;
+  blockedUserIds: Set<string>;
+  rejectedIds: Set<string>;
+};
+
 type ProfileSummary = {
   id: string;
   username: string;
@@ -25,8 +32,8 @@ type ProfileSummary = {
 type SearchResult = ProfileSummary;
 type ForeignProfile = ProfileSummary;
 type RawFriendRow = Omit<FriendRow, "friend"> & { friend: ProfileSummary | ProfileSummary[] | null };
-type RawFriendRequestRow = Omit<FriendRequestRow, "requester" | "receiver"> & {
-  requester: ProfileSummary | ProfileSummary[] | null;
+type RawFriendRequestRow = Omit<FriendRequestRow, "sender" | "receiver"> & {
+  sender: ProfileSummary | ProfileSummary[] | null;
   receiver: ProfileSummary | ProfileSummary[] | null;
 };
 
@@ -40,12 +47,12 @@ type FriendRow = {
 
 type FriendRequestRow = {
   id: string;
-  requester_id: string;
+  sender_id: string;
   receiver_id: string;
   status: RequestStatus;
   created_at: string;
   updated_at: string;
-  requester: ProfileSummary | null;
+  sender: ProfileSummary | null;
   receiver: ProfileSummary | null;
 };
 
@@ -74,7 +81,7 @@ function normalizeFriendRows(rows: RawFriendRow[]): FriendRow[] {
 }
 
 function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
-  return rows.map((row) => ({ ...row, requester: singleProfile(row.requester), receiver: singleProfile(row.receiver) }));
+  return rows.map((row) => ({ ...row, sender: singleProfile(row.sender), receiver: singleProfile(row.receiver) }));
 }
 
 function initials(profile: ProfileSummary | null) {
@@ -118,32 +125,117 @@ function FriendsPageContent() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const showSupabaseError = useCallback((fallback: string, error: { message?: string } | null | undefined) => {
+    const message = error?.message?.trim() || fallback;
+    console.error(fallback, error);
+    showToast(message);
+  }, [showToast]);
+
   const loadCoinBalance = useCallback(async (userId: string) => {
-    await supabase.rpc("ensure_coin_wallet", { target_user: userId });
-    const { data } = await supabase.from("coins").select("balance").eq("user_id", userId).maybeSingle();
+    const { error: walletError } = await supabase.rpc("ensure_coin_wallet", { target_user: userId });
+    if (walletError) {
+      showSupabaseError("Could not load coin wallet.", walletError);
+      return;
+    }
+
+    const { data, error } = await supabase.from("coins").select("balance").eq("user_id", userId).maybeSingle();
+    if (error) {
+      showSupabaseError("Could not load coin balance.", error);
+      return;
+    }
+
     setCoinBalance(data?.balance ?? 0);
-  }, []);
+  }, [showSupabaseError]);
 
   const loadFriends = useCallback(async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("friends")
       .select("id,user_id,friend_id,created_at,friend:profiles!friends_friend_id_fkey(id,username,display_name,avatar_url,country)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
+    if (error) {
+      showSupabaseError("Could not load friends.", error);
+      return;
+    }
+
     setFriends(normalizeFriendRows((data || []) as unknown as RawFriendRow[]));
-  }, []);
+  }, [showSupabaseError]);
 
   const loadRequests = useCallback(async (userId: string) => {
-    const requestSelect = "id,requester_id,receiver_id,status,created_at,updated_at,requester:profiles!friend_requests_requester_id_fkey(id,username,display_name,avatar_url,country),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url,country)";
+    const requestSelect = "id,sender_id,receiver_id,status,created_at,updated_at,sender:profiles!friend_requests_sender_id_fkey(id,username,display_name,avatar_url,country),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url,country)";
     const [incomingRes, outgoingRes] = await Promise.all([
       supabase.from("friend_requests").select(requestSelect).eq("receiver_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
-      supabase.from("friend_requests").select(requestSelect).eq("requester_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("friend_requests").select(requestSelect).eq("sender_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
     ]);
+
+    if (incomingRes.error) {
+      showSupabaseError("Could not load incoming requests.", incomingRes.error);
+      return;
+    }
+    if (outgoingRes.error) {
+      showSupabaseError("Could not load outgoing requests.", outgoingRes.error);
+      return;
+    }
 
     setIncoming(normalizeRequestRows((incomingRes.data || []) as unknown as RawFriendRequestRow[]));
     setOutgoing(normalizeRequestRows((outgoingRes.data || []) as unknown as RawFriendRequestRow[]));
-  }, []);
+  }, [showSupabaseError]);
+
+  const loadOnlineAcceptedFriends = useCallback(async (userId: string) => {
+    const { data: friendRows, error: friendsError } = await supabase
+      .from("friends")
+      .select("friend_id")
+      .eq("user_id", userId);
+
+    if (friendsError) {
+      showSupabaseError("Could not load accepted friends for active tab.", friendsError);
+      return;
+    }
+
+    const friendIds = (friendRows || []).map((friend) => friend.friend_id as string);
+    if (friendIds.length === 0) {
+      setOnlineIds(new Set());
+      return;
+    }
+
+    const { data: presenceRows, error: presenceError } = await supabase
+      .from("user_presence")
+      .select("user_id,is_online")
+      .in("user_id", friendIds)
+      .eq("is_online", true);
+
+    if (presenceError) {
+      showSupabaseError("Could not load active friends.", presenceError);
+      return;
+    }
+
+    setOnlineIds(new Set((presenceRows || []).map((presence) => presence.user_id as string)));
+  }, [showSupabaseError]);
+
+  const loadRelatedUserIds = useCallback(async (userId: string): Promise<RelatedUserIds> => {
+    const [friendsRes, requestsRes, blockedRes] = await Promise.all([
+      supabase.from("friends").select("friend_id").eq("user_id", userId),
+      supabase.from("friend_requests").select("sender_id,receiver_id,status").or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
+      supabase.from("blocked_users").select("user_id,blocked_user_id").or(`user_id.eq.${userId},blocked_user_id.eq.${userId}`),
+    ]);
+
+    if (friendsRes.error) showSupabaseError("Could not load existing friends.", friendsRes.error);
+    if (requestsRes.error) showSupabaseError("Could not load related requests.", requestsRes.error);
+    if (blockedRes.error) showSupabaseError("Could not load blocked users.", blockedRes.error);
+
+    const friendIds = new Set((friendsRes.data || []).map((friend) => friend.friend_id as string));
+    const pendingIds = new Set<string>();
+    const rejectedIds = new Set<string>();
+    for (const request of (requestsRes.data || []) as { sender_id: string; receiver_id: string; status: RequestStatus }[]) {
+      const otherId = request.sender_id === userId ? request.receiver_id : request.sender_id;
+      if (request.status === "pending") pendingIds.add(otherId);
+      if (request.status === "rejected" || request.status === "cancelled") rejectedIds.add(otherId);
+    }
+    const blockedUserIds = new Set((blockedRes.data || []).map((row) => (row.user_id === userId ? row.blocked_user_id : row.user_id)));
+
+    return { friendIds, pendingIds, blockedUserIds, rejectedIds };
+  }, [showSupabaseError]);
 
   const refreshAll = useCallback(async (userId: string) => {
     await Promise.all([loadFriends(userId), loadRequests(userId)]);
@@ -167,8 +259,8 @@ function FriendsPageContent() {
       const { data: currentProfile } = await supabase.from("profiles").select("country").eq("id", session.user.id).maybeSingle();
       setMyCountry(currentProfile?.country ?? null);
       await presenceManager.connect(session.user.id);
-      unsubscribePresence = presenceManager.subscribe((users) => setOnlineIds(new Set(users.map((user) => user.id))));
-      await Promise.all([refreshAll(session.user.id), loadCoinBalance(session.user.id)]);
+      unsubscribePresence = presenceManager.subscribe(() => loadOnlineAcceptedFriends(session.user.id));
+      await Promise.all([refreshAll(session.user.id), loadCoinBalance(session.user.id), loadOnlineAcceptedFriends(session.user.id)]);
       if (cancelled) return;
       setLoading(false);
 
@@ -185,6 +277,7 @@ function FriendsPageContent() {
       coinsChannel = supabase
         .channel(uniqueChannelName(`coins-${session.user.id}`))
         .on("postgres_changes", { event: "*", schema: "public", table: "coins", filter: `user_id=eq.${session.user.id}` }, () => loadCoinBalance(session.user.id))
+        .on("postgres_changes", { event: "*", schema: "public", table: "user_presence" }, () => loadOnlineAcceptedFriends(session.user.id))
         .subscribe();
     }
 
@@ -197,7 +290,7 @@ function FriendsPageContent() {
       if (friendsChannel) supabase.removeChannel(friendsChannel);
       if (coinsChannel) supabase.removeChannel(coinsChannel);
     };
-  }, [loadCoinBalance, refreshAll]);
+  }, [loadCoinBalance, loadOnlineAcceptedFriends, refreshAll]);
 
   useEffect(() => {
     if (!myId) return;
@@ -212,20 +305,21 @@ function FriendsPageContent() {
       }
 
       setSearching(true);
-      const [{ data }, { data: blockedRows }] = await Promise.all([
+      const [{ data, error }, related] = await Promise.all([
         supabase.from("profiles").select("id,username,display_name,avatar_url,country").ilike("username", `%${cleanQuery}%`).eq("country", myCountry).neq("id", myId).order("username", { ascending: true }).limit(20),
-        supabase.from("blocked_users").select("blocker_id,blocked_id").or(`blocker_id.eq.${myId},blocked_id.eq.${myId}`),
+        loadRelatedUserIds(myId),
       ]);
 
-      const friendIds = new Set(friends.map((friend) => friend.friend_id));
-      const pendingIds = new Set([
-        ...incoming.filter((request) => request.status === "pending").map((request) => request.requester_id),
-        ...outgoing.filter((request) => request.status === "pending").map((request) => request.receiver_id),
-      ]);
-      const blockedIds = new Set((blockedRows || []).map((row) => (row.blocker_id === myId ? row.blocked_id : row.blocker_id)));
+      if (error) {
+        showSupabaseError("Search failed.", error);
+        setResults([]);
+        setSearching(false);
+        return;
+      }
+
       const seen = new Set<string>();
       const rows = ((data || []) as ProfileSummary[]).filter((profile) => {
-        if (seen.has(profile.id) || friendIds.has(profile.id) || pendingIds.has(profile.id) || blockedIds.has(profile.id)) return false;
+        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedUserIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
         seen.add(profile.id);
         return true;
       });
@@ -237,7 +331,7 @@ function FriendsPageContent() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [friends, incoming, myCountry, myId, outgoing, query]);
+  }, [loadRelatedUserIds, myCountry, myId, query, showSupabaseError]);
 
 
 
@@ -248,7 +342,7 @@ function FriendsPageContent() {
 
     async function loadForeignUsers() {
       setLoadingForeign(true);
-      const [{ data }, { data: blockedRows }] = await Promise.all([
+      const [{ data, error }, related] = await Promise.all([
         supabase
           .from("profiles")
           .select("id,username,display_name,avatar_url,country")
@@ -256,20 +350,20 @@ function FriendsPageContent() {
           .neq("id", myId)
           .order("username", { ascending: true })
           .limit(Math.max((foreignLimit + 1) * 4, 30)),
-        supabase.from("blocked_users").select("blocker_id,blocked_id").or(`blocker_id.eq.${myId},blocked_id.eq.${myId}`),
+        loadRelatedUserIds(myId),
       ]);
 
       if (cancelled) return;
+      if (error) {
+        showSupabaseError("Could not load foreign users.", error);
+        setForeignUsers([]);
+        setLoadingForeign(false);
+        return;
+      }
 
-      const friendIds = new Set(friends.map((friend) => friend.friend_id));
-      const pendingIds = new Set([
-        ...incoming.filter((request) => request.status === "pending").map((request) => request.requester_id),
-        ...outgoing.filter((request) => request.status === "pending").map((request) => request.receiver_id),
-      ]);
-      const blockedIds = new Set((blockedRows || []).map((row) => (row.blocker_id === myId ? row.blocked_id : row.blocker_id)));
       const seen = new Set<string>();
       const visible = ((data || []) as ForeignProfile[]).filter((profile) => {
-        if (seen.has(profile.id) || friendIds.has(profile.id) || pendingIds.has(profile.id) || blockedIds.has(profile.id)) return false;
+        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedUserIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
         seen.add(profile.id);
         return true;
       });
@@ -284,7 +378,7 @@ function FriendsPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [foreignLimit, friends, incoming, myCountry, myId, outgoing]);
+  }, [foreignLimit, loadRelatedUserIds, myCountry, myId, showSupabaseError]);
 
   const tab = normalizeTab(searchParams.get("tab"));
   const activeFriends = useMemo<OnlineFriend[]>(() => friends.map((friend) => ({ ...friend, isOnline: onlineIds.has(friend.friend_id) })).filter((friend) => friend.isOnline), [friends, onlineIds]);
@@ -294,10 +388,18 @@ function FriendsPageContent() {
   }
 
   async function addFriend(profileId: string) {
-    if (!myId) return;
+    if (!myId) {
+      showToast("Authentication missing. Please sign in again.");
+      return;
+    }
     setBusyId(profileId);
     const { error } = await supabase.rpc("send_friend_request", { target_user_id: profileId });
-    if (error) console.error(error.message);
+    if (error) {
+      showSupabaseError("Friend request failed.", error);
+    } else {
+      setResults((prev) => prev.filter((profile) => profile.id !== profileId));
+      showToast("Friend request sent.");
+    }
     await refreshAll(myId);
     setBusyId(null);
   }
@@ -307,15 +409,15 @@ function FriendsPageContent() {
     setBusyId(requestId);
     if (action === "accepted") {
       const { error } = await supabase.rpc("accept_friend_request", { request_id: requestId });
-      if (error) console.error(error.message);
+      if (error) showSupabaseError("Friend request response failed.", error);
     } else {
       const { error } = await supabase
         .from("friend_requests")
         .update({ status: action, updated_at: new Date().toISOString() })
         .eq("id", requestId)
-        .eq(action === "cancelled" ? "requester_id" : "receiver_id", myId)
+        .eq(action === "cancelled" ? "sender_id" : "receiver_id", myId)
         .eq("status", "pending");
-      if (error) console.error(error.message);
+      if (error) showSupabaseError("Friend request update failed.", error);
     }
     await refreshAll(myId);
     setBusyId(null);
@@ -324,7 +426,7 @@ function FriendsPageContent() {
   async function startChat(friendId: string) {
     const { data: conversationId, error } = await supabase.rpc("ensure_friend_conversation", { friend_user_id: friendId });
     if (error) {
-      console.error(error.message);
+      showSupabaseError("Could not start chat.", error);
       return;
     }
     if (conversationId) router.push(`/chat/${conversationId}`);
@@ -333,8 +435,10 @@ function FriendsPageContent() {
   async function blockFriend(friendId: string) {
     if (!myId) return;
     setBusyId(friendId);
-    const { error } = await supabase.from("blocked_users").upsert({ blocker_id: myId, blocked_id: friendId }, { onConflict: "blocker_id,blocked_id" });
-    if (error) console.error(error.message);
+    const { error } = await supabase.from("blocked_users").upsert({ user_id: myId, blocked_user_id: friendId }, { onConflict: "user_id,blocked_user_id" });
+    if (error) showSupabaseError("Could not block user.", error);
+    else showToast("User blocked.");
+    await refreshAll(myId);
     setBusyId(null);
   }
 
@@ -353,7 +457,7 @@ function FriendsPageContent() {
     const { data: newBalance, error } = await supabase.rpc("connect_with_foreigner", { target_user_id: targetUser.id });
 
     if (error) {
-      showToast(error.message.includes("Not enough") ? "Not enough coins." : error.message);
+      showSupabaseError("Could not connect with foreign user.", error);
     } else {
       setCoinBalance(typeof newBalance === "number" ? newBalance : coinBalance);
       setForeignUsers((prev) => prev.filter((profile) => profile.id !== targetUser.id));
@@ -485,7 +589,7 @@ function RequestList({ title, empty, requests, mode, busyId, onRespond }: { titl
       <h2 className="mb-3 text-lg font-black">{title}</h2>
       <div className="space-y-3">
         {requests.length === 0 ? <GlassPanel className="rounded-3xl p-6 text-center text-sm text-gray-400">{empty}</GlassPanel> : requests.map((request) => {
-          const profile = mode === "incoming" ? request.requester : request.receiver;
+          const profile = mode === "incoming" ? request.sender : request.receiver;
           return (
             <GlassPanel key={request.id} className="flex items-center gap-3 rounded-2xl p-4">
               <Avatar profile={profile} />
