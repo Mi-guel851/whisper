@@ -92,12 +92,12 @@ begin
     select balance into current_balance from public.coins where user_id = auth.uid();
     return current_balance;
   end if;
-  update public.coins set balance = balance - 20, updated_at = now()
-  where user_id = auth.uid() and balance >= 20 returning balance into current_balance;
-  if current_balance is null then raise exception 'Not enough Whisper Coins'; end if;
+  update public.coins set balance = balance - 40, updated_at = now()
+  where user_id = auth.uid() and balance >= 40 returning balance into current_balance;
+  if current_balance is null then raise exception 'You need 40 coins to unlock this conversation.'; end if;
   insert into public.chat_unlocks (user_id, conversation_id) values (auth.uid(), target_conversation_id);
   insert into public.coin_transactions (user_id, transaction_type, amount, description, metadata)
-  values (auth.uid(), 'spend', -20, 'Unlock Chat', jsonb_build_object('conversation_id', target_conversation_id));
+  values (auth.uid(), 'spend', -40, 'Unlock Chat', jsonb_build_object('conversation_id', target_conversation_id));
   return current_balance;
 end;
 $$;
@@ -117,7 +117,7 @@ begin
   end if;
   update public.coins set balance = balance - 40, updated_at = now()
   where user_id = auth.uid() and balance >= 40 returning balance into current_balance;
-  if current_balance is null then raise exception 'Not enough Whisper Coins'; end if;
+  if current_balance is null then raise exception 'You need 40 coins to unlock this conversation.'; end if;
   insert into public.anonymous_sender_reveals (user_id, message_id) values (auth.uid(), target_message_id);
   insert into public.coin_transactions (user_id, transaction_type, amount, description, metadata)
   values (auth.uid(), 'spend', -40, 'Reveal Sender', jsonb_build_object('message_id', target_message_id));
