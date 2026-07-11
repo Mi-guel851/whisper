@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -20,6 +20,37 @@ export default function BottomNavigation() {
   const [myId, setMyId] = useState<string | null>(null);
   const [anyFriendOnline, setAnyFriendOnline] = useState(false);
 
+  const loadUnreadWhispers = useCallback(async (uid: string) => {
+    const { count } = await supabase
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("recipient_id", uid)
+      .eq("is_read", false);
+
+    setUnreadWhispers(count || 0);
+  }, []);
+
+  const loadUnreadChats = useCallback(async (uid: string) => {
+    const { data: convos } = await supabase
+      .from("conversations")
+      .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
+      .or(`user_a.eq.${uid},user_b.eq.${uid}`);
+
+    if (!convos) {
+      setUnreadChats(0);
+      return;
+    }
+
+    const unread = convos.filter((c) => {
+      const lastRead = c.user_a === uid ? c.user_a_last_read_at : c.user_b_last_read_at;
+      if (!c.last_message_at) return false;
+      if (!lastRead) return true;
+      return new Date(c.last_message_at) > new Date(lastRead);
+    });
+
+    setUnreadChats(unread.length);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -32,15 +63,8 @@ export default function BottomNavigation() {
       if (!session || cancelled) return;
 
       setMyId(session.user.id);
-
-      const { count } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("recipient_id", session.user.id)
-        .eq("is_read", false);
-
+      await loadUnreadWhispers(session.user.id);
       if (cancelled) return;
-      setUnreadWhispers(count || 0);
 
       channel = supabase
         .channel(uniqueChannelName(`bottomnav-unread-${session.user.id}`))
@@ -66,7 +90,7 @@ export default function BottomNavigation() {
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadUnreadWhispers]);
 
   // Friends green dot — reuses the shared presence singleton and only counts accepted friends.
   useEffect(() => {
@@ -104,35 +128,18 @@ export default function BottomNavigation() {
 
     let cancelled = false;
 
-    async function loadUnreadChats() {
-      const { data: convos } = await supabase
-        .from("conversations")
-        .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
-        .or(`user_a.eq.${myId},user_b.eq.${myId}`);
-
-      if (cancelled || !convos) {
-        if (!cancelled) setUnreadChats(0);
-        return;
-      }
-
-      const unread = convos.filter((c) => {
-        const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
-        if (!c.last_message_at) return false;
-        if (!lastRead) return true;
-        return new Date(c.last_message_at) > new Date(lastRead);
-      });
-
-      if (!cancelled) setUnreadChats(unread.length);
+    async function run() {
+      if (!cancelled) await loadUnreadChats(myId as string);
     }
 
-    loadUnreadChats();
+    run();
 
     const channel = supabase
       .channel(uniqueChannelName(`bottomnav-chat-unread-${myId}`))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
-        () => loadUnreadChats()
+        () => run()
       )
       .subscribe();
 
@@ -140,9 +147,31 @@ export default function BottomNavigation() {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [myId]);
+  }, [myId, loadUnreadChats]);
+
+  // Safety net: realtime events can be missed (backgrounded tab, brief drop, etc).
+  // Re-verify both counts whenever the tab regains focus so a stale badge never lingers.
+  useEffect(() => {
+    if (!myId) return;
+
+    function refetchAll() {
+      if (document.visibilityState !== "visible") return;
+      loadUnreadWhispers(myId as string);
+      loadUnreadChats(myId as string);
+    }
+
+    document.addEventListener("visibilitychange", refetchAll);
+    window.addEventListener("focus", refetchAll);
+
+    return () => {
+      document.removeEventListener("visibilitychange", refetchAll);
+      window.removeEventListener("focus", refetchAll);
+    };
+  }, [myId, loadUnreadWhispers, loadUnreadChats]);
 
   async function handleActivityClick() {
+    setUnreadWhispers(0);
+
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -156,20 +185,41 @@ export default function BottomNavigation() {
       .eq("is_read", false);
 
     if (error) {
-      console.error("Failed to mark as read:", error.message);
-      return;
+      console.error("Failed to mark whispers as read:", error.message);
+      await loadUnreadWhispers(session.user.id);
     }
+  }
 
-    setUnreadWhispers(0);
+  async function handleInboxClick() {
+    setUnreadChats(0);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) return;
+
+    const uid = session.user.id;
+    const nowIso = new Date().toISOString();
+
+    const [{ error: errA }, { error: errB }] = await Promise.all([
+      supabase.from("conversations").update({ user_a_last_read_at: nowIso }).eq("user_a", uid),
+      supabase.from("conversations").update({ user_b_last_read_at: nowIso }).eq("user_b", uid),
+    ]);
+
+    if (errA || errB) {
+      console.error("Failed to mark inbox as read:", errA?.message || errB?.message);
+      await loadUnreadChats(uid);
+    }
   }
 
   const nav = [
-    { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined },
-    { href: "/friends", icon: Users, label: "Friends", showPresenceDot: true, badge: undefined },
-    { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats },
-    { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers },
-    { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined },
-    { href: "/premium", icon: Gem, label: "Coins", showPresenceDot: false, badge: undefined },
+    { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined, onClick: undefined },
+    { href: "/friends", icon: Users, label: "Friends", showPresenceDot: true, badge: undefined, onClick: undefined },
+    { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats, onClick: handleInboxClick },
+    { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers, onClick: handleActivityClick },
+    { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined, onClick: undefined },
+    { href: "/premium", icon: Gem, label: "Coins", showPresenceDot: false, badge: undefined, onClick: undefined },
   ];
 
   return (
@@ -187,13 +237,12 @@ export default function BottomNavigation() {
         {nav.map((item) => {
           const Icon = item.icon;
           const active = pathname.startsWith(item.href) || (item.href === "/friends" && pathname.startsWith("/active"));
-          const isActivity = item.href === "/notifications";
 
           return (
             <Link
               key={item.href}
               href={item.href}
-              onClick={isActivity ? handleActivityClick : undefined}
+              onClick={item.onClick}
               className="group relative flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1.5 py-1.5 text-[10px] font-bold transition duration-300 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-95"
             >
               <div

@@ -1,5 +1,7 @@
 "use client";
 
+import ChatDoodleBackground from "@/components/ChatDoodleBackground";
+import MessageTicks from "@/components/MessageTicks";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -19,6 +21,8 @@ type Message = {
   image_path: string | null;
   is_view_once: boolean;
   image_viewed_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
 };
 
 type Reaction = {
@@ -140,6 +144,12 @@ function MessageBubble({
                 {emoji} {count > 1 ? count : ""}
               </span>
             ))}
+          </div>
+        )}
+
+        {isMe && !isPhotoMessage && (
+          <div className="mt-1 flex justify-end">
+            <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />
           </div>
         )}
 
@@ -288,6 +298,37 @@ export default function ChatPage() {
       setReactions(reacts || []);
       setLoading(false);
 
+      // Mark any incoming messages as delivered now that this client has loaded them.
+      const incomingIds = (msgs || [])
+        .filter((m) => m.sender_id !== session.user.id && !m.delivered_at)
+        .map((m) => m.id);
+
+      if (incomingIds.length > 0) {
+        const { error: deliverError } = await supabase
+          .from("direct_messages")
+          .update({ delivered_at: new Date().toISOString() })
+          .in("id", incomingIds);
+        if (deliverError) {
+          console.error("[chat] failed to mark delivered:", deliverError.message);
+        }
+      }
+
+      // Mark as read shortly after, only if the tab is actually visible/focused.
+      setTimeout(async () => {
+        if (document.visibilityState !== "visible") return;
+        const unreadIds = (msgs || [])
+          .filter((m) => m.sender_id !== session.user.id && !m.read_at)
+          .map((m) => m.id);
+        if (unreadIds.length === 0) return;
+        const { error: readMsgError } = await supabase
+          .from("direct_messages")
+          .update({ read_at: new Date().toISOString() })
+          .in("id", unreadIds);
+        if (readMsgError) {
+          console.error("[chat] failed to mark read:", readMsgError.message);
+        }
+      }, 1200);
+
       msgChannel = supabase
         .channel(`chat-msgs-${conversationId}-${Date.now()}`)
         .on(
@@ -299,7 +340,24 @@ export default function ChatPage() {
             filter: `conversation_id=eq.${conversationId}`,
           },
           (payload) => {
-            setMessages((prev) => [...prev, payload.new as Message]);
+            const incoming = payload.new as Message;
+            setMessages((prev) =>
+              prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
+            );
+
+            if (incoming.sender_id !== session.user.id) {
+              supabase
+                .from("direct_messages")
+                .update({
+                  delivered_at: new Date().toISOString(),
+                  read_at:
+                    document.visibilityState === "visible" ? new Date().toISOString() : null,
+                })
+                .eq("id", incoming.id)
+                .then(({ error }) => {
+                  if (error) console.error("[chat] failed to mark live message:", error.message);
+                });
+            }
           }
         )
         .on(
@@ -328,7 +386,14 @@ export default function ChatPage() {
           },
           (payload) => {
             if (payload.eventType === "INSERT") {
-              setReactions((prev) => [...prev, payload.new as Reaction]);
+              const incoming = payload.new as Reaction;
+              setReactions((prev) =>
+                prev.some(
+                  (r) => r.message_id === incoming.message_id && r.user_id === incoming.user_id
+                )
+                  ? prev
+                  : [...prev, incoming]
+              );
             }
 
             if (payload.eventType === "UPDATE") {
@@ -571,15 +636,15 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
+      <main className="flex h-screen items-center justify-center theme-bg-gradient text-white">
         <p className="text-gray-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen flex-col theme-bg-gradient text-white">
-      <div className="border-b border-white/10 p-6 pb-4">
+    <main className="flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
+      <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
@@ -612,35 +677,56 @@ export default function ChatPage() {
           </GlassPanel>
         )}
 
-        {messages.length === 0 ? (
-          <p className="mt-10 text-center text-gray-500">
-            Say hi 👻 — they won&apos;t know who you are.
-          </p>
-        ) : (
-          messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              msg={msg}
-              isMe={msg.sender_id === myId}
-              repliedMsg={getRepliedMessage(msg.reply_to_id)}
-              msgReactions={getReactionsFor(msg.id)}
-              actionMenuFor={actionMenuFor}
-              setActionMenuFor={setActionMenuFor}
-              toggleReaction={toggleReaction}
-              setReplyingTo={setReplyingTo}
-              startPress={startPress}
-              cancelPress={cancelPress}
-              onSwipeReply={setReplyingTo}
-              onViewPhoto={handleViewPhoto}
-              viewingPhotoId={viewingPhotoId}
-            />
-          ))
-        )}
-        <div ref={bottomRef} />
+        <div className="relative z-10 space-y-4">
+          {!chatUnlocked && !isFriendConversation && (
+            <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
+                <LockKeyhole className="text-cyan-200" />
+              </div>
+              <h2 className="text-2xl font-black">Chat locked</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
+                {isFriendConversation ? "Accepted friends can message here for free." : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
+              </p>
+              <button
+                onClick={unlockChat}
+                disabled={unlocking}
+                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+              >
+                <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
+              </button>
+            </GlassPanel>
+          )}
+
+          {messages.length === 0 ? (
+            <p className="mt-10 text-center text-gray-500">
+              Say hi 👻 — they won&apos;t know who you are.
+            </p>
+          ) : (
+            messages.map((msg) => (
+              <MessageBubble
+                key={msg.id}
+                msg={msg}
+                isMe={msg.sender_id === myId}
+                repliedMsg={getRepliedMessage(msg.reply_to_id)}
+                msgReactions={getReactionsFor(msg.id)}
+                actionMenuFor={actionMenuFor}
+                setActionMenuFor={setActionMenuFor}
+                toggleReaction={toggleReaction}
+                setReplyingTo={setReplyingTo}
+                startPress={startPress}
+                cancelPress={cancelPress}
+                onSwipeReply={setReplyingTo}
+                onViewPhoto={handleViewPhoto}
+                viewingPhotoId={viewingPhotoId}
+              />
+            ))
+          )}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {replyingTo && (
-        <div className="mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
+        <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
           <p className="truncate text-xs text-gray-300">
             Replying to: {replyingTo.content || "📷 Photo"}
           </p>
@@ -650,7 +736,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      <form onSubmit={sendMessage} className="p-6 pt-0">
+      <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
           <input
             ref={fileInputRef}

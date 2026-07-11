@@ -1,5 +1,6 @@
 "use client";
 
+import ChatDoodleBackground from "@/components/ChatDoodleBackground";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -14,6 +15,8 @@ type ConversationRow = {
   user_b: string;
   user_a_label: string;
   user_b_label: string;
+  user_a_last_read_at: string | null;
+  user_b_last_read_at: string | null;
   last_message_at: string;
 };
 
@@ -38,7 +41,9 @@ export default function InboxPage() {
 
       const { data } = await supabase
         .from("conversations")
-        .select("*")
+        .select(
+          "id, user_a, user_b, user_a_label, user_b_label, user_a_last_read_at, user_b_last_read_at, last_message_at"
+        )
         .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
         .order("last_message_at", { ascending: false });
 
@@ -51,6 +56,30 @@ export default function InboxPage() {
 
   function labelFor(c: ConversationRow) {
     return c.user_a === myId ? c.user_a_label : c.user_b_label;
+  }
+
+  function isUnread(c: ConversationRow) {
+    if (!c.last_message_at) return false;
+    const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
+    if (!lastRead) return true;
+    return new Date(c.last_message_at) > new Date(lastRead);
+  }
+
+  function openConversation(c: ConversationRow) {
+    // Optimistic instant clear — the actual read-marking write happens
+    // when the chat page itself loads, this just updates the list view now.
+    setConversations((prev) =>
+      prev.map((row) =>
+        row.id === c.id
+          ? {
+              ...row,
+              user_a_last_read_at: row.user_a === myId ? new Date().toISOString() : row.user_a_last_read_at,
+              user_b_last_read_at: row.user_b === myId ? new Date().toISOString() : row.user_b_last_read_at,
+            }
+          : row
+      )
+    );
+    router.push(`/chat/${c.id}`);
   }
 
   if (loading) {
@@ -78,25 +107,37 @@ export default function InboxPage() {
           </GlassPanel>
         ) : (
           <div className="space-y-3">
-            {conversations.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => router.push(`/chat/${c.id}`)}
-                className="w-full text-left"
-              >
-                <GlassPanel className="flex items-center gap-4 rounded-2xl p-4 transition hover:bg-white/[0.09]">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
-                    <MessageCircle size={20} className="text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-white">{labelFor(c)}</p>
-                    <p className="text-xs text-gray-400">
-                      {new Date(c.last_message_at).toLocaleString()}
-                    </p>
-                  </div>
-                </GlassPanel>
-              </button>
-            ))}
+            {conversations.map((c) => {
+              const unread = isUnread(c);
+
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => openConversation(c)}
+                  className="w-full text-left"
+                >
+                  <GlassPanel className="relative flex items-center gap-4 rounded-2xl p-4 transition hover:bg-white/[0.09]">
+                    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+                      <MessageCircle size={20} className="text-white" />
+                      {unread && (
+                        <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black/40 bg-rose-500 shadow-lg shadow-rose-500/40" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`font-semibold ${unread ? "text-white" : "text-gray-300"}`}>
+                        {labelFor(c)}
+                      </p>
+                      <p className={`text-xs ${unread ? "text-gray-300" : "text-gray-400"}`}>
+                        {new Date(c.last_message_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {unread && (
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500 shadow-lg shadow-rose-500/40" />
+                    )}
+                  </GlassPanel>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
