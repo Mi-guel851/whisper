@@ -50,11 +50,11 @@ const PLATFORM_STYLES: Record<Platform, string> = {
 };
 
 function messageFontSize(length: number) {
-  if (length <= 40) return "text-3xl";
-  if (length <= 90) return "text-2xl";
-  if (length <= 150) return "text-xl";
+  if (length <= 40) return "text-2xl";
+  if (length <= 80) return "text-xl";
+  if (length <= 140) return "text-lg";
   if (length <= 220) return "text-base";
-  if (length <= 320) return "text-sm";
+  if (length <= 400) return "text-sm";
   return "text-xs";
 }
 
@@ -114,6 +114,26 @@ export default function ShareMessageCard({
       ? `"${message}" — anonymous whisper 👻`
       : "I got an anonymous message on Whisper 👻";
     const shareUrl = "https://whisper.app";
+    const file = new File([blob], "whisper-message.png", { type: "image/png" });
+
+    // Try native share first — this is what lets WhatsApp, Instagram, etc.
+    // receive the actual image directly, the way NGL-style cards work.
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Whisper", text: shareText });
+        return;
+      } catch {
+        // user cancelled the native share sheet — fall through to the
+        // platform-specific fallback below instead of doing nothing
+      }
+    }
+
+    // Fallbacks for browsers/platforms that can't share files directly
+    // (mostly desktop). These can't attach the image automatically, so we
+    // download it and open the platform with prefilled text, and the user
+    // attaches the already-downloaded image manually.
+    downloadBlob(blob);
+    flashToast("Image saved — attach it when sharing! 👻");
 
     if (platform === "whatsapp") {
       window.open(
@@ -132,20 +152,6 @@ export default function ShareMessageCard({
       );
       return;
     }
-
-    const file = new File([blob], "whisper-message.png", { type: "image/png" });
-
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: "Whisper", text: shareText });
-        return;
-      } catch {
-        // cancelled — fall through to manual path
-      }
-    }
-
-    downloadBlob(blob);
-    flashToast("Image saved — attach it in your story! 👻");
 
     const deepLinks: Record<string, string> = {
       instagram: "instagram://story-camera",
@@ -170,50 +176,52 @@ export default function ShareMessageCard({
           <X size={28} />
         </button>
 
-        <div
-          ref={cardRef}
-          className="relative flex h-[440px] w-full flex-col overflow-hidden rounded-[2rem] border border-white/10 theme-bg-gradient p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
-        >
-          <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-500/20 blur-[60px]" />
-          <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />
+        {/* Scrolls on-screen only if the card is taller than the viewport —
+            purely a preview convenience. The captured/downloaded image below
+            always uses the card's full natural height, so nothing is ever
+            cropped in the saved output. */}
+        <div className="max-h-[85vh] overflow-y-auto rounded-[2rem]">
+          <div
+            ref={cardRef}
+            className="relative flex w-full flex-col overflow-hidden rounded-[2rem] border border-white/10 theme-bg-gradient p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+          >
+            <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-500/20 blur-[60px]" />
+            <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />
 
-          <div className="relative flex h-full flex-col items-center text-center">
-            <Image src="/ghost.png" alt="Whisper" width={44} height={44} />
-            <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-gray-400">
-              Whisper
-            </p>
+            <div className="relative flex flex-col items-center text-center">
+              <Image src="/ghost.png" alt="Whisper" width={44} height={44} />
+              <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-gray-400">
+                Whisper
+              </p>
 
-            <div
-              className="mt-8 flex w-full flex-1 flex-col items-center justify-center overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              {message && (
-                <p
-                  className={`font-extrabold leading-snug text-white break-words ${messageFontSize(
-                    message.length
-                  )}`}
-                >
-                  <span className="text-cyan-400">&ldquo;</span>
-                  {message}
-                  <span className="text-cyan-400">&rdquo;</span>
-                </p>
-              )}
+              <div className="mt-8 flex w-full flex-col items-center gap-5">
+                {message && (
+                  <p
+                    className={`font-extrabold leading-snug text-white break-words whitespace-pre-wrap ${messageFontSize(
+                      message.length
+                    )}`}
+                  >
+                    <span className="text-cyan-400">&ldquo;</span>
+                    {message}
+                    <span className="text-cyan-400">&rdquo;</span>
+                  </p>
+                )}
 
-              {imageUrl && (
-                <img
-                  src={imageUrl}
-                  crossOrigin="anonymous"
-                  alt="Anonymous attachment"
-                  className={`w-full rounded-2xl object-cover max-h-72 ${
-                    message ? "mt-5" : ""
-                  }`}
-                />
-              )}
+                {imageUrl && (
+                  <img
+                    src={imageUrl}
+                    crossOrigin="anonymous"
+                    alt="Anonymous attachment"
+                    className="max-h-[280px] w-auto max-w-full rounded-2xl object-contain"
+                  />
+                )}
+              </div>
+
+              <div className="mt-6 h-px w-16 bg-white/10" />
+              <p className="mt-4 text-xs font-semibold text-gray-500">
+                Anonymous message · whisper.app
+              </p>
             </div>
-
-            <div className="mt-6 h-px w-16 bg-white/10" />
-            <p className="mt-4 text-xs font-semibold text-gray-500">
-              Anonymous message · whisper.app
-            </p>
           </div>
         </div>
 

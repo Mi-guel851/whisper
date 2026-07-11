@@ -14,6 +14,7 @@ type Notification = {
   message: string;
   image_url: string | null;
   created_at: string;
+  is_read: boolean;
 };
 
 export default function NotificationsPage() {
@@ -39,7 +40,7 @@ export default function NotificationsPage() {
 
       const { data, error } = await supabase
         .from("messages")
-        .select("id,message,image_url,created_at")
+        .select("id,message,image_url,created_at,is_read")
         .eq("recipient_id", session.user.id)
         .order("created_at", { ascending: false });
 
@@ -60,7 +61,10 @@ export default function NotificationsPage() {
             filter: `recipient_id=eq.${session.user.id}`,
           },
           (payload) => {
-            setNotifications((prev) => [payload.new as Notification, ...prev]);
+            const incoming = payload.new as Notification;
+            setNotifications((prev) =>
+              prev.some((n) => n.id === incoming.id) ? prev : [incoming, ...prev]
+            );
           }
         )
         .subscribe();
@@ -72,6 +76,30 @@ export default function NotificationsPage() {
       if (channel) supabase.removeChannel(channel);
     };
   }, []);
+
+  async function openNotification(item: Notification) {
+    setViewing({ message: item.message || "", imageUrl: item.image_url });
+
+    if (item.is_read) return;
+
+    // Instant fade — flip the row locally right away, then persist it.
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
+    );
+
+    const { error } = await supabase
+      .from("messages")
+      .update({ is_read: true })
+      .eq("id", item.id);
+
+    if (error) {
+      console.error("Failed to mark notification as read:", error.message);
+      // Revert on failure so the dot/fade stays accurate.
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === item.id ? { ...n, is_read: false } : n))
+      );
+    }
+  }
 
   async function downloadImage(url: string, id: string) {
     setDownloading(id);
@@ -146,62 +174,74 @@ export default function NotificationsPage() {
           </GlassPanel>
         ) : (
           <div className="mt-8 space-y-3">
-            {notifications.map((item) => (
-              <GlassPanel key={item.id} className="rounded-2xl p-4">
-                <div className="flex w-full items-center gap-4">
-                  <button
-                    onClick={() =>
-                      setViewing({ message: item.message || "", imageUrl: item.image_url })
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-4 text-left"
-                  >
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-red-500">
-                      <Heart size={20} className="fill-white text-white" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-pink-300">New Message!</p>
-                      {item.message && (
-                        <p className="truncate text-sm text-gray-400">{item.message}</p>
-                      )}
-                      {!item.message && item.image_url && (
-                        <p className="truncate text-sm text-gray-400">📷 Image</p>
-                      )}
-                    </div>
-                  </button>
+            {notifications.map((item) => {
+              const unread = !item.is_read;
 
-                  <span className="shrink-0 text-xs text-gray-500">
-                    {new Date(item.created_at).toLocaleDateString()}
-                  </span>
-
-                  <button
-                    onClick={() => setPendingDelete(item)}
-                    disabled={deleting === item.id}
-                    className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
-                    aria-label="Delete message"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-
-                {item.image_url && (
-                  <div className="relative mt-3">
-                    <img
-                      src={item.image_url}
-                      alt="Anonymous attachment"
-                      className="w-full max-h-72 rounded-2xl object-cover"
-                    />
+              return (
+                <GlassPanel
+                  key={item.id}
+                  className={`rounded-2xl p-4 transition-opacity duration-300 ${
+                    unread ? "opacity-100" : "opacity-55"
+                  }`}
+                >
+                  <div className="flex w-full items-center gap-4">
                     <button
-                      onClick={() => downloadImage(item.image_url!, item.id)}
-                      disabled={downloading === item.id}
-                      className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-black/70 backdrop-blur-md px-3 py-2 text-xs font-semibold text-white hover:bg-black/90 transition disabled:opacity-60"
+                      onClick={() => openNotification(item)}
+                      className="flex min-w-0 flex-1 items-center gap-4 text-left"
                     >
-                      <Download size={14} />
-                      {downloading === item.id ? "Saving..." : "Save"}
+                      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-red-500">
+                        <Heart size={20} className="fill-white text-white" />
+                        {unread && (
+                          <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black/40 bg-rose-500 shadow-lg shadow-rose-500/40" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={`font-semibold ${unread ? "text-pink-300" : "text-pink-300/70"}`}>
+                          New Message!
+                        </p>
+                        {item.message && (
+                          <p className="truncate text-sm text-gray-400">{item.message}</p>
+                        )}
+                        {!item.message && item.image_url && (
+                          <p className="truncate text-sm text-gray-400">📷 Image</p>
+                        )}
+                      </div>
+                    </button>
+
+                    <span className="shrink-0 text-xs text-gray-500">
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </span>
+
+                    <button
+                      onClick={() => setPendingDelete(item)}
+                      disabled={deleting === item.id}
+                      className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
+                      aria-label="Delete message"
+                    >
+                      <Trash2 size={16} />
                     </button>
                   </div>
-                )}
-              </GlassPanel>
-            ))}
+
+                  {item.image_url && (
+                    <div className="relative mt-3">
+                      <img
+                        src={item.image_url}
+                        alt="Anonymous attachment"
+                        className="w-full max-h-72 rounded-2xl object-cover"
+                      />
+                      <button
+                        onClick={() => downloadImage(item.image_url!, item.id)}
+                        disabled={downloading === item.id}
+                        className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-black/70 backdrop-blur-md px-3 py-2 text-xs font-semibold text-white hover:bg-black/90 transition disabled:opacity-60"
+                      >
+                        <Download size={14} />
+                        {downloading === item.id ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+                  )}
+                </GlassPanel>
+              );
+            })}
           </div>
         )}
       </div>

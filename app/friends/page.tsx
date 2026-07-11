@@ -92,7 +92,6 @@ function Avatar({ profile, online }: { profile: ProfileSummary | null; online?: 
   return (
     <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
       {profile?.avatar_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={profile.avatar_url} alt={profile.username} className="h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-lg font-black text-white">{initials(profile)}</div>
