@@ -11,12 +11,12 @@ set search_path = public
 as $$
 declare
   current_balance integer;
-  requester_country text;
+  sender_country text;
   target_country text;
   user_a uuid;
   user_b uuid;
   conversation_id uuid;
-  requester_username text;
+  sender_username text;
   target_username text;
 begin
   if auth.uid() is null then
@@ -30,7 +30,7 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(least(auth.uid(), target_user_id)::text || ':' || greatest(auth.uid(), target_user_id)::text, 0));
 
   select country, username
-  into requester_country, requester_username
+  into sender_country, sender_username
   from public.profiles
   where id = auth.uid();
 
@@ -43,15 +43,15 @@ begin
     raise exception 'User not found';
   end if;
 
-  if requester_country is not distinct from target_country then
+  if sender_country is not distinct from target_country then
     raise exception 'This user is not foreign';
   end if;
 
   if exists (
     select 1
     from public.blocked_users
-    where (blocker_id = auth.uid() and blocked_id = target_user_id)
-       or (blocker_id = target_user_id and blocked_id = auth.uid())
+    where (user_id = auth.uid() and blocked_user_id = target_user_id)
+       or (user_id = target_user_id and blocked_user_id = auth.uid())
   ) then
     raise exception 'Cannot connect with this user';
   end if;
@@ -68,8 +68,8 @@ begin
     select 1
     from public.friend_requests
     where status = 'pending'
-      and least(requester_id, receiver_id) = least(auth.uid(), target_user_id)
-      and greatest(requester_id, receiver_id) = greatest(auth.uid(), target_user_id)
+      and least(sender_id, receiver_id) = least(auth.uid(), target_user_id)
+      and greatest(sender_id, receiver_id) = greatest(auth.uid(), target_user_id)
   ) then
     raise exception 'A pending request already exists';
   end if;
@@ -95,8 +95,8 @@ begin
   insert into public.coin_transactions (user_id, transaction_type, amount, description, metadata)
   values (auth.uid(), 'spend', -50, 'Connect with Foreigner', jsonb_build_object('connected_user_id', target_user_id));
 
-  insert into public.friends (user_id, friend_id)
-  values (auth.uid(), target_user_id), (target_user_id, auth.uid())
+  insert into public.friends (user_id, friend_id, source)
+  values (auth.uid(), target_user_id, 'foreign'), (target_user_id, auth.uid(), 'foreign')
   on conflict (user_id, friend_id) do nothing;
 
   select least(auth.uid(), target_user_id), greatest(auth.uid(), target_user_id)
@@ -106,8 +106,8 @@ begin
   values (
     user_a,
     user_b,
-    case when user_a = auth.uid() then coalesce(target_username, 'Friend') else coalesce(requester_username, 'Friend') end,
-    case when user_b = auth.uid() then coalesce(target_username, 'Friend') else coalesce(requester_username, 'Friend') end,
+    case when user_a = auth.uid() then coalesce(target_username, 'Friend') else coalesce(sender_username, 'Friend') end,
+    case when user_b = auth.uid() then coalesce(target_username, 'Friend') else coalesce(sender_username, 'Friend') end,
     now()
   )
   on conflict (user_a, user_b) do update

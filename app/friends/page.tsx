@@ -17,7 +17,7 @@ type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
 type RelatedUserIds = {
   friendIds: Set<string>;
   pendingIds: Set<string>;
-  blockedIds: Set<string>;
+  blockedUserIds: Set<string>;
   rejectedIds: Set<string>;
 };
 
@@ -32,8 +32,8 @@ type ProfileSummary = {
 type SearchResult = ProfileSummary;
 type ForeignProfile = ProfileSummary;
 type RawFriendRow = Omit<FriendRow, "friend"> & { friend: ProfileSummary | ProfileSummary[] | null };
-type RawFriendRequestRow = Omit<FriendRequestRow, "requester" | "receiver"> & {
-  requester: ProfileSummary | ProfileSummary[] | null;
+type RawFriendRequestRow = Omit<FriendRequestRow, "sender" | "receiver"> & {
+  sender: ProfileSummary | ProfileSummary[] | null;
   receiver: ProfileSummary | ProfileSummary[] | null;
 };
 
@@ -47,12 +47,12 @@ type FriendRow = {
 
 type FriendRequestRow = {
   id: string;
-  requester_id: string;
+  sender_id: string;
   receiver_id: string;
   status: RequestStatus;
   created_at: string;
   updated_at: string;
-  requester: ProfileSummary | null;
+  sender: ProfileSummary | null;
   receiver: ProfileSummary | null;
 };
 
@@ -81,7 +81,7 @@ function normalizeFriendRows(rows: RawFriendRow[]): FriendRow[] {
 }
 
 function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
-  return rows.map((row) => ({ ...row, requester: singleProfile(row.requester), receiver: singleProfile(row.receiver) }));
+  return rows.map((row) => ({ ...row, sender: singleProfile(row.sender), receiver: singleProfile(row.receiver) }));
 }
 
 function initials(profile: ProfileSummary | null) {
@@ -162,10 +162,10 @@ function FriendsPageContent() {
   }, [showSupabaseError]);
 
   const loadRequests = useCallback(async (userId: string) => {
-    const requestSelect = "id,requester_id,receiver_id,status,created_at,updated_at,requester:profiles!friend_requests_requester_id_fkey(id,username,display_name,avatar_url,country),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url,country)";
+    const requestSelect = "id,sender_id,receiver_id,status,created_at,updated_at,sender:profiles!friend_requests_sender_id_fkey(id,username,display_name,avatar_url,country),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url,country)";
     const [incomingRes, outgoingRes] = await Promise.all([
       supabase.from("friend_requests").select(requestSelect).eq("receiver_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
-      supabase.from("friend_requests").select(requestSelect).eq("requester_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("friend_requests").select(requestSelect).eq("sender_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
     ]);
 
     if (incomingRes.error) {
@@ -215,8 +215,8 @@ function FriendsPageContent() {
   const loadRelatedUserIds = useCallback(async (userId: string): Promise<RelatedUserIds> => {
     const [friendsRes, requestsRes, blockedRes] = await Promise.all([
       supabase.from("friends").select("friend_id").eq("user_id", userId),
-      supabase.from("friend_requests").select("requester_id,receiver_id,status").or(`requester_id.eq.${userId},receiver_id.eq.${userId}`),
-      supabase.from("blocked_users").select("blocker_id,blocked_id").or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`),
+      supabase.from("friend_requests").select("sender_id,receiver_id,status").or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
+      supabase.from("blocked_users").select("user_id,blocked_user_id").or(`user_id.eq.${userId},blocked_user_id.eq.${userId}`),
     ]);
 
     if (friendsRes.error) showSupabaseError("Could not load existing friends.", friendsRes.error);
@@ -226,14 +226,14 @@ function FriendsPageContent() {
     const friendIds = new Set((friendsRes.data || []).map((friend) => friend.friend_id as string));
     const pendingIds = new Set<string>();
     const rejectedIds = new Set<string>();
-    for (const request of (requestsRes.data || []) as { requester_id: string; receiver_id: string; status: RequestStatus }[]) {
-      const otherId = request.requester_id === userId ? request.receiver_id : request.requester_id;
+    for (const request of (requestsRes.data || []) as { sender_id: string; receiver_id: string; status: RequestStatus }[]) {
+      const otherId = request.sender_id === userId ? request.receiver_id : request.sender_id;
       if (request.status === "pending") pendingIds.add(otherId);
       if (request.status === "rejected" || request.status === "cancelled") rejectedIds.add(otherId);
     }
-    const blockedIds = new Set((blockedRes.data || []).map((row) => (row.blocker_id === userId ? row.blocked_id : row.blocker_id)));
+    const blockedUserIds = new Set((blockedRes.data || []).map((row) => (row.user_id === userId ? row.blocked_user_id : row.user_id)));
 
-    return { friendIds, pendingIds, blockedIds, rejectedIds };
+    return { friendIds, pendingIds, blockedUserIds, rejectedIds };
   }, [showSupabaseError]);
 
   const refreshAll = useCallback(async (userId: string) => {
@@ -318,7 +318,7 @@ function FriendsPageContent() {
 
       const seen = new Set<string>();
       const rows = ((data || []) as ProfileSummary[]).filter((profile) => {
-        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
+        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedUserIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
         seen.add(profile.id);
         return true;
       });
@@ -362,7 +362,7 @@ function FriendsPageContent() {
 
       const seen = new Set<string>();
       const visible = ((data || []) as ForeignProfile[]).filter((profile) => {
-        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
+        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedUserIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
         seen.add(profile.id);
         return true;
       });
@@ -414,7 +414,7 @@ function FriendsPageContent() {
         .from("friend_requests")
         .update({ status: action, updated_at: new Date().toISOString() })
         .eq("id", requestId)
-        .eq(action === "cancelled" ? "requester_id" : "receiver_id", myId)
+        .eq(action === "cancelled" ? "sender_id" : "receiver_id", myId)
         .eq("status", "pending");
       if (error) showSupabaseError("Friend request update failed.", error);
     }
@@ -434,7 +434,7 @@ function FriendsPageContent() {
   async function blockFriend(friendId: string) {
     if (!myId) return;
     setBusyId(friendId);
-    const { error } = await supabase.from("blocked_users").upsert({ blocker_id: myId, blocked_id: friendId }, { onConflict: "blocker_id,blocked_id" });
+    const { error } = await supabase.from("blocked_users").upsert({ user_id: myId, blocked_user_id: friendId }, { onConflict: "user_id,blocked_user_id" });
     if (error) showSupabaseError("Could not block user.", error);
     else showToast("User blocked.");
     await refreshAll(myId);
@@ -588,7 +588,7 @@ function RequestList({ title, empty, requests, mode, busyId, onRespond }: { titl
       <h2 className="mb-3 text-lg font-black">{title}</h2>
       <div className="space-y-3">
         {requests.length === 0 ? <GlassPanel className="rounded-3xl p-6 text-center text-sm text-gray-400">{empty}</GlassPanel> : requests.map((request) => {
-          const profile = mode === "incoming" ? request.requester : request.receiver;
+          const profile = mode === "incoming" ? request.sender : request.receiver;
           return (
             <GlassPanel key={request.id} className="flex items-center gap-3 rounded-2xl p-4">
               <Avatar profile={profile} />
