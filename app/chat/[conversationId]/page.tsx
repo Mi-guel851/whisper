@@ -280,7 +280,7 @@ export default function ChatPage() {
         .eq("user_id", session.user.id)
         .eq("conversation_id", conversationId)
         .maybeSingle();
-      setChatUnlocked(friendConversation || Boolean(unlock));
+      setChatUnlocked(Boolean(unlock));
 
       const { data: msgs } = await supabase
         .from("direct_messages")
@@ -443,7 +443,7 @@ export default function ChatPage() {
     e.preventDefault();
     const trimmed = input.trim();
     if (!chatUnlocked) {
-      showToast(`Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
+      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
       return;
     }
     if (!trimmed || !myId) return;
@@ -459,17 +459,20 @@ export default function ChatPage() {
       reply_to_id: replyId,
     });
 
-    if (!error) {
-      await supabase
-        .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
+    if (error) {
+      showToast(error.message);
+      return;
     }
+
+    await supabase
+      .from("conversations")
+      .update({ last_message_at: new Date().toISOString() })
+      .eq("id", conversationId);
   }
 
   function triggerPhotoPicker() {
     if (!chatUnlocked) {
-      showToast(`Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
       return;
     }
     if (!isPremium) {
@@ -601,7 +604,7 @@ export default function ChatPage() {
       showToast(error.message);
     } else {
       setChatUnlocked(true);
-      showToast("Inbox chat unlocked permanently.");
+      showToast("Chat unlocked permanently.");
     }
     setUnlocking(false);
   }
@@ -654,8 +657,25 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div ref={messagesContainerRef} className="relative flex-1 overflow-y-auto px-6 py-6 space-y-4">
-        <ChatDoodleBackground />
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+        {!chatUnlocked && (
+          <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
+              <LockKeyhole className="text-cyan-200" />
+            </div>
+            <h2 className="text-2xl font-black">Chat locked</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
+              {isFriendConversation ? "Unlock this friend conversation once for 40 Coins to send messages. If you accepted the request, it is already unlocked." : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
+            </p>
+            <button
+              onClick={unlockChat}
+              disabled={unlocking}
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+            >
+              <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
+            </button>
+          </GlassPanel>
+        )}
 
         <div className="relative z-10 space-y-4">
           {!chatUnlocked && !isFriendConversation && (

@@ -1,36 +1,20 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Ban, Check, Clock, Globe2, MessageCircle, Search, User, UserPlus, Users, X } from "lucide-react";
+import { Check, Clock, MessageCircle, UserPlus, Users, X } from "lucide-react";
 
 import { supabase } from "@/lib/supabase/client";
-import { presenceManager } from "@/lib/realtime/presence";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
 
-type FriendTab = "friends" | "requests" | "active";
+type FriendTab = "discover" | "requests" | "friends";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
 
-type RelatedUserIds = {
-  friendIds: Set<string>;
-  pendingIds: Set<string>;
-  blockedUserIds: Set<string>;
-  rejectedIds: Set<string>;
-};
+type ProfileSummary = { id: string };
 
-type ProfileSummary = {
-  id: string;
-  username: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  country: string | null;
-};
-
-type SearchResult = ProfileSummary;
-type ForeignProfile = ProfileSummary;
 type RawFriendRow = Omit<FriendRow, "friend"> & { friend: ProfileSummary | ProfileSummary[] | null };
 type RawFriendRequestRow = Omit<FriendRequestRow, "sender" | "receiver"> & {
   sender: ProfileSummary | ProfileSummary[] | null;
@@ -56,12 +40,37 @@ type FriendRequestRow = {
   receiver: ProfileSummary | null;
 };
 
-type OnlineFriend = FriendRow & { isOnline: boolean };
+type RelatedUserIds = {
+  friendIds: Set<string>;
+  pendingIds: Set<string>;
+  blockedUserIds: Set<string>;
+};
+
+const PAGE_SIZE = 5;
+const ACCEPT_FRIEND_COST = 20;
+
+const anonymousPrefixes = [
+  "Shadow",
+  "DarkWolf",
+  "Ghost",
+  "SilentFox",
+  "NightEcho",
+  "AlphaVoid",
+  "Yoganony",
+  "NovaGhost",
+  "Cipher",
+  "PixelVoid",
+  "MoonShade",
+  "EchoWolf",
+  "VoidFox",
+  "NeonGhost",
+  "SilentNova",
+];
 
 const tabs: { value: FriendTab; label: string }[] = [
-  { value: "friends", label: "Friends" },
+  { value: "discover", label: "Discover" },
   { value: "requests", label: "Requests" },
-  { value: "active", label: "Active" },
+  { value: "friends", label: "Friends" },
 ];
 
 function uniqueChannelName(prefix: string) {
@@ -69,7 +78,7 @@ function uniqueChannelName(prefix: string) {
 }
 
 function normalizeTab(value: string | null): FriendTab {
-  return value === "requests" || value === "active" ? value : "friends";
+  return value === "requests" || value === "friends" ? value : "discover";
 }
 
 function singleProfile<T extends ProfileSummary>(profile: T | T[] | null): T | null {
@@ -84,19 +93,34 @@ function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
   return rows.map((row) => ({ ...row, sender: singleProfile(row.sender), receiver: singleProfile(row.receiver) }));
 }
 
-function initials(profile: ProfileSummary | null) {
-  return (profile?.display_name || profile?.username || "?").slice(0, 1).toUpperCase();
+function hashUserId(userId: string) {
+  let hash = 0;
+  for (let index = 0; index < userId.length; index += 1) {
+    hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
+  }
+  return hash;
 }
 
-function Avatar({ profile, online }: { profile: ProfileSummary | null; online?: boolean }) {
+function anonymousName(userId?: string | null) {
+  if (!userId) return "Ghost.00";
+  const hash = hashUserId(userId);
+  const prefix = anonymousPrefixes[hash % anonymousPrefixes.length];
+  const suffix = String(hash % 100).padStart(2, "0");
+  return `${prefix}.${suffix}`;
+}
+
+function AnonymousAvatar({ userId }: { userId?: string | null }) {
+  const hash = hashUserId(userId || "ghost");
+  const gradients = [
+    "from-cyan-500 to-purple-600",
+    "from-fuchsia-500 to-indigo-600",
+    "from-emerald-400 to-cyan-600",
+    "from-amber-300 to-rose-500",
+    "from-slate-400 to-violet-700",
+  ];
   return (
-    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
-      {profile?.avatar_url ? (
-        <img src={profile.avatar_url} alt={profile.username} className="h-full w-full object-cover" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-lg font-black text-white">{initials(profile)}</div>
-      )}
-      {online && <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#05010F] bg-green-400" />}
+    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${gradients[hash % gradients.length]} text-lg font-black text-white`}>
+      👻
     </div>
   );
 }
@@ -106,23 +130,15 @@ function FriendsPageContent() {
   const searchParams = useSearchParams();
   const { showToast } = useToast();
   const [myId, setMyId] = useState("");
-  const [myCountry, setMyCountry] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverPage, setDiscoverPage] = useState(0);
+  const [hasMorePeople, setHasMorePeople] = useState(false);
+  const [people, setPeople] = useState<ProfileSummary[]>([]);
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [incoming, setIncoming] = useState<FriendRequestRow[]>([]);
   const [outgoing, setOutgoing] = useState<FriendRequestRow[]>([]);
-  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [foreignUsers, setForeignUsers] = useState<ForeignProfile[]>([]);
-  const [foreignLimit, setForeignLimit] = useState(5);
-  const [loadingForeign, setLoadingForeign] = useState(false);
-  const [hasMoreForeignUsers, setHasMoreForeignUsers] = useState(false);
-  const [coinBalance, setCoinBalance] = useState<number | null>(null);
-  const [confirmForeignUser, setConfirmForeignUser] = useState<ForeignProfile | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showSupabaseError = useCallback((fallback: string, error: { message?: string } | null | undefined) => {
     const message = error?.message?.trim() || fallback;
@@ -130,26 +146,10 @@ function FriendsPageContent() {
     showToast(message);
   }, [showToast]);
 
-  const loadCoinBalance = useCallback(async (userId: string) => {
-    const { error: walletError } = await supabase.rpc("ensure_coin_wallet", { target_user: userId });
-    if (walletError) {
-      showSupabaseError("Could not load coin wallet.", walletError);
-      return;
-    }
-
-    const { data, error } = await supabase.from("coins").select("balance").eq("user_id", userId).maybeSingle();
-    if (error) {
-      showSupabaseError("Could not load coin balance.", error);
-      return;
-    }
-
-    setCoinBalance(data?.balance ?? 0);
-  }, [showSupabaseError]);
-
   const loadFriends = useCallback(async (userId: string) => {
     const { data, error } = await supabase
       .from("friends")
-      .select("id,user_id,friend_id,created_at,friend:profiles!friends_friend_id_fkey(id,username,display_name,avatar_url,country)")
+      .select("id,user_id,friend_id,created_at,friend:profiles!friends_friend_id_fkey(id)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -162,7 +162,7 @@ function FriendsPageContent() {
   }, [showSupabaseError]);
 
   const loadRequests = useCallback(async (userId: string) => {
-    const requestSelect = "id,sender_id,receiver_id,status,created_at,updated_at,sender:profiles!friend_requests_sender_id_fkey(id,username,display_name,avatar_url,country),receiver:profiles!friend_requests_receiver_id_fkey(id,username,display_name,avatar_url,country)";
+    const requestSelect = "id,sender_id,receiver_id,status,created_at,updated_at,sender:profiles!friend_requests_sender_id_fkey(id),receiver:profiles!friend_requests_receiver_id_fkey(id)";
     const [incomingRes, outgoingRes] = await Promise.all([
       supabase.from("friend_requests").select(requestSelect).eq("receiver_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
       supabase.from("friend_requests").select(requestSelect).eq("sender_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
@@ -181,37 +181,6 @@ function FriendsPageContent() {
     setOutgoing(normalizeRequestRows((outgoingRes.data || []) as unknown as RawFriendRequestRow[]));
   }, [showSupabaseError]);
 
-  const loadOnlineAcceptedFriends = useCallback(async (userId: string) => {
-    const { data: friendRows, error: friendsError } = await supabase
-      .from("friends")
-      .select("friend_id")
-      .eq("user_id", userId);
-
-    if (friendsError) {
-      showSupabaseError("Could not load accepted friends for active tab.", friendsError);
-      return;
-    }
-
-    const friendIds = (friendRows || []).map((friend) => friend.friend_id as string);
-    if (friendIds.length === 0) {
-      setOnlineIds(new Set());
-      return;
-    }
-
-    const { data: presenceRows, error: presenceError } = await supabase
-      .from("user_presence")
-      .select("user_id,is_online")
-      .in("user_id", friendIds)
-      .eq("is_online", true);
-
-    if (presenceError) {
-      showSupabaseError("Could not load active friends.", presenceError);
-      return;
-    }
-
-    setOnlineIds(new Set((presenceRows || []).map((presence) => presence.user_id as string)));
-  }, [showSupabaseError]);
-
   const loadRelatedUserIds = useCallback(async (userId: string): Promise<RelatedUserIds> => {
     const [friendsRes, requestsRes, blockedRes] = await Promise.all([
       supabase.from("friends").select("friend_id").eq("user_id", userId),
@@ -225,27 +194,45 @@ function FriendsPageContent() {
 
     const friendIds = new Set((friendsRes.data || []).map((friend) => friend.friend_id as string));
     const pendingIds = new Set<string>();
-    const rejectedIds = new Set<string>();
     for (const request of (requestsRes.data || []) as { sender_id: string; receiver_id: string; status: RequestStatus }[]) {
-      const otherId = request.sender_id === userId ? request.receiver_id : request.sender_id;
-      if (request.status === "pending") pendingIds.add(otherId);
-      if (request.status === "rejected" || request.status === "cancelled") rejectedIds.add(otherId);
+      if (request.status !== "pending") continue;
+      pendingIds.add(request.sender_id === userId ? request.receiver_id : request.sender_id);
     }
     const blockedUserIds = new Set((blockedRes.data || []).map((row) => (row.user_id === userId ? row.blocked_user_id : row.user_id)));
 
-    return { friendIds, pendingIds, blockedUserIds, rejectedIds };
+    return { friendIds, pendingIds, blockedUserIds };
   }, [showSupabaseError]);
 
+  const loadPeople = useCallback(async (userId: string, page: number) => {
+    setDiscoverLoading(true);
+    const related = await loadRelatedUserIds(userId);
+    const excluded = new Set([userId, ...related.friendIds, ...related.pendingIds, ...related.blockedUserIds]);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .order("id", { ascending: true })
+      .range(0, Math.max((page + 1) * PAGE_SIZE * 4, PAGE_SIZE + 1));
+
+    if (error) {
+      showSupabaseError("Could not discover people.", error);
+      setDiscoverLoading(false);
+      return;
+    }
+
+    const visible = ((data || []) as ProfileSummary[]).filter((profile) => !excluded.has(profile.id));
+    setPeople(visible.slice(0, (page + 1) * PAGE_SIZE));
+    setHasMorePeople(visible.length > (page + 1) * PAGE_SIZE);
+    setDiscoverLoading(false);
+  }, [loadRelatedUserIds, showSupabaseError]);
+
   const refreshAll = useCallback(async (userId: string) => {
-    await Promise.all([loadFriends(userId), loadRequests(userId)]);
-  }, [loadFriends, loadRequests]);
+    await Promise.all([loadFriends(userId), loadRequests(userId), loadPeople(userId, discoverPage)]);
+  }, [discoverPage, loadFriends, loadPeople, loadRequests]);
 
   useEffect(() => {
     let cancelled = false;
     let requestChannel: ReturnType<typeof supabase.channel> | null = null;
     let friendsChannel: ReturnType<typeof supabase.channel> | null = null;
-    let coinsChannel: ReturnType<typeof supabase.channel> | null = null;
-    let unsubscribePresence: (() => void) | undefined;
 
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -255,11 +242,7 @@ function FriendsPageContent() {
       }
 
       setMyId(session.user.id);
-      const { data: currentProfile } = await supabase.from("profiles").select("country").eq("id", session.user.id).maybeSingle();
-      setMyCountry(currentProfile?.country ?? null);
-      await presenceManager.connect(session.user.id);
-      unsubscribePresence = presenceManager.subscribe(() => loadOnlineAcceptedFriends(session.user.id));
-      await Promise.all([refreshAll(session.user.id), loadCoinBalance(session.user.id), loadOnlineAcceptedFriends(session.user.id)]);
+      await Promise.all([loadFriends(session.user.id), loadRequests(session.user.id), loadPeople(session.user.id, 0)]);
       if (cancelled) return;
       setLoading(false);
 
@@ -272,118 +255,28 @@ function FriendsPageContent() {
         .channel(uniqueChannelName(`friends-${session.user.id}`))
         .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${session.user.id}` }, () => refreshAll(session.user.id))
         .subscribe();
-
-      coinsChannel = supabase
-        .channel(uniqueChannelName(`coins-${session.user.id}`))
-        .on("postgres_changes", { event: "*", schema: "public", table: "coins", filter: `user_id=eq.${session.user.id}` }, () => loadCoinBalance(session.user.id))
-        .on("postgres_changes", { event: "*", schema: "public", table: "user_presence" }, () => loadOnlineAcceptedFriends(session.user.id))
-        .subscribe();
     }
 
     init();
 
     return () => {
       cancelled = true;
-      unsubscribePresence?.();
       if (requestChannel) supabase.removeChannel(requestChannel);
       if (friendsChannel) supabase.removeChannel(friendsChannel);
-      if (coinsChannel) supabase.removeChannel(coinsChannel);
     };
-  }, [loadCoinBalance, loadOnlineAcceptedFriends, refreshAll]);
-
-  useEffect(() => {
-    if (!myId) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    const cleanQuery = query.trim().toLowerCase();
-    debounceRef.current = setTimeout(async () => {
-      if (cleanQuery.length < 2 || !myCountry) {
-        setResults([]);
-        setSearching(false);
-        return;
-      }
-
-      setSearching(true);
-      const [{ data, error }, related] = await Promise.all([
-        supabase.from("profiles").select("id,username,display_name,avatar_url,country").ilike("username", `%${cleanQuery}%`).eq("country", myCountry).neq("id", myId).order("username", { ascending: true }).limit(20),
-        loadRelatedUserIds(myId),
-      ]);
-
-      if (error) {
-        showSupabaseError("Search failed.", error);
-        setResults([]);
-        setSearching(false);
-        return;
-      }
-
-      const seen = new Set<string>();
-      const rows = ((data || []) as ProfileSummary[]).filter((profile) => {
-        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedUserIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
-        seen.add(profile.id);
-        return true;
-      });
-
-      setResults(rows);
-      setSearching(false);
-    }, 300);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [loadRelatedUserIds, myCountry, myId, query, showSupabaseError]);
-
-
-
-  useEffect(() => {
-    if (!myId || !myCountry) return;
-
-    let cancelled = false;
-
-    async function loadForeignUsers() {
-      setLoadingForeign(true);
-      const [{ data, error }, related] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("id,username,display_name,avatar_url,country")
-          .neq("country", myCountry)
-          .neq("id", myId)
-          .order("username", { ascending: true })
-          .limit(Math.max((foreignLimit + 1) * 4, 30)),
-        loadRelatedUserIds(myId),
-      ]);
-
-      if (cancelled) return;
-      if (error) {
-        showSupabaseError("Could not load foreign users.", error);
-        setForeignUsers([]);
-        setLoadingForeign(false);
-        return;
-      }
-
-      const seen = new Set<string>();
-      const visible = ((data || []) as ForeignProfile[]).filter((profile) => {
-        if (seen.has(profile.id) || related.friendIds.has(profile.id) || related.pendingIds.has(profile.id) || related.blockedUserIds.has(profile.id) || related.rejectedIds.has(profile.id)) return false;
-        seen.add(profile.id);
-        return true;
-      });
-
-      setForeignUsers(visible.slice(0, foreignLimit));
-      setHasMoreForeignUsers(visible.length > foreignLimit);
-      setLoadingForeign(false);
-    }
-
-    loadForeignUsers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [foreignLimit, loadRelatedUserIds, myCountry, myId, showSupabaseError]);
+  }, [loadFriends, loadPeople, loadRequests, refreshAll]);
 
   const tab = normalizeTab(searchParams.get("tab"));
-  const activeFriends = useMemo<OnlineFriend[]>(() => friends.map((friend) => ({ ...friend, isOnline: onlineIds.has(friend.friend_id) })).filter((friend) => friend.isOnline), [friends, onlineIds]);
+
+  async function showMorePeople() {
+    if (!myId) return;
+    const nextPage = discoverPage + 1;
+    setDiscoverPage(nextPage);
+    await loadPeople(myId, nextPage);
+  }
 
   function setActiveTab(nextTab: FriendTab) {
-    router.replace(`/friends${nextTab === "friends" ? "" : `?tab=${nextTab}`}`);
+    router.replace(`/friends${nextTab === "discover" ? "" : `?tab=${nextTab}`}`);
   }
 
   async function addFriend(profileId: string) {
@@ -396,28 +289,42 @@ function FriendsPageContent() {
     if (error) {
       showSupabaseError("Friend request failed.", error);
     } else {
-      setResults((prev) => prev.filter((profile) => profile.id !== profileId));
+      setPeople((prev) => prev.filter((profile) => profile.id !== profileId));
       showToast("Friend request sent.");
     }
     await refreshAll(myId);
     setBusyId(null);
   }
 
-  async function respond(requestId: string, action: "accepted" | "rejected" | "cancelled") {
+  async function acceptRequest(requestId: string) {
     if (!myId) return;
     setBusyId(requestId);
-    if (action === "accepted") {
-      const { error } = await supabase.rpc("accept_friend_request", { request_id: requestId });
-      if (error) showSupabaseError("Friend request response failed.", error);
+    const { error } = await supabase.rpc("accept_friend_request", { request_id: requestId });
+    if (error) {
+      showToast(error.message.includes("Not enough") ? "Not enough coins." : error.message);
     } else {
-      const { error } = await supabase
-        .from("friend_requests")
-        .update({ status: action, updated_at: new Date().toISOString() })
-        .eq("id", requestId)
-        .eq(action === "cancelled" ? "sender_id" : "receiver_id", myId)
-        .eq("status", "pending");
-      if (error) showSupabaseError("Friend request update failed.", error);
+      showToast(`${ACCEPT_FRIEND_COST} coins paid. Friend added.`);
     }
+    await refreshAll(myId);
+    setBusyId(null);
+  }
+
+  async function declineRequest(requestId: string) {
+    if (!myId) return;
+    setBusyId(requestId);
+    const { error } = await supabase.from("friend_requests").delete().eq("id", requestId).eq("receiver_id", myId).eq("status", "pending");
+    if (error) showSupabaseError("Could not decline request.", error);
+    else showToast("Request declined.");
+    await refreshAll(myId);
+    setBusyId(null);
+  }
+
+  async function cancelRequest(requestId: string) {
+    if (!myId) return;
+    setBusyId(requestId);
+    const { error } = await supabase.from("friend_requests").delete().eq("id", requestId).eq("sender_id", myId).eq("status", "pending");
+    if (error) showSupabaseError("Could not cancel request.", error);
+    else showToast("Request cancelled.");
     await refreshAll(myId);
     setBusyId(null);
   }
@@ -431,43 +338,6 @@ function FriendsPageContent() {
     if (conversationId) router.push(`/chat/${conversationId}`);
   }
 
-  async function blockFriend(friendId: string) {
-    if (!myId) return;
-    setBusyId(friendId);
-    const { error } = await supabase.from("blocked_users").upsert({ user_id: myId, blocked_user_id: friendId }, { onConflict: "user_id,blocked_user_id" });
-    if (error) showSupabaseError("Could not block user.", error);
-    else showToast("User blocked.");
-    await refreshAll(myId);
-    setBusyId(null);
-  }
-
-
-
-  async function confirmConnectWithForeigner() {
-    if (!myId || !confirmForeignUser) return;
-    if ((coinBalance ?? 0) < 50) {
-      showToast("Not enough coins.");
-      setConfirmForeignUser(null);
-      return;
-    }
-
-    const targetUser = confirmForeignUser;
-    setBusyId(targetUser.id);
-    const { data: newBalance, error } = await supabase.rpc("connect_with_foreigner", { target_user_id: targetUser.id });
-
-    if (error) {
-      showSupabaseError("Could not connect with foreign user.", error);
-    } else {
-      setCoinBalance(typeof newBalance === "number" ? newBalance : coinBalance);
-      setForeignUsers((prev) => prev.filter((profile) => profile.id !== targetUser.id));
-      await Promise.all([refreshAll(myId), loadCoinBalance(myId)]);
-      showToast(`Connected with @${targetUser.username}.`);
-    }
-
-    setBusyId(null);
-    setConfirmForeignUser(null);
-  }
-
   if (loading) return <main className="flex min-h-screen items-center justify-center theme-bg-gradient text-white">Loading...</main>;
 
   return (
@@ -476,135 +346,88 @@ function FriendsPageContent() {
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
           <Users className="text-cyan-300" size={28} />
-          <h1 className="text-3xl font-black">Friends</h1>
+          <h1 className="text-3xl font-black">Discover People</h1>
         </div>
-        <p className="mt-2 text-sm text-gray-400">Find friends by username, manage requests, and chat for free once connected.</p>
+        <p className="mt-2 text-sm text-gray-400">Meet registered Whisper users anonymously. Names are generated and never reveal identity.</p>
 
         <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl bg-white/5 p-1">
           {tabs.map((item) => <button key={item.value} onClick={() => setActiveTab(item.value)} className={`rounded-xl px-3 py-2 text-sm font-bold transition ${tab === item.value ? "bg-white text-[#10051f]" : "text-gray-300 hover:bg-white/10"}`}>{item.label}</button>)}
         </div>
 
-        <GlassPanel className="mt-6 rounded-3xl p-4">
-          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-            <Search size={18} className="text-cyan-300" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search username" className="w-full bg-transparent text-sm text-white outline-none placeholder:text-gray-500" />
-          </label>
-          {query.trim().length > 0 && (
-            <div className="mt-4 space-y-3">
-              {searching ? <p className="text-sm text-gray-400">Searching...</p> : results.length === 0 ? <p className="text-sm text-gray-400">No users found.</p> : results.map((profile) => (
-                <div key={profile.id} className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
-                  <Avatar profile={profile} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">@{profile.username}</p>
-                    <p className="truncate text-xs text-gray-400">{profile.display_name || profile.country}</p>
-                  </div>
-                  <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"><UserPlus size={14} className="mr-1 inline" /> Add</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </GlassPanel>
-
-        <GlassPanel className="mt-6 rounded-3xl p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Globe2 className="text-purple-300" size={22} />
-              <div>
-                <h2 className="text-lg font-black">Connect with Foreigners</h2>
-                <p className="text-xs text-gray-400">Connect instantly with users outside {myCountry || "your country"} for 50 Coins.</p>
-              </div>
-            </div>
-            <span className="rounded-full bg-yellow-300/10 px-3 py-1 text-xs font-black text-yellow-200">{coinBalance ?? 0} Coins</span>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {loadingForeign ? <p className="text-sm text-gray-400">Loading foreigners...</p> : foreignUsers.length === 0 ? <p className="text-sm text-gray-400">No foreign users available right now.</p> : foreignUsers.map((profile) => (
-              <div key={profile.id} className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
-                <Avatar profile={profile} />
+        {tab === "discover" && (
+          <section className="mt-6 space-y-3">
+            {people.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No people to discover right now.</GlassPanel> : people.map((profile) => (
+              <GlassPanel key={profile.id} className="flex items-center gap-4 rounded-2xl p-4">
+                <AnonymousAvatar userId={profile.id} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">@{profile.username}</p>
-                  <p className="truncate text-xs text-gray-400">{profile.country || "Country unavailable"}</p>
+                  <p className="truncate font-semibold">{anonymousName(profile.id)}</p>
+                  <p className="text-xs text-gray-400">Anonymous Whisper user</p>
                 </div>
-                <button onClick={() => setConfirmForeignUser(profile)} disabled={busyId === profile.id} className="rounded-xl bg-purple-300 px-3 py-2 text-xs font-black text-[#10051f] disabled:opacity-60">Connect</button>
-              </div>
+                <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"><UserPlus size={14} className="mr-1 inline" /> Add Friend</button>
+              </GlassPanel>
             ))}
-          </div>
+            {hasMorePeople && (
+              <button onClick={showMorePeople} disabled={discoverLoading} className="w-full rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:opacity-60">
+                {discoverLoading ? "Loading..." : "Show More People"}
+              </button>
+            )}
+          </section>
+        )}
 
-          {hasMoreForeignUsers && (
-            <button onClick={() => setForeignLimit((limit) => limit + 5)} className="mt-4 w-full rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
-              Show More
-            </button>
-          )}
-        </GlassPanel>
+        {tab === "requests" && (
+          <section className="mt-6 space-y-6">
+            <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} />
+            <RequestList title="Sent Requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} />
+          </section>
+        )}
 
-
-        {tab === "friends" && <section className="mt-6 space-y-3">{friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet. Search by username to add someone.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} online={onlineIds.has(friend.friend_id)} onChat={() => startChat(friend.friend_id)} onBlock={() => blockFriend(friend.friend_id)} />)}</section>}
-        {tab === "active" && <section className="mt-6 space-y-3">{activeFriends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends are online right now.</GlassPanel> : activeFriends.map((friend) => <FriendCard key={friend.id} friend={friend} online onChat={() => startChat(friend.friend_id)} onBlock={() => blockFriend(friend.friend_id)} />)}</section>}
-        {tab === "requests" && <section className="mt-6 space-y-6"><RequestList title="Incoming Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onRespond={respond} /><RequestList title="Outgoing Requests" empty="No outgoing requests." requests={outgoing} mode="outgoing" busyId={busyId} onRespond={respond} /></section>}
+        {tab === "friends" && (
+          <section className="mt-6 space-y-3">
+            {friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} onChat={() => startChat(friend.friend_id)} />)}
+          </section>
+        )}
       </div>
       <BottomNavigation />
-      {confirmForeignUser && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <GlassPanel strong className="w-full max-w-sm rounded-3xl p-6 text-center">
-            <h2 className="text-xl font-black text-white">Connect with this user?</h2>
-            <div className="mt-4 rounded-2xl bg-white/5 p-4">
-              <Avatar profile={confirmForeignUser} />
-              <p className="mt-3 font-semibold">@{confirmForeignUser.username}</p>
-              <p className="text-xs text-gray-400">{confirmForeignUser.country || "Country unavailable"}</p>
-            </div>
-            <p className="mt-5 text-sm font-bold text-gray-300">Cost</p>
-            <p className="text-2xl font-black text-yellow-200">50 Coins</p>
-            <div className="mt-6 flex gap-3">
-              <button onClick={() => setConfirmForeignUser(null)} disabled={busyId === confirmForeignUser.id} className="flex-1 rounded-2xl bg-white/10 p-3 font-semibold text-white transition hover:bg-white/20 disabled:opacity-60">Cancel</button>
-              <button onClick={confirmConnectWithForeigner} disabled={busyId === confirmForeignUser.id} className="flex-1 rounded-2xl bg-purple-300 p-3 font-black text-[#10051f] transition hover:bg-purple-200 disabled:opacity-60">{busyId === confirmForeignUser.id ? "Connecting..." : "Connect"}</button>
-            </div>
-          </GlassPanel>
-        </div>
-      )}
-
     </main>
   );
 }
 
-function FriendCard({ friend, online, onChat, onBlock }: { friend: FriendRow; online: boolean; onChat: () => void; onBlock: () => void }) {
+function FriendCard({ friend, onChat }: { friend: FriendRow; onChat: () => void }) {
   return (
     <GlassPanel className="flex items-center gap-4 rounded-2xl p-4">
-      <Avatar profile={friend.friend} online={online} />
+      <AnonymousAvatar userId={friend.friend_id} />
       <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold">@{friend.friend?.username || "friend"}</p>
-        <p className="text-xs text-gray-400">{friend.friend?.country || "Country unavailable"}</p>
-        <p className={`text-xs ${online ? "text-green-400" : "text-gray-400"}`}>{online ? "Online" : "Offline · last seen unavailable"}</p>
+        <p className="truncate font-semibold">{anonymousName(friend.friend_id)}</p>
+        <p className="text-xs text-gray-400">Friend</p>
       </div>
       <button onClick={onChat} className="rounded-xl bg-white/10 p-3 transition hover:bg-white/15" aria-label="Open chat"><MessageCircle size={18} /></button>
-      <button onClick={() => friend.friend?.username && (window.location.href = `/u/${friend.friend.username}`)} className="rounded-xl bg-white/10 p-3 transition hover:bg-white/15" aria-label="Open profile"><User size={18} /></button>
-      <button onClick={onBlock} className="rounded-xl bg-rose-500/20 p-3 text-rose-200 transition hover:bg-rose-500/30" aria-label="Block user"><Ban size={18} /></button>
     </GlassPanel>
   );
 }
 
-function RequestList({ title, empty, requests, mode, busyId, onRespond }: { title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing"; busyId: string | null; onRespond: (requestId: string, action: "accepted" | "rejected" | "cancelled") => void }) {
+function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel }: { title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing"; busyId: string | null; onAccept: (requestId: string) => void; onDecline: (requestId: string) => void; onCancel: (requestId: string) => void }) {
   return (
     <div>
       <h2 className="mb-3 text-lg font-black">{title}</h2>
       <div className="space-y-3">
         {requests.length === 0 ? <GlassPanel className="rounded-3xl p-6 text-center text-sm text-gray-400">{empty}</GlassPanel> : requests.map((request) => {
-          const profile = mode === "incoming" ? request.sender : request.receiver;
+          const profileId = mode === "incoming" ? request.sender_id : request.receiver_id;
           return (
             <GlassPanel key={request.id} className="flex items-center gap-3 rounded-2xl p-4">
-              <Avatar profile={profile} />
+              <AnonymousAvatar userId={profileId} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">@{profile?.username || "user"}</p>
-                <p className="truncate text-xs text-gray-400">{profile?.country || profile?.display_name || "Country unavailable"}</p>
+                <p className="truncate font-semibold">{anonymousName(profileId)}</p>
+                <p className="truncate text-xs text-gray-400">{mode === "incoming" ? "Wants to be friends" : "Request pending"}</p>
               </div>
-              {mode === "incoming" && request.status === "pending" ? (
+              {mode === "incoming" ? (
                 <div className="flex gap-2">
-                  <button onClick={() => onRespond(request.id, "accepted")} disabled={busyId === request.id} className="rounded-xl bg-green-400 p-2 text-[#05010F] disabled:opacity-60" aria-label="Accept"><Check size={16} /></button>
-                  <button onClick={() => onRespond(request.id, "rejected")} disabled={busyId === request.id} className="rounded-xl bg-rose-500 p-2 text-white disabled:opacity-60" aria-label="Reject"><X size={16} /></button>
+                  <button onClick={() => onAccept(request.id)} disabled={busyId === request.id} className="rounded-xl bg-green-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60" aria-label="Accept"><Check size={14} className="mr-1 inline" />20 Coins</button>
+                  <button onClick={() => onDecline(request.id)} disabled={busyId === request.id} className="rounded-xl bg-rose-500 p-2 text-white disabled:opacity-60" aria-label="Decline"><X size={16} /></button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 text-xs font-bold capitalize text-yellow-300"><Clock size={14} />{mode === "outgoing" && request.status === "pending" ? "Pending" : request.status}</span>
-                  {mode === "outgoing" && request.status === "pending" && <button onClick={() => onRespond(request.id, "cancelled")} disabled={busyId === request.id} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Cancel Request</button>}
+                  <span className="flex items-center gap-1 text-xs font-bold text-yellow-300"><Clock size={14} />Pending</span>
+                  <button onClick={() => onCancel(request.id)} disabled={busyId === request.id} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Cancel</button>
                 </div>
               )}
             </GlassPanel>
