@@ -8,13 +8,12 @@ import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import { MessageCircle } from "lucide-react";
+import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 
 type ConversationRow = {
   id: string;
   user_a: string;
   user_b: string;
-  user_a_label: string;
-  user_b_label: string;
   user_a_last_read_at: string | null;
   user_b_last_read_at: string | null;
   last_message_at: string;
@@ -42,7 +41,7 @@ export default function InboxPage() {
       const { data } = await supabase
         .from("conversations")
         .select(
-          "id, user_a, user_b, user_a_label, user_b_label, user_a_last_read_at, user_b_last_read_at, last_message_at"
+          "id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at"
         )
         .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
         .order("last_message_at", { ascending: false });
@@ -54,8 +53,12 @@ export default function InboxPage() {
     load();
   }, []);
 
+  function otherUserId(c: ConversationRow) {
+    return c.user_a === myId ? c.user_b : c.user_a;
+  }
+
   function labelFor(c: ConversationRow) {
-    return c.user_a === myId ? c.user_a_label : c.user_b_label;
+    return anonymousDisplayName(otherUserId(c));
   }
 
   function isUnread(c: ConversationRow) {

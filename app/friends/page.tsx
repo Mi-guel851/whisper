@@ -9,6 +9,7 @@ import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
+import { hashUserId, anonymousDisplayName as anonymousName } from "@/lib/anonymousIdentity";
 
 type FriendTab = "discover" | "requests" | "friends";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
@@ -48,24 +49,6 @@ type RelatedUserIds = {
 
 const PAGE_SIZE = 5;
 
-const anonymousPrefixes = [
-  "Shadow",
-  "DarkWolf",
-  "Ghost",
-  "SilentFox",
-  "NightEcho",
-  "AlphaVoid",
-  "Yoganony",
-  "NovaGhost",
-  "Cipher",
-  "PixelVoid",
-  "MoonShade",
-  "EchoWolf",
-  "VoidFox",
-  "NeonGhost",
-  "SilentNova",
-];
-
 const tabs: { value: FriendTab; label: string }[] = [
   { value: "discover", label: "Discover" },
   { value: "requests", label: "Requests" },
@@ -90,22 +73,6 @@ function normalizeFriendRows(rows: RawFriendRow[]): FriendRow[] {
 
 function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
   return rows.map((row) => ({ ...row, sender: singleProfile(row.sender), receiver: singleProfile(row.receiver) }));
-}
-
-function hashUserId(userId: string) {
-  let hash = 0;
-  for (let index = 0; index < userId.length; index += 1) {
-    hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-function anonymousName(userId?: string | null) {
-  if (!userId) return "Ghost.00";
-  const hash = hashUserId(userId);
-  const prefix = anonymousPrefixes[hash % anonymousPrefixes.length];
-  const suffix = String(hash % 100).padStart(2, "0");
-  return `${prefix}.${suffix}`;
 }
 
 function AnonymousAvatar({ userId }: { userId?: string | null }) {
