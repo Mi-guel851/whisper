@@ -4,6 +4,7 @@ import "./globals.css";
 import SplashScreen from "@/components/SplashScreen";
 import ToastProvider from "@/components/ToastProvider";
 import ThemeProvider from "@/components/ThemeProvider";
+import PushNotificationsProvider from "@/components/PushNotificationsProvider";
 import NextTopLoader from "nextjs-toploader";
 import ClickHaptics from "@/components/ClickHaptics";
 
@@ -25,8 +26,10 @@ export default function RootLayout({
         <ClickHaptics />
         <ThemeProvider>
           <ToastProvider>
-            <SplashScreen />
-            {children}
+            <PushNotificationsProvider>
+              <SplashScreen />
+              {children}
+            </PushNotificationsProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>
