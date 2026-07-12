@@ -47,7 +47,6 @@ type RelatedUserIds = {
 };
 
 const PAGE_SIZE = 5;
-const ACCEPT_FRIEND_COST = 20;
 
 const anonymousPrefixes = [
   "Shadow",
@@ -284,10 +283,45 @@ function FriendsPageContent() {
       showToast("Authentication missing. Please sign in again.");
       return;
     }
+    if (profileId === myId) {
+      showToast("You cannot send a friend request to yourself.");
+      return;
+    }
     setBusyId(profileId);
-    const { error } = await supabase.rpc("send_friend_request", { target_user_id: profileId });
+
+    const { data: existing, error: existingError } = await supabase
+      .from("friend_requests")
+      .select("id,sender_id,receiver_id,status")
+      .or(`and(sender_id.eq.${myId},receiver_id.eq.${profileId}),and(sender_id.eq.${profileId},receiver_id.eq.${myId})`)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existingError) {
+      showSupabaseError("Could not check for an existing request.", existingError);
+      await refreshAll(myId);
+      setBusyId(null);
+      return;
+    }
+
+    if (existing) {
+      showToast("A friend request already exists between you two.");
+      await refreshAll(myId);
+      setBusyId(null);
+      return;
+    }
+
+    const { error } = await supabase.from("friend_requests").insert({
+      sender_id: myId,
+      receiver_id: profileId,
+      status: "pending",
+    });
+
     if (error) {
-      showSupabaseError("Friend request failed.", error);
+      if (error.code === "23505") {
+        showToast("A friend request already exists between you two.");
+      } else {
+        showSupabaseError("Friend request failed.", error);
+      }
     } else {
       setPeople((prev) => prev.filter((profile) => profile.id !== profileId));
       showToast("Friend request sent.");
@@ -299,12 +333,53 @@ function FriendsPageContent() {
   async function acceptRequest(requestId: string) {
     if (!myId) return;
     setBusyId(requestId);
-    const { error } = await supabase.rpc("accept_friend_request", { request_id: requestId });
-    if (error) {
-      showToast(error.message.includes("Not enough") ? "Not enough coins." : error.message);
-    } else {
-      showToast(`${ACCEPT_FRIEND_COST} coins paid. Friend added.`);
+
+    const { data: requestRow, error: fetchError } = await supabase
+      .from("friend_requests")
+      .select("id,sender_id,receiver_id,status")
+      .eq("id", requestId)
+      .eq("receiver_id", myId)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (fetchError) {
+      showSupabaseError("Could not load this request.", fetchError);
+      await refreshAll(myId);
+      setBusyId(null);
+      return;
     }
+
+    if (!requestRow) {
+      showToast("This request is no longer available.");
+      await refreshAll(myId);
+      setBusyId(null);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("friend_requests")
+      .update({ status: "accepted", updated_at: new Date().toISOString() })
+      .eq("id", requestId)
+      .eq("receiver_id", myId)
+      .eq("status", "pending");
+
+    if (updateError) {
+      showSupabaseError("Could not accept request.", updateError);
+      await refreshAll(myId);
+      setBusyId(null);
+      return;
+    }
+
+    const { error: friendError } = await supabase
+      .from("friends")
+      .insert({ user_id: myId, friend_id: requestRow.sender_id, source: "request" });
+
+    if (friendError && friendError.code !== "23505") {
+      showSupabaseError("Request accepted, but adding the friend failed.", friendError);
+    } else {
+      showToast("Friend added.");
+    }
+
     await refreshAll(myId);
     setBusyId(null);
   }
@@ -421,7 +496,7 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
               </div>
               {mode === "incoming" ? (
                 <div className="flex gap-2">
-                  <button onClick={() => onAccept(request.id)} disabled={busyId === request.id} className="rounded-xl bg-green-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60" aria-label="Accept"><Check size={14} className="mr-1 inline" />20 Coins</button>
+                  <button onClick={() => onAccept(request.id)} disabled={busyId === request.id} className="rounded-xl bg-green-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60" aria-label="Accept"><Check size={14} className="mr-1 inline" />Accept</button>
                   <button onClick={() => onDecline(request.id)} disabled={busyId === request.id} className="rounded-xl bg-rose-500 p-2 text-white disabled:opacity-60" aria-label="Decline"><X size={16} /></button>
                 </div>
               ) : (
