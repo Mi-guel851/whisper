@@ -4,20 +4,36 @@
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
+import { Capacitor } from "@capacitor/core";
 
 export default function SignupPage() {
   const { showToast } = useToast();
 
   async function signupWithGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const isNative = Capacitor.isNativePlatform();
+
+    // For native app, we use the custom scheme. For web, we use the current origin.
+    const redirectTo = isNative
+  ? "com.whisper.app://complete-profile"
+  : `${window.location.origin}/complete-profile`;
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/complete-profile`,
+        redirectTo,
+        skipBrowserRedirect: isNative, // On native, we'll open the browser manually
       },
     });
 
     if (error) {
       showToast(error.message);
+      return;
+    }
+
+    // On native, open the in-app browser with the Supabase auth URL
+    if (isNative && data?.url) {
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({ url: data.url, windowName: "_self" });
     }
   }
 

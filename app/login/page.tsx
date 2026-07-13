@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
 import { Eye, EyeOff } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +18,30 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  async function signupWithGoogle() {
+    const isNative = Capacitor.isNativePlatform();
+    const redirectTo = isNative
+  ? "com.whisper.app://complete-profile"
+  : `${window.location.origin}/complete-profile`;
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo,
+        skipBrowserRedirect: isNative,
+      },
+    });
+
+    if (error) {
+      showToast(error.message);
+      return;
+    }
+
+    if (isNative && data?.url) {
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({ url: data.url, windowName: "_self" });
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -48,7 +73,7 @@ export default function LoginPage() {
         <p className="mt-2 mb-8 text-center text-gray-300">Login to your Whisper account</p>
 
         <form onSubmit={handleLogin} className="space-y-5">
-
+          {/* Email/Password form items remain the same... */}
           <input
             type="email"
             placeholder="Email Address"
@@ -93,9 +118,33 @@ export default function LoginPage() {
           >
             {loading ? "Logging In..." : "Login"}
           </button>
-
         </form>
 
+        <div className="mt-6 flex items-center gap-4 text-gray-400">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-sm font-medium uppercase tracking-wider">or</span>
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
+
+        <button
+          onClick={signupWithGoogle}
+          className="mt-6 w-full flex items-center justify-center gap-3 rounded-2xl bg-white p-4 font-bold text-black hover:bg-gray-100 transition"
+        >
+          <svg width="20" height="20" viewBox="0 0 48 48">
+            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.3 1 7.3 2.7l6-6C33.6 6.1 29 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.4-.4-3.5z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c2.8 0 5.3 1 7.3 2.7l6-6C33.6 6.1 29 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.3 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.6 39.6 16.2 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.1 5.6l6.2 5.2C40.9 36.1 44 30.6 44 24c0-1.2-.1-2.4-.4-3.5z"/>
+          </svg>
+          Continue with Google
+        </button>
+
+        <p className="mt-8 text-center text-sm text-gray-400">
+          Don&apos;t have an account?{" "}
+          <Link href="/signup" className="font-bold text-cyan-300 hover:underline">
+            Sign Up
+          </Link>
+        </p>
       </GlassPanel>
     </main>
   );

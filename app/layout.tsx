@@ -6,6 +6,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 import PushNotificationsProvider from "@/components/PushNotificationsProvider";
 import NextTopLoader from "nextjs-toploader";
 import ClickHaptics from "@/components/ClickHaptics";
+import AppUrlHandler from "@/components/AppUrlHandler";
 
 export const metadata: Metadata = {
   title: "Whisper",
@@ -22,6 +23,7 @@ export default function RootLayout({
       <body>
         <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
         <NextTopLoader color="linear-gradient(to right, #22d3ee, #a855f7)" height={3} showSpinner={false} />
+        <AppUrlHandler />
         <ClickHaptics />
         <ThemeProvider>
           <ToastProvider>
