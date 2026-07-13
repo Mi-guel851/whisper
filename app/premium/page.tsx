@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Coins, Gem, LockKeyhole, Sparkles, WalletCards, Eye, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
-import { COIN_PACKAGES, REVEAL_SENDER_COST } from "@/lib/coins";
+import { COIN_PACKAGES, REVEAL_SENDER_COST, CoinPackage } from "@/lib/coins";
+import { CountryInfo, convertForDisplay, formatLocalAmount, getCountryInfo } from "@/lib/currency";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
@@ -22,7 +23,6 @@ const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
 type Transaction = { id: string; amount: number; description: string; transaction_type: string; created_at: string };
 type Whisper = { id: string; message: string | null; sender_username: string | null; sender_email_name: string | null; created_at: string };
-
 type Reveal = { message_id: string };
 
 function AnimatedBalance({ value }: { value: number }) {
@@ -48,6 +48,12 @@ export default function PremiumPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
+  const [countryCode, setCountryCode] = useState<string | null>(null);
+  const [rates, setRates] = useState<Record<string, number> | null>(null);
+  const [ratesLoading, setRatesLoading] = useState(true);
+
+  const country: CountryInfo = getCountryInfo(countryCode);
+
   const revealedIds = useMemo(() => new Set(reveals.map((r) => r.message_id)), [reveals]);
 
   async function refresh(uid: string) {
@@ -72,32 +78,56 @@ export default function PremiumPage() {
         return;
       }
       setUserId(session.user.id);
+
+      // Pricing is based on the country the user already gave us at signup
+      // (profiles.country_code) — no IP guessing, no picker.
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("country_code")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      setCountryCode(profile?.country_code || null);
+
       await refresh(session.user.id);
       setLoading(false);
     }
     init();
   }, [router]);
 
-  async function buyCoins(coins: number, label: string) {
-    if (!userId) return;
-
-    if (coins === 2000) {
-      payWithPaystack();
-      return;
+  // Live FX rates so the local-currency price shown is accurate. Falls back
+  // to the hardcoded table in lib/currency.ts if the provider is unreachable.
+  useEffect(() => {
+    async function loadRates() {
+      try {
+        const ratesRes = await fetch("/api/currency/rates");
+        const ratesData = await ratesRes.json();
+        if (ratesData?.rates) setRates(ratesData.rates);
+      } catch {
+        // convertForDisplay falls back internally when rates is null
+      } finally {
+        setRatesLoading(false);
+      }
     }
+    loadRates();
+  }, []);
 
-    setBusy(`buy-${coins}`);
-    const { data, error } = await supabase.rpc("purchase_whisper_coins", { coin_amount: coins, package_label: `${coins} Coins ${label}` });
-    if (error) showToast(error.message);
-    else {
-      setBalance(data || 0);
-      showToast(`🪙 ${coins} Whisper Coins added. Payment provider placeholder is ready.`);
-      await refresh(userId);
+  function localPriceFor(pkg: CoinPackage) {
+    const baseAmount = country.ngnRegion ? pkg.ngnAmount : pkg.usdAmount;
+    const baseCurrency = country.ngnRegion ? "NGN" : "USD";
+    if (country.currency === baseCurrency) {
+      return formatLocalAmount(baseAmount, country.symbol);
     }
-    setBusy(null);
+    const effectiveRates = rates ?? {};
+    const converted = convertForDisplay(baseAmount, baseCurrency, country.currency, effectiveRates);
+    return formatLocalAmount(converted, country.symbol);
   }
 
-  async function payWithPaystack() {
+  async function buyCoins(pkg: CoinPackage) {
+    if (!userId) return;
+    await payWithPaystack(pkg);
+  }
+
+  async function payWithPaystack(pkg: CoinPackage) {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.user.email) {
@@ -110,14 +140,27 @@ export default function PremiumPage() {
       return;
     }
 
-    setBusy("buy-2000");
+    // This Paystack account only has the NGN channel active (USD requires a
+    // separate international-payments approval from Paystack), so every
+    // charge goes out in NGN — Paystack still accepts international
+    // Visa/Mastercard for NGN charges, the buyer's card network converts.
+    // Foreign buyers' $ price is converted to NGN at the live rate so they
+    // still pay the equivalent of $1/$3/$5/$10.
+    const region: "ngn" | "usd_via_ngn" = country.ngnRegion ? "ngn" : "usd_via_ngn";
+    const ngnPerUsd = rates?.NGN ?? 1550;
+    const chargeAmountKobo = country.ngnRegion
+      ? pkg.ngnAmount * 100
+      : Math.round(pkg.usdAmount * ngnPerUsd * 100);
+
+    setBusy(`buy-${pkg.coins}`);
 
     const handler = window.PaystackPop.setup({
       key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
       email: PAYSTACK_MASKED_EMAIL,
-      amount: 200000, // ₦2,000 in kobo
+      amount: chargeAmountKobo,
       currency: "NGN",
-      ref: `whisper_${session.user.id}_${Date.now()}`,
+      metadata: { coins: pkg.coins, region },
+      ref: `whisper_${session.user.id}_${pkg.coins}_${Date.now()}`,
       callback: (response: { reference: string }) => {
         (async () => {
           try {
@@ -136,7 +179,7 @@ export default function PremiumPage() {
               showToast(result.error || "Verification failed.");
             } else {
               setBalance(result.balance || 0);
-              showToast("🎉 Whisper Vault unlocked! Premium active for 30 days.");
+              showToast(`🎉 ${result.coins ?? pkg.coins} Whisper Coins added to your wallet!`);
               await refresh(userId);
             }
           } catch {
@@ -199,29 +242,38 @@ export default function PremiumPage() {
 
         <section className="mt-8">
           <h2 className="mb-4 flex items-center gap-2 text-2xl font-black"><Gem className="text-pink-300" /> Buy Coins</h2>
-          <div className="flex justify-center">
+
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {COIN_PACKAGES.map((pkg) => (
               <motion.div
                 key={pkg.coins}
                 whileHover={{ y: -6, scale: 1.01 }}
-                className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-8 text-center shadow-xl backdrop-blur-xl"
+                className="relative overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-6 text-center shadow-xl backdrop-blur-xl"
               >
-                <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-300 to-pink-300 px-3 py-1 text-[10px] font-black text-black">
-                  MOST POPULAR
-                </span>
-                <Coins className="mx-auto mb-5 h-12 w-12 text-yellow-200" />
-                <p className="text-4xl font-black">{pkg.coins}</p>
+                {pkg.popular && (
+                  <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-300 to-pink-300 px-3 py-1 text-[10px] font-black text-black">
+                    MOST POPULAR
+                  </span>
+                )}
+                <Coins className="mx-auto mb-4 h-10 w-10 text-yellow-200" />
+                <p className="text-3xl font-black">{pkg.coins.toLocaleString()}</p>
                 <p className="text-sm text-gray-300">Whisper Coins</p>
+                <p className="mt-3 text-lg font-black text-cyan-200">
+                  {ratesLoading ? <Loader2 size={16} className="mx-auto animate-spin" /> : localPriceFor(pkg)}
+                </p>
                 <button
-                  onClick={() => buyCoins(pkg.coins, pkg.label)}
-                  disabled={busy === `buy-${pkg.coins}`}
-                  className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-4 py-4 text-lg font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+                  onClick={() => buyCoins(pkg)}
+                  disabled={busy === `buy-${pkg.coins}` || ratesLoading}
+                  className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-4 py-3 text-base font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
                 >
-                  {busy === `buy-${pkg.coins}` ? "Adding..." : "Buy"}
+                  {busy === `buy-${pkg.coins}` ? "Processing..." : "Buy"}
                 </button>
               </motion.div>
             ))}
           </div>
+          <p className="mt-3 text-center text-xs text-gray-500">
+            Charged securely via Paystack — your card network converts automatically, so the amount shown is your local equivalent.
+          </p>
         </section>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
