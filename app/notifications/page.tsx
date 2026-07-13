@@ -179,11 +179,13 @@ export default function NotificationsPage() {
 
               return (
                 <GlassPanel
-                  key={item.id}
-                  className={`rounded-2xl p-4 transition-opacity duration-300 ${
-                    unread ? "opacity-100" : "opacity-55"
-                  }`}
-                >
+  key={item.id}
+  className={`rounded-2xl p-4 transition-all duration-300 ${
+    unread
+      ? "opacity-100 bg-gradient-to-r from-pink-500/20 to-rose-500/10 ring-2 ring-pink-400/70 shadow-lg shadow-pink-500/40"
+      : "opacity-55"
+  }`}
+>
                   <div className="flex w-full items-center gap-4">
                     <button
                       onClick={() => openNotification(item)}

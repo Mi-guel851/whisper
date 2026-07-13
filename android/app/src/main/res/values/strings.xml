@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">whisper</string>
-    <string name="title_activity_main">whisper</string>
+    <string name="app_name">Whisper</string>
+    <string name="title_activity_main">Whisper</string>
     <string name="package_name">com.whisper.app</string>
     <string name="custom_url_scheme">com.whisper.app</string>
 </resources>

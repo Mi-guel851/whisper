@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
-import SplashScreen from "@/components/SplashScreen";
 import ToastProvider from "@/components/ToastProvider";
 import ThemeProvider from "@/components/ThemeProvider";
 import PushNotificationsProvider from "@/components/PushNotificationsProvider";
@@ -27,7 +26,6 @@ export default function RootLayout({
         <ThemeProvider>
           <ToastProvider>
             <PushNotificationsProvider>
-              <SplashScreen />
               {children}
             </PushNotificationsProvider>
           </ToastProvider>
