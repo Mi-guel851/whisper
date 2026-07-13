@@ -8,7 +8,8 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
-import { UNLOCK_CHAT_COST } from "@/lib/coins";
+import { UNLOCK_CHAT_COST, SEND_IMAGE_COST } from "@/lib/coins";
+import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { useToast } from "@/components/ToastProvider";
 import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2 } from "lucide-react";
 
@@ -29,6 +30,11 @@ type Reaction = {
   message_id: string;
   user_id: string;
   emoji: string;
+};
+
+type PendingPhoto = {
+  file: File;
+  previewUrl: string;
 };
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -109,28 +115,33 @@ function MessageBubble({
             )}
 
             {isPhotoMessage ? (
-              msg.image_viewed_at ? (
-                <p className="flex items-center gap-2 text-sm text-gray-400 italic">
-                  <Eye size={14} /> Photo viewed
-                </p>
-              ) : isMe ? (
-                <p className="flex items-center gap-2 text-sm text-gray-300">
-                  <ImagePlus size={14} /> Photo sent (view once)
-                </p>
-              ) : (
-                <button
-                  onClick={() => onViewPhoto(msg)}
-                  disabled={viewingPhotoId === msg.id}
-                  className="flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-cyan-100 disabled:opacity-60"
-                >
-                  {viewingPhotoId === msg.id ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <ImagePlus size={14} />
-                  )}
-                  {viewingPhotoId === msg.id ? "Loading..." : "Tap to view photo (once)"}
-                </button>
-              )
+              <div>
+                {msg.image_viewed_at ? (
+                  <p className="flex items-center gap-2 text-sm text-gray-400 italic">
+                    <Eye size={14} /> Photo viewed
+                  </p>
+                ) : isMe ? (
+                  <p className="flex items-center gap-2 text-sm text-gray-300">
+                    <ImagePlus size={14} /> Photo sent (view once)
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => onViewPhoto(msg)}
+                    disabled={viewingPhotoId === msg.id}
+                    className="flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-cyan-100 disabled:opacity-60"
+                  >
+                    {viewingPhotoId === msg.id ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <ImagePlus size={14} />
+                    )}
+                    {viewingPhotoId === msg.id ? "Loading..." : "Tap to view photo (once)"}
+                  </button>
+                )}
+                {msg.content && (
+                  <p className="mt-1 text-sm text-gray-100 break-words">{msg.content}</p>
+                )}
+              </div>
             ) : (
               <p className="text-sm text-gray-100 break-words">{msg.content}</p>
             )}
@@ -205,10 +216,11 @@ export default function ChatPage() {
   const [isFriendConversation, setIsFriendConversation] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
-  const [isPremium, setIsPremium] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [viewingPhotoId, setViewingPhotoId] = useState<string | null>(null);
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
+  const [photoModalCaption, setPhotoModalCaption] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -232,7 +244,7 @@ export default function ChatPage() {
 
       const { data: convo } = await supabase
         .from("conversations")
-        .select("user_a, user_b, user_a_label, user_b_label")
+        .select("user_a, user_b")
         .eq("id", conversationId)
         .single();
 
@@ -252,26 +264,18 @@ export default function ChatPage() {
         console.error("[chat] failed to mark conversation as read:", readError.message);
       }
 
-      const label = convo.user_a === session.user.id ? convo.user_a_label : convo.user_b_label;
-      setOtherLabel(label);
+      const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
+      setOtherLabel(anonymousDisplayName(otherUserId));
 
       await supabase.rpc("ensure_coin_wallet", { target_user: session.user.id });
 
-      const { data: wallet } = await supabase
-        .from("coins")
-        .select("premium_expires_at")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-      setIsPremium(Boolean(wallet?.premium_expires_at && new Date(wallet.premium_expires_at) > new Date()));
-
-      const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
-      const { data: friendship } = await supabase
+      const otherFriendship = await supabase
         .from("friends")
         .select("id")
         .eq("user_id", session.user.id)
         .eq("friend_id", otherUserId)
         .maybeSingle();
-      const friendConversation = Boolean(friendship);
+      const friendConversation = Boolean(otherFriendship.data);
       setIsFriendConversation(friendConversation);
 
       const { data: unlock } = await supabase
@@ -439,8 +443,22 @@ export default function ChatPage() {
     return () => clearTimeout(timer);
   }, [messages, loading]);
 
+  // Clean up any pending photo preview URL if the component unmounts with one staged.
+  useEffect(() => {
+    return () => {
+      if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
+
+    if (pendingPhoto) {
+      await sendPendingPhoto();
+      return;
+    }
+
     const trimmed = input.trim();
     if (!chatUnlocked) {
       showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
@@ -475,17 +493,13 @@ export default function ChatPage() {
       showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
       return;
     }
-    if (!isPremium) {
-      showToast("View-once photos are a premium feature. Visit the Coins page to unlock premium.");
-      return;
-    }
     fileInputRef.current?.click();
   }
 
-  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !myId) return;
+    if (!file) return;
 
     if (!file.type.startsWith("image/")) {
       showToast("Please select an image file.");
@@ -496,8 +510,44 @@ export default function ChatPage() {
       return;
     }
 
+    // Stage it only — nothing is uploaded and no coins are touched until Send is tapped.
+    if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
+    setPendingPhoto({ file, previewUrl: URL.createObjectURL(file) });
+  }
+
+  function cancelPendingPhoto() {
+    if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
+    setPendingPhoto(null);
+  }
+
+  async function sendPendingPhoto() {
+    if (!pendingPhoto || !myId) return;
+
+    if (!chatUnlocked) {
+      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      return;
+    }
+
     setUploadingPhoto(true);
     try {
+      // Check the sender's coin balance before touching storage at all.
+      const { data: wallet, error: walletError } = await supabase
+        .from("coins")
+        .select("balance")
+        .eq("user_id", myId)
+        .maybeSingle();
+
+      if (walletError) {
+        showToast(walletError.message);
+        return;
+      }
+
+      if ((wallet?.balance ?? 0) < SEND_IMAGE_COST) {
+        showToast(`You need ${SEND_IMAGE_COST} coins to send an image.`);
+        return;
+      }
+
+      const file = pendingPhoto.file;
       const ext = file.name.split(".").pop() || "jpg";
       const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
 
@@ -510,11 +560,27 @@ export default function ChatPage() {
         return;
       }
 
+      // Only spend coins once the upload itself has actually succeeded.
+      const { error: spendError } = await supabase.rpc("spend_coins_for_image", {
+        target_conversation_id: conversationId,
+      });
+
+      if (spendError) {
+        // Upload succeeded but payment didn't go through (e.g. a race with
+        // another spend) — remove the orphaned file and don't send it.
+        await supabase.storage.from("view-once-photos").remove([path]);
+        showToast(spendError.message);
+        return;
+      }
+
+      const caption = input.trim();
+      const replyId = replyingTo?.id || null;
+
       const { error: insertError } = await supabase.from("direct_messages").insert({
         conversation_id: conversationId,
         sender_id: myId,
-        content: null,
-        reply_to_id: null,
+        content: caption || null,
+        reply_to_id: replyId,
         image_path: path,
         is_view_once: true,
       });
@@ -528,6 +594,11 @@ export default function ChatPage() {
         .from("conversations")
         .update({ last_message_at: new Date().toISOString() })
         .eq("id", conversationId);
+
+      URL.revokeObjectURL(pendingPhoto.previewUrl);
+      setPendingPhoto(null);
+      setInput("");
+      setReplyingTo(null);
     } finally {
       setUploadingPhoto(false);
     }
@@ -557,6 +628,7 @@ export default function ChatPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       setPhotoModalUrl(url);
+      setPhotoModalCaption(msg.content);
     } catch {
       showToast("Something went wrong loading the photo.");
     } finally {
@@ -567,6 +639,7 @@ export default function ChatPage() {
   function closePhotoModal() {
     if (photoModalUrl) URL.revokeObjectURL(photoModalUrl);
     setPhotoModalUrl(null);
+    setPhotoModalCaption(null);
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -725,6 +798,28 @@ export default function ChatPage() {
         </div>
       </div>
 
+      {pendingPhoto && (
+        <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-300/30 bg-white/5 px-3 py-2">
+          <img
+            src={pendingPhoto.previewUrl}
+            alt="Selected photo"
+            className="h-12 w-12 shrink-0 rounded-lg object-cover"
+          />
+          <p className="flex-1 truncate text-xs text-gray-300">
+            Ready to send — costs {SEND_IMAGE_COST} coins
+          </p>
+          <button
+            type="button"
+            onClick={cancelPendingPhoto}
+            disabled={uploadingPhoto}
+            className="disabled:opacity-60"
+            aria-label="Remove photo"
+          >
+            <X size={14} className="text-gray-400" />
+          </button>
+        </div>
+      )}
+
       {replyingTo && (
         <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
           <p className="truncate text-xs text-gray-300">
@@ -749,24 +844,43 @@ export default function ChatPage() {
             type="button"
             onClick={triggerPhotoPicker}
             disabled={uploadingPhoto}
-            title={isPremium ? "Send a view-once photo" : "Premium feature — unlock in Coins"}
+            title={`Send an image (${SEND_IMAGE_COST} coins)`}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
           >
-            {uploadingPhoto ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
+            <ImagePlus size={18} />
           </button>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
+            placeholder={
+              pendingPhoto
+                ? "Add a caption (optional)..."
+                : chatUnlocked
+                ? "Message anonymously..."
+                : "Unlock chat to send messages"
+            }
             disabled={!chatUnlocked}
             className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
           />
           <button
             type="submit"
-            disabled={!chatUnlocked}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
+            className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+              pendingPhoto ? "gap-1.5 px-4" : "w-10"
+            }`}
           >
-            <Send size={16} className="text-black" />
+            {pendingPhoto ? (
+              uploadingPhoto ? (
+                <Loader2 size={16} className="animate-spin text-black" />
+              ) : (
+                <>
+                  <Coins size={16} className="text-black" />
+                  <span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span>
+                </>
+              )
+            ) : (
+              <Send size={16} className="text-black" />
+            )}
           </button>
         </div>
       </form>
@@ -777,6 +891,9 @@ export default function ChatPage() {
           onClick={closePhotoModal}
         >
           <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+            {photoModalCaption && (
+              <p className="mb-3 text-center text-sm font-medium text-white">{photoModalCaption}</p>
+            )}
             <img
               src={photoModalUrl}
               alt="View-once photo"

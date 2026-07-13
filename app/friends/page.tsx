@@ -9,6 +9,7 @@ import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
+import { hashUserId, anonymousDisplayName as anonymousName } from "@/lib/anonymousIdentity";
 
 type FriendTab = "discover" | "requests" | "friends";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
@@ -48,24 +49,6 @@ type RelatedUserIds = {
 
 const PAGE_SIZE = 5;
 
-const anonymousPrefixes = [
-  "Shadow",
-  "DarkWolf",
-  "Ghost",
-  "SilentFox",
-  "NightEcho",
-  "AlphaVoid",
-  "Yoganony",
-  "NovaGhost",
-  "Cipher",
-  "PixelVoid",
-  "MoonShade",
-  "EchoWolf",
-  "VoidFox",
-  "NeonGhost",
-  "SilentNova",
-];
-
 const tabs: { value: FriendTab; label: string }[] = [
   { value: "discover", label: "Discover" },
   { value: "requests", label: "Requests" },
@@ -90,22 +73,6 @@ function normalizeFriendRows(rows: RawFriendRow[]): FriendRow[] {
 
 function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
   return rows.map((row) => ({ ...row, sender: singleProfile(row.sender), receiver: singleProfile(row.receiver) }));
-}
-
-function hashUserId(userId: string) {
-  let hash = 0;
-  for (let index = 0; index < userId.length; index += 1) {
-    hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-function anonymousName(userId?: string | null) {
-  if (!userId) return "Ghost.00";
-  const hash = hashUserId(userId);
-  const prefix = anonymousPrefixes[hash % anonymousPrefixes.length];
-  const suffix = String(hash % 100).padStart(2, "0");
-  return `${prefix}.${suffix}`;
 }
 
 function AnonymousAvatar({ userId }: { userId?: string | null }) {
@@ -405,12 +372,70 @@ function FriendsPageContent() {
   }
 
   async function startChat(friendId: string) {
-    const { data: conversationId, error } = await supabase.rpc("ensure_friend_conversation", { friend_user_id: friendId });
-    if (error) {
-      showSupabaseError("Could not start chat.", error);
+    if (!myId) return;
+    setBusyId(friendId);
+
+    const userA = myId < friendId ? myId : friendId;
+    const userB = myId < friendId ? friendId : myId;
+
+    const { data: existing, error: fetchError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("user_a", userA)
+      .eq("user_b", userB)
+      .maybeSingle();
+
+    if (fetchError) {
+      showSupabaseError("Could not check for an existing conversation.", fetchError);
+      setBusyId(null);
       return;
     }
-    if (conversationId) router.push(`/chat/${conversationId}`);
+
+    if (existing) {
+      router.push(`/chat/${existing.id}`);
+      setBusyId(null);
+      return;
+    }
+
+    const { data: created, error: createError } = await supabase
+      .from("conversations")
+      .insert({
+        user_a: userA,
+        user_b: userB,
+        user_a_label: "Anonymous Friend",
+        user_b_label: "Anonymous Friend",
+        last_message_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (createError) {
+      if (createError.code === "23505") {
+        const { data: raceRow, error: raceError } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("user_a", userA)
+          .eq("user_b", userB)
+          .maybeSingle();
+
+        if (raceError || !raceRow) {
+          showSupabaseError("Could not start chat.", raceError || createError);
+          setBusyId(null);
+          return;
+        }
+
+        router.push(`/chat/${raceRow.id}`);
+        setBusyId(null);
+        return;
+      }
+
+      showSupabaseError("Could not start chat.", createError);
+      setBusyId(null);
+      return;
+    }
+
+    if (created) router.push(`/chat/${created.id}`);
+    setBusyId(null);
   }
 
   if (loading) return <main className="flex min-h-screen items-center justify-center theme-bg-gradient text-white">Loading...</main>;
@@ -458,7 +483,7 @@ function FriendsPageContent() {
 
         {tab === "friends" && (
           <section className="mt-6 space-y-3">
-            {friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} onChat={() => startChat(friend.friend_id)} />)}
+            {friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} busy={busyId === friend.friend_id} onChat={() => startChat(friend.friend_id)} />)}
           </section>
         )}
       </div>
@@ -467,7 +492,7 @@ function FriendsPageContent() {
   );
 }
 
-function FriendCard({ friend, onChat }: { friend: FriendRow; onChat: () => void }) {
+function FriendCard({ friend, onChat, busy }: { friend: FriendRow; onChat: () => void; busy: boolean }) {
   return (
     <GlassPanel className="flex items-center gap-4 rounded-2xl p-4">
       <AnonymousAvatar userId={friend.friend_id} />
@@ -475,7 +500,7 @@ function FriendCard({ friend, onChat }: { friend: FriendRow; onChat: () => void 
         <p className="truncate font-semibold">{anonymousName(friend.friend_id)}</p>
         <p className="text-xs text-gray-400">Friend</p>
       </div>
-      <button onClick={onChat} className="rounded-xl bg-white/10 p-3 transition hover:bg-white/15" aria-label="Open chat"><MessageCircle size={18} /></button>
+      <button onClick={onChat} disabled={busy} className="rounded-xl bg-white/10 p-3 transition hover:bg-white/15 disabled:opacity-60" aria-label="Open chat"><MessageCircle size={18} /></button>
     </GlassPanel>
   );
 }
