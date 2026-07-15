@@ -18,7 +18,8 @@ export async function generateMetadata({
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app";
   const profileUrl = `${baseUrl}/u/${username}`;
-  const ogImage = `${profileUrl}/opengraph-image`;
+  // Use the API-based OG route to avoid filename conflicts with page files
+  const ogImage = `${baseUrl}/api/og/u/${username}`;
 
   return {
     title,
