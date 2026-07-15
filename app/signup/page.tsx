@@ -12,31 +12,40 @@ export default function SignupPage() {
   async function signupWithGoogle() {
     const isNative = Capacitor.isNativePlatform();
 
-    // For native app, we use the custom scheme. For web, we use the current origin.
-    const redirectTo = isNative
-      ? "whisperapp://complete-profile"
-      : `${window.location.origin}/complete-profile`;
+    if (isNative) {
+      try {
+        const { GoogleAuth } = await import("@capacitor-community/google-auth");
+        const googleUser = await GoogleAuth.signIn();
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
+        if (googleUser.authentication.idToken) {
+          const { error } = await supabase.auth.signInWithIdToken({
+            provider: 'google',
+            token: googleUser.authentication.idToken,
+          });
+
+          if (error) {
+            showToast(error.message);
+          } else {
+            router.push("/complete-profile");
+          }
+          return;
+        }
+      } catch (err: any) {
+        console.error(err);
+        return;
+      }
+    }
+
+    const redirectTo = `${window.location.origin}/complete-profile`;
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo,
-        skipBrowserRedirect: isNative, // On native, we'll open the browser manually
       },
     });
 
     if (error) {
       showToast(error.message);
-      return;
-    }
-
-    // On native, open the in-app browser with the Supabase auth URL
-    if (isNative && data?.url) {
-      const { Browser } = await import("@capacitor/browser");
-      await Browser.open({
-        url: data.url,
-        presentationStyle: "popover",
-      });
     }
   }
 
