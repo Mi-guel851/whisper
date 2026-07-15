@@ -12,7 +12,7 @@
     "@capacitor/android": "^8.4.1",
     "@capacitor/app": "^8.0.0",
     "@capacitor/browser": "^8.0.0",
-    "@capacitor-community/google-auth": "^6.0.0",
+    "@codetrix-studio/capacitor-google-auth": "^5.0.0",
     "@capacitor/cli": "^8.4.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/ios": "^8.4.1",
