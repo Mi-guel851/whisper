@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Clock, MessageCircle, UserPlus, Users, X } from "lucide-react";
 
 import { supabase } from "@/lib/supabase/client";
+import { presenceManager } from "@/lib/realtime/presence";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
@@ -75,7 +76,7 @@ function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
   return rows.map((row) => ({ ...row, sender: singleProfile(row.sender), receiver: singleProfile(row.receiver) }));
 }
 
-function AnonymousAvatar({ userId }: { userId?: string | null }) {
+function AnonymousAvatar({ userId, online = false }: { userId?: string | null; online?: boolean }) {
   const hash = hashUserId(userId || "ghost");
   const gradients = [
     "from-cyan-500 to-purple-600",
@@ -85,8 +86,13 @@ function AnonymousAvatar({ userId }: { userId?: string | null }) {
     "from-slate-400 to-violet-700",
   ];
   return (
-    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${gradients[hash % gradients.length]} text-lg font-black text-white`}>
-      👻
+    <div className="relative shrink-0">
+      <div className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ${gradients[hash % gradients.length]} text-lg font-black text-white`}>
+        👻
+      </div>
+      {online && (
+        <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#05010F] bg-green-500 shadow-[0_0_0_2px_rgba(0,0,0,0.15)]" />
+      )}
     </div>
   );
 }
@@ -105,6 +111,7 @@ function FriendsPageContent() {
   const [incoming, setIncoming] = useState<FriendRequestRow[]>([]);
   const [outgoing, setOutgoing] = useState<FriendRequestRow[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
 
   const showSupabaseError = useCallback((fallback: string, error: { message?: string } | null | undefined) => {
     const message = error?.message?.trim() || fallback;
@@ -199,6 +206,7 @@ function FriendsPageContent() {
     let cancelled = false;
     let requestChannel: ReturnType<typeof supabase.channel> | null = null;
     let friendsChannel: ReturnType<typeof supabase.channel> | null = null;
+    let unsubscribePresence: (() => void) | undefined;
 
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -208,6 +216,11 @@ function FriendsPageContent() {
       }
 
       setMyId(session.user.id);
+      await presenceManager.connect(session.user.id);
+      unsubscribePresence = presenceManager.subscribe((users) => {
+        if (!cancelled) setOnlineUserIds(users.map((user) => user.id));
+      });
+
       await Promise.all([loadFriends(session.user.id), loadRequests(session.user.id), loadPeople(session.user.id, 0)]);
       if (cancelled) return;
       setLoading(false);
@@ -227,6 +240,7 @@ function FriendsPageContent() {
 
     return () => {
       cancelled = true;
+      unsubscribePresence?.();
       if (requestChannel) supabase.removeChannel(requestChannel);
       if (friendsChannel) supabase.removeChannel(friendsChannel);
     };
@@ -458,7 +472,7 @@ function FriendsPageContent() {
           <section className="mt-6 space-y-3">
             {people.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No people to discover right now.</GlassPanel> : people.map((profile) => (
               <GlassPanel key={profile.id} className="flex items-center gap-4 rounded-2xl p-4">
-                <AnonymousAvatar userId={profile.id} />
+                <AnonymousAvatar userId={profile.id} online={onlineUserIds.includes(profile.id)} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{anonymousName(profile.id)}</p>
                   <p className="text-xs text-gray-400">Anonymous Whisper user</p>
@@ -483,7 +497,7 @@ function FriendsPageContent() {
 
         {tab === "friends" && (
           <section className="mt-6 space-y-3">
-            {friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} busy={busyId === friend.friend_id} onChat={() => startChat(friend.friend_id)} />)}
+            {friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} busy={busyId === friend.friend_id} online={onlineUserIds.includes(friend.friend_id)} onChat={() => startChat(friend.friend_id)} />)}
           </section>
         )}
       </div>
@@ -492,10 +506,10 @@ function FriendsPageContent() {
   );
 }
 
-function FriendCard({ friend, onChat, busy }: { friend: FriendRow; onChat: () => void; busy: boolean }) {
+function FriendCard({ friend, onChat, busy, online }: { friend: FriendRow; onChat: () => void; busy: boolean; online: boolean }) {
   return (
     <GlassPanel className="flex items-center gap-4 rounded-2xl p-4">
-      <AnonymousAvatar userId={friend.friend_id} />
+      <AnonymousAvatar userId={friend.friend_id} online={online} />
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold">{anonymousName(friend.friend_id)}</p>
         <p className="text-xs text-gray-400">Friend</p>
@@ -514,7 +528,7 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
           const profileId = mode === "incoming" ? request.sender_id : request.receiver_id;
           return (
             <GlassPanel key={request.id} className="flex items-center gap-3 rounded-2xl p-4">
-              <AnonymousAvatar userId={profileId} />
+              <AnonymousAvatar userId={profileId} online={onlineUserIds.includes(profileId)} />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">{anonymousName(profileId)}</p>
                 <p className="truncate text-xs text-gray-400">{mode === "incoming" ? "Wants to be friends" : "Request pending"}</p>

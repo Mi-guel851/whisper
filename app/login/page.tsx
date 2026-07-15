@@ -22,8 +22,8 @@ export default function LoginPage() {
   async function signupWithGoogle() {
     const isNative = Capacitor.isNativePlatform();
     const redirectTo = isNative
-  ? "com.whisper.app://complete-profile"
-  : `${window.location.origin}/complete-profile`;
+      ? "whisperapp://complete-profile"
+      : `${window.location.origin}/complete-profile`;
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -39,7 +39,10 @@ export default function LoginPage() {
 
     if (isNative && data?.url) {
       const { Browser } = await import("@capacitor/browser");
-      await Browser.open({ url: data.url, windowName: "_self" });
+      await Browser.open({
+        url: data.url,
+        presentationStyle: "popover",
+      });
     }
   }
 

@@ -63,6 +63,7 @@ export default function BottomNavigation() {
       if (!session || cancelled) return;
 
       setMyId(session.user.id);
+      await presenceManager.connect(session.user.id);
       await loadUnreadWhispers(session.user.id);
       if (cancelled) return;
 

@@ -716,8 +716,10 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
-      <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
+    <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
+      <ChatDoodleBackground />
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
@@ -911,6 +913,7 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }

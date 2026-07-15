@@ -15,32 +15,58 @@ export default function AppUrlHandler() {
       const { App } = await import("@capacitor/app");
       const { Browser } = await import("@capacitor/browser");
 
-      // Handle the URL when it's opened while the app is running
-      App.addListener("appUrlOpen", async (data: any) => {
-        // Close the in-app browser immediately
+      async function handleUrl(urlStr: string) {
+        console.log("[deeplink] Handling URL:", urlStr);
+
+        // Force close any in-app browser
         try { await Browser.close(); } catch (e) {}
 
-        const url = new URL(data.url);
+        const url = new URL(urlStr);
 
-        // Supabase OAuth tokens are in the hash (#)
-        // Expected format: whisperapp://complete-profile#access_token=...
+        // Check both hash (Supabase default) and search params
         const hash = url.hash.substring(1);
+        const searchParams = url.searchParams;
+
+        let accessToken = searchParams.get("access_token");
+        let refreshToken = searchParams.get("refresh_token");
+
         if (hash) {
           const params = new URLSearchParams(hash);
-          const access_token = params.get("access_token");
-          const refresh_token = params.get("refresh_token");
+          accessToken = accessToken || params.get("access_token");
+          refreshToken = refreshToken || params.get("refresh_token");
+        }
 
-          if (access_token && refresh_token) {
-            const { error } = await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
+        if (accessToken && refreshToken) {
+          console.log("[deeplink] Found tokens, setting session...");
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
 
-            if (!error) {
-              router.push("/complete-profile");
-              return;
-            }
+          if (!error) {
+            console.log("[deeplink] Session set, redirecting...");
+            router.push("/complete-profile");
+          } else {
+            console.error("[deeplink] Error setting session:", error.message);
           }
+        } else {
+          console.log("[deeplink] No tokens found in URL");
+          // If we just landed on complete-profile without tokens, maybe we're already logged in?
+          if (url.pathname.includes("complete-profile")) {
+             router.push("/complete-profile");
+          }
+        }
+      }
+
+      // Handle the URL when the app is already open
+      App.addListener("appUrlOpen", (data: any) => {
+        handleUrl(data.url);
+      });
+
+      // Handle the URL when the app is launched from a link
+      App.getLaunchUrl().then((launchUrl) => {
+        if (launchUrl?.url) {
+          handleUrl(launchUrl.url);
         }
       });
     }

@@ -1,5 +1,6 @@
 package com.whisper.app;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.webkit.WebView;
 import androidx.core.splashscreen.SplashScreen;
@@ -11,5 +12,11 @@ public class MainActivity extends BridgeActivity {
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         WebView.setWebContentsDebuggingEnabled(true);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
     }
 }

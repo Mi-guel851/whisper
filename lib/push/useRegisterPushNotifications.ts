@@ -7,25 +7,26 @@ import { supabase } from "@/lib/supabase/client";
 
 export function useRegisterPushNotifications(userId: string | null) {
   useEffect(() => {
-    console.log("[push] effect ran. userId:", userId, "isNative:", Capacitor.isNativePlatform(), "platform:", Capacitor.getPlatform());
-
-    if (!userId) {
-      console.log("[push] stopping: no userId");
-      return;
-    }
-    if (!Capacitor.isNativePlatform()) {
-      console.log("[push] stopping: not native platform");
-      return;
-    }
+    if (!userId || !Capacitor.isNativePlatform()) return;
 
     async function setup() {
+      // Check if user has notifications enabled in their profile
+      const { data } = await supabase
+        .from("profiles")
+        .select("push_notifications")
+        .eq("id", userId)
+        .single();
+
+      if (!data?.push_notifications) {
+        console.log("[push] notifications disabled in profile");
+        return;
+      }
+
       console.log("[push] requesting permissions...");
       const permission = await PushNotifications.requestPermissions();
-      console.log("[push] permission result:", permission.receive);
       if (permission.receive !== "granted") return;
 
       await PushNotifications.register();
-      console.log("[push] register() called");
 
       PushNotifications.addListener("registration", async (token) => {
         console.log("[push] got token:", token.value);

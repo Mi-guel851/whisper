@@ -14,8 +14,8 @@ export default function SignupPage() {
 
     // For native app, we use the custom scheme. For web, we use the current origin.
     const redirectTo = isNative
-  ? "com.whisper.app://complete-profile"
-  : `${window.location.origin}/complete-profile`;
+      ? "whisperapp://complete-profile"
+      : `${window.location.origin}/complete-profile`;
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -33,7 +33,10 @@ export default function SignupPage() {
     // On native, open the in-app browser with the Supabase auth URL
     if (isNative && data?.url) {
       const { Browser } = await import("@capacitor/browser");
-      await Browser.open({ url: data.url, windowName: "_self" });
+      await Browser.open({
+        url: data.url,
+        presentationStyle: "popover",
+      });
     }
   }
 

@@ -1,39 +1,50 @@
+"use client";
+
+import { motion } from "framer-motion";
+
+const stickers = [
+  { emoji: "💬", left: "8%", top: "12%", size: 46, duration: 18, delay: 0, rotate: -10 },
+  { emoji: "✨", left: "74%", top: "18%", size: 34, duration: 16, delay: 1.2, rotate: 8 },
+  { emoji: "💙", left: "20%", top: "70%", size: 40, duration: 20, delay: 2.4, rotate: -8 },
+  { emoji: "🫶", left: "82%", top: "68%", size: 42, duration: 17, delay: 0.8, rotate: 10 },
+  { emoji: "🌈", left: "50%", top: "24%", size: 32, duration: 19, delay: 3.1, rotate: 4 },
+];
+
 export default function ChatDoodleBackground() {
-  const pattern = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220">
-      <g fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.5">
-        <path d="M30 25c0-8 6-14 14-14s14 6 14 14v18l-4-4-4 4-4-4-4 4-4-4-4 4-4-4z" />
-        <circle cx="40" cy="20" r="1.6" fill="white" stroke="none" />
-        <circle cx="48" cy="20" r="1.6" fill="white" stroke="none" />
-
-        <path d="M150 30h30a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6h-16l-8 8v-8h-6a6 6 0 0 1-6-6V36a6 6 0 0 1 6-6z" />
-
-        <rect x="30" y="120" width="26" height="20" rx="3" />
-        <path d="M33 120v-5a10 10 0 0 1 20 0v5" />
-        <circle cx="43" cy="130" r="2" fill="white" stroke="none" />
-
-        <path d="M160 130l3 7 7 1-5 5 1 7-6-4-6 4 1-7-5-5 7-1z" />
-
-        <path d="M110 170c0-7 5-12 12-12s12 5 12 12v15l-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5z" />
-        <circle cx="117" cy="167" r="1.4" fill="white" stroke="none" />
-        <circle cx="124" cy="167" r="1.4" fill="white" stroke="none" />
-
-        <path d="M60 70l2 5 5 1-3.5 3.5 1 5-4.5-3-4.5 3 1-5L58 76l5-1z" />
-        <path d="M190 90l1.5 3.5 3.5 1-2.5 2.5.5 3.5-3-2-3 2 .5-3.5-2.5-2.5 3.5-1z" />
-      </g>
-    </svg>
-  `.trim();
-
-  const encoded = encodeURIComponent(pattern);
-
   return (
-    <div
-      className="pointer-events-none absolute inset-0 opacity-[0.15]"
-      style={{
-        backgroundImage: `url("data:image/svg+xml,${encoded}")`,
-        backgroundRepeat: "repeat",
-        backgroundSize: "220px 220px",
-      }}
-    />
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.12),transparent_30%)]" />
+      <div className="absolute inset-0 opacity-[0.16]">
+        {stickers.map((sticker, index) => (
+          <motion.div
+            key={`${sticker.emoji}-${index}`}
+            className="absolute select-none"
+            style={{
+              left: sticker.left,
+              top: sticker.top,
+              fontSize: sticker.size,
+              filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.18))",
+            }}
+            initial={{ opacity: 0.24, scale: 0.9, rotate: sticker.rotate, y: 0, x: 0 }}
+            animate={{
+              opacity: [0.24, 0.42, 0.28, 0.46, 0.24],
+              scale: [0.9, 1.03, 0.95, 1.08, 0.9],
+              rotate: [sticker.rotate, sticker.rotate + 4, sticker.rotate, sticker.rotate - 4, sticker.rotate],
+              y: [0, -14, 0, 12, 0],
+              x: [0, 8, -5, 6, 0],
+            }}
+            transition={{
+              duration: sticker.duration,
+              repeat: Number.POSITIVE_INFINITY,
+              repeatType: "mirror",
+              ease: "easeInOut",
+              delay: sticker.delay,
+            }}
+          >
+            {sticker.emoji}
+          </motion.div>
+        ))}
+      </div>
+    </div>
   );
 }
