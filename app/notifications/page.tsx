@@ -179,38 +179,38 @@ export default function NotificationsPage() {
 
               return (
                 <GlassPanel
-  key={item.id}
-  className={`rounded-2xl p-4 transition-all duration-300 ${
-    unread
-      ? "opacity-100 bg-gradient-to-r from-pink-500/20 to-rose-500/10 ring-2 ring-pink-400/70 shadow-lg shadow-pink-500/40"
-      : "opacity-55"
-  }`}
->
+                  key={item.id}
+                  className={`rounded-2xl p-4 transition-all duration-300 ${
+                    unread
+                      ? "bg-gradient-to-r from-pink-500/20 to-rose-500/10 ring-2 ring-pink-400/70 shadow-lg shadow-pink-500/40"
+                      : "bg-white/5 opacity-70"
+                  }`}
+                >
                   <div className="flex w-full items-center gap-4">
                     <button
                       onClick={() => openNotification(item)}
                       className="flex min-w-0 flex-1 items-center gap-4 text-left"
                     >
-                      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-red-500">
-                        <Heart size={20} className="fill-white text-white" />
+                      <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${unread ? "bg-gradient-to-br from-pink-500 to-red-500" : "bg-gradient-to-br from-gray-500 to-slate-600"}`}>
+                        <Heart size={20} className={`fill-white text-white ${unread ? "" : "opacity-80"}`} />
                         {unread && (
                           <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black/40 bg-rose-500 shadow-lg shadow-rose-500/40" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={`font-semibold ${unread ? "text-pink-300" : "text-pink-300/70"}`}>
+                        <p className={`font-semibold ${unread ? "text-pink-300" : "text-gray-300"}`}>
                           New Message!
                         </p>
                         {item.message && (
-                          <p className="truncate text-sm text-gray-400">{item.message}</p>
+                          <p className={`truncate text-sm ${unread ? "text-gray-400" : "text-gray-500"}`}>{item.message}</p>
                         )}
                         {!item.message && item.image_url && (
-                          <p className="truncate text-sm text-gray-400">📷 Image</p>
+                          <p className={`truncate text-sm ${unread ? "text-gray-400" : "text-gray-500"}`}>📷 Image</p>
                         )}
                       </div>
                     </button>
 
-                    <span className="shrink-0 text-xs text-gray-500">
+                    <span className={`shrink-0 text-xs ${unread ? "text-gray-500" : "text-gray-500/80"}`}>
                       {new Date(item.created_at).toLocaleDateString()}
                     </span>
 
