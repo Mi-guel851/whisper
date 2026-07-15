@@ -16,6 +16,10 @@ export async function generateMetadata({
   const title = `Whisper | @${username}`;
   const description = `Send @${username} an anonymous message on Whisper 👻`;
 
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app";
+  const profileUrl = `${baseUrl}/u/${username}`;
+  const ogImage = `${profileUrl}/opengraph-image`;
+
   return {
     title,
     description,
@@ -26,14 +30,21 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
-      url: `https://whisper-anonymous.vercel.app/u/${username}`,
+      url: profileUrl,
       siteName: "Whisper",
       type: "website",
+      images: [
+        {
+          url: ogImage,
+          alt: `Whisper | @${username}`,
+        },
+      ],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
+      images: [ogImage],
     },
   };
 }
