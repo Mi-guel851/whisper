@@ -84,6 +84,15 @@ export default function DashboardHeader() {
           if (!success && result.reason === "unsupported") {
             success = true; // Still allow toggle in DB
             showToast("Setting saved! (Use the app for live alerts)");
+
+            // Manually update the DB since we're exiting early
+            await supabase
+              .from("profiles")
+              .update({ push_notifications: true })
+              .eq("id", session.user.id);
+            setPushEnabled(true);
+            setLoading(false);
+            return;
           } else if (!success && result.reason === "denied") {
             showToast("Notifications blocked in browser.");
           }

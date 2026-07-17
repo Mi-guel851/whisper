@@ -4,4 +4,5 @@
     <string name="title_activity_main">Whisper</string>
     <string name="package_name">com.whisper.app</string>
     <string name="custom_url_scheme">com.whisper.app</string>
+    <string name="server_client_id">226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com</string>
 </resources>

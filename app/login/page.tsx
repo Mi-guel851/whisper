@@ -21,41 +21,25 @@ export default function LoginPage() {
 
   async function signupWithGoogle() {
     const isNative = Capacitor.isNativePlatform();
-
-    if (isNative) {
-      try {
-        const { GoogleAuth } = await import("@capacitor-community/google-auth");
-        const googleUser = await GoogleAuth.signIn();
-
-        if (googleUser.authentication.idToken) {
-          const { error } = await supabase.auth.signInWithIdToken({
-            provider: 'google',
-            token: googleUser.authentication.idToken,
-          });
-
-          if (error) {
-            showToast(error.message);
-          } else {
-            router.push("/dashboard");
-          }
-          return;
-        }
-      } catch (err: any) {
-        console.error(err);
-        return;
-      }
-    }
-
-    const redirectTo = `${window.location.origin}/complete-profile`;
-    const { error } = await supabase.auth.signInWithOAuth({
+    const redirectTo = isNative
+  ? "com.whisper.app://complete-profile"
+  : `${window.location.origin}/complete-profile`; 
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo,
+        skipBrowserRedirect: isNative,
       },
     });
 
     if (error) {
       showToast(error.message);
+      return;
+    }
+
+    if (isNative && data?.url) {
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({ url: data.url, windowName: "_self" });
     }
   }
 

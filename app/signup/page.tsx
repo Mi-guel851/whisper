@@ -5,9 +5,11 @@ import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
 import { Capacitor } from "@capacitor/core";
+import { useRouter } from "next/navigation";
 
 export default function SignupPage() {
   const { showToast } = useToast();
+  const router = useRouter();
 
   async function signupWithGoogle() {
     const isNative = Capacitor.isNativePlatform();
@@ -15,10 +17,18 @@ export default function SignupPage() {
     if (isNative) {
       try {
         const { GoogleAuth } = await import("@capacitor-community/google-auth");
+
+        // Ensure initialized with the correct ID
+        await GoogleAuth.initialize({
+          clientId: '226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com',
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: true,
+        });
+
         const googleUser = await GoogleAuth.signIn();
 
         if (googleUser.authentication.idToken) {
-          const { error } = await supabase.auth.signInWithIdToken({
+          const { data, error } = await supabase.auth.signInWithIdToken({
             provider: 'google',
             token: googleUser.authentication.idToken,
           });
@@ -26,7 +36,18 @@ export default function SignupPage() {
           if (error) {
             showToast(error.message);
           } else {
-            router.push("/complete-profile");
+            // Check if profile is completed
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("profile_completed")
+              .eq("id", data.user?.id)
+              .maybeSingle();
+
+            if (profile?.profile_completed) {
+              router.push("/dashboard");
+            } else {
+              router.push("/complete-profile");
+            }
           }
           return;
         }

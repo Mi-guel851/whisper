@@ -462,7 +462,7 @@ function FriendsPageContent() {
           <Users className="text-cyan-300" size={28} />
           <h1 className="text-3xl font-black">Discover People</h1>
         </div>
-        <p className="mt-2 text-sm text-gray-400">Meet registered Whisper users anonymously. Names are generated and never reveal identity.</p>
+        <p className="mt-2 text-sm text-gray-400">Meet registered Whisper users anonymously.</p>
 
         <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl bg-white/5 p-1">
           {tabs.map((item) => <button key={item.value} onClick={() => setActiveTab(item.value)} className={`rounded-xl px-3 py-2 text-sm font-bold transition ${tab === item.value ? "bg-white text-[#10051f]" : "text-gray-300 hover:bg-white/10"}`}>{item.label}</button>)}
@@ -490,8 +490,8 @@ function FriendsPageContent() {
 
         {tab === "requests" && (
           <section className="mt-6 space-y-6">
-            <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} />
-            <RequestList title="Sent Requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} />
+            <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
+            <RequestList title="Sent Requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
           </section>
         )}
 
@@ -519,7 +519,7 @@ function FriendCard({ friend, onChat, busy, online }: { friend: FriendRow; onCha
   );
 }
 
-function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel }: { title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing"; busyId: string | null; onAccept: (requestId: string) => void; onDecline: (requestId: string) => void; onCancel: (requestId: string) => void }) {
+function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onlineUserIds }: { title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing"; busyId: string | null; onAccept: (requestId: string) => void; onDecline: (requestId: string) => void; onCancel: (requestId: string) => void; onlineUserIds: string[] }) {
   return (
     <div>
       <h2 className="mb-3 text-lg font-black">{title}</h2>
