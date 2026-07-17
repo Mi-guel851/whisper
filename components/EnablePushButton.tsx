@@ -35,7 +35,7 @@ export default function EnablePushButton() {
 
       if (!success && result.reason === "unsupported") {
         success = true;
-        showToast("Setting saved! (Install the app for live alerts)");
+        showToast("Setting saved! (Use the app for live alerts)");
       } else if (!success && result.reason === "denied") {
         showToast("Notifications blocked in browser.");
       }

@@ -21,25 +21,59 @@ export default function LoginPage() {
 
   async function signupWithGoogle() {
     const isNative = Capacitor.isNativePlatform();
-    const redirectTo = isNative
-  ? "com.whisper.app://complete-profile"
-  : `${window.location.origin}/complete-profile`; 
-    const { data, error } = await supabase.auth.signInWithOAuth({
+
+    if (isNative) {
+      try {
+        const { GoogleAuth } = await import("@capacitor-community/google-auth");
+
+        await GoogleAuth.initialize({
+          clientId: '226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com',
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: true,
+        });
+
+        const googleUser = await GoogleAuth.signIn();
+
+        if (googleUser.authentication.idToken) {
+          const { data, error } = await supabase.auth.signInWithIdToken({
+            provider: 'google',
+            token: googleUser.authentication.idToken,
+          });
+
+          if (error) {
+            showToast(error.message);
+          } else {
+            // Check if profile is completed
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("profile_completed")
+              .eq("id", data.user?.id)
+              .maybeSingle();
+
+            if (profile?.profile_completed) {
+              router.push("/dashboard");
+            } else {
+              router.push("/complete-profile");
+            }
+          }
+          return;
+        }
+      } catch (err: any) {
+        console.error(err);
+        return;
+      }
+    }
+
+    const redirectTo = `${window.location.origin}/complete-profile`;
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo,
-        skipBrowserRedirect: isNative,
       },
     });
 
     if (error) {
       showToast(error.message);
-      return;
-    }
-
-    if (isNative && data?.url) {
-      const { Browser } = await import("@capacitor/browser");
-      await Browser.open({ url: data.url, windowName: "_self" });
     }
   }
 
