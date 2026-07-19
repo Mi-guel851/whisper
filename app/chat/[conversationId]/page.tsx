@@ -302,7 +302,6 @@ export default function ChatPage() {
       setReactions(reacts || []);
       setLoading(false);
 
-      // Mark any incoming messages as delivered now that this client has loaded them.
       const incomingIds = (msgs || [])
         .filter((m) => m.sender_id !== session.user.id && !m.delivered_at)
         .map((m) => m.id);
@@ -317,7 +316,6 @@ export default function ChatPage() {
         }
       }
 
-      // Mark as read shortly after, only if the tab is actually visible/focused.
       setTimeout(async () => {
         if (document.visibilityState !== "visible") return;
         const unreadIds = (msgs || [])
@@ -443,7 +441,6 @@ export default function ChatPage() {
     return () => clearTimeout(timer);
   }, [messages, loading]);
 
-  // Clean up any pending photo preview URL if the component unmounts with one staged.
   useEffect(() => {
     return () => {
       if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
@@ -510,7 +507,6 @@ export default function ChatPage() {
       return;
     }
 
-    // Stage it only — nothing is uploaded and no coins are touched until Send is tapped.
     if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
     setPendingPhoto({ file, previewUrl: URL.createObjectURL(file) });
   }
@@ -530,7 +526,6 @@ export default function ChatPage() {
 
     setUploadingPhoto(true);
     try {
-      // Check the sender's coin balance before touching storage at all.
       const { data: wallet, error: walletError } = await supabase
         .from("coins")
         .select("balance")
@@ -560,14 +555,11 @@ export default function ChatPage() {
         return;
       }
 
-      // Only spend coins once the upload itself has actually succeeded.
       const { error: spendError } = await supabase.rpc("spend_coins_for_image", {
         target_conversation_id: conversationId,
       });
 
       if (spendError) {
-        // Upload succeeded but payment didn't go through (e.g. a race with
-        // another spend) — remove the orphaned file and don't send it.
         await supabase.storage.from("view-once-photos").remove([path]);
         showToast(spendError.message);
         return;
@@ -719,48 +711,33 @@ export default function ChatPage() {
     <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
       <ChatDoodleBackground />
       <div className="relative z-10 flex h-full flex-col">
+
+        {/* Header */}
         <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
-        <BackButton />
-        <div className="mt-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
-            👻
-          </div>
-          <div>
-            <p className="font-bold text-white">{otherLabel}</p>
-            <p className="text-xs text-gray-400">Anonymous chat</p>
+          <BackButton />
+          <div className="mt-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+              👻
+            </div>
+            <div>
+              <p className="font-bold text-white">{otherLabel}</p>
+              <p className="text-xs text-gray-400">Anonymous chat</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-        {!chatUnlocked && (
-          <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
-              <LockKeyhole className="text-cyan-200" />
-            </div>
-            <h2 className="text-2xl font-black">Chat locked</h2>
-            <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
-              {isFriendConversation ? "Unlock this friend conversation once for 40 Coins to send messages. If you accepted the request, it is already unlocked." : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
-            </p>
-            <button
-              onClick={unlockChat}
-              disabled={unlocking}
-              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
-            >
-              <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
-            </button>
-          </GlassPanel>
-        )}
-
-        <div className="relative z-10 space-y-4">
-          {!chatUnlocked && !isFriendConversation && (
+        {/* Messages */}
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+          {!chatUnlocked && (
             <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
                 <LockKeyhole className="text-cyan-200" />
               </div>
               <h2 className="text-2xl font-black">Chat locked</h2>
               <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
-                {isFriendConversation ? "Accepted friends can message here for free." : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
+                {isFriendConversation
+                  ? "Unlock this friend conversation once for 40 Coins to send messages. If you accepted the request, it is already unlocked."
+                  : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
               </p>
               <button
                 onClick={unlockChat}
@@ -798,95 +775,100 @@ export default function ChatPage() {
           )}
           <div ref={bottomRef} />
         </div>
-      </div>
 
-      {pendingPhoto && (
-        <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-300/30 bg-white/5 px-3 py-2">
-          <img
-            src={pendingPhoto.previewUrl}
-            alt="Selected photo"
-            className="h-12 w-12 shrink-0 rounded-lg object-cover"
-          />
-          <p className="flex-1 truncate text-xs text-gray-300">
-            Ready to send — costs {SEND_IMAGE_COST} coins
-          </p>
-          <button
-            type="button"
-            onClick={cancelPendingPhoto}
-            disabled={uploadingPhoto}
-            className="disabled:opacity-60"
-            aria-label="Remove photo"
-          >
-            <X size={14} className="text-gray-400" />
-          </button>
-        </div>
-      )}
+        {/* Pending photo preview */}
+        {pendingPhoto && (
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-300/30 bg-white/5 px-3 py-2">
+            <img
+              src={pendingPhoto.previewUrl}
+              alt="Selected photo"
+              className="h-12 w-12 shrink-0 rounded-lg object-cover"
+            />
+            <p className="flex-1 truncate text-xs text-gray-300">
+              Ready to send — costs {SEND_IMAGE_COST} coins
+            </p>
+            <button
+              type="button"
+              onClick={cancelPendingPhoto}
+              disabled={uploadingPhoto}
+              className="disabled:opacity-60"
+              aria-label="Remove photo"
+            >
+              <X size={14} className="text-gray-400" />
+            </button>
+          </div>
+        )}
 
-      {replyingTo && (
-        <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
-          <p className="truncate text-xs text-gray-300">
-            Replying to: {replyingTo.content || "📷 Photo"}
-          </p>
-          <button onClick={() => setReplyingTo(null)}>
-            <X size={14} className="text-gray-400" />
-          </button>
-        </div>
-      )}
+        {/* Reply preview */}
+        {replyingTo && (
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
+            <p className="truncate text-xs text-gray-300">
+              Replying to: {replyingTo.content || "📷 Photo"}
+            </p>
+            <button onClick={() => setReplyingTo(null)}>
+              <X size={14} className="text-gray-400" />
+            </button>
+          </div>
+        )}
 
-      <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handlePhotoSelected}
-          />
-          <button
-            type="button"
-            onClick={triggerPhotoPicker}
-            disabled={uploadingPhoto}
-            title={`Send an image (${SEND_IMAGE_COST} coins)`}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
-          >
-            <ImagePlus size={18} />
-          </button>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              pendingPhoto
-                ? "Add a caption (optional)..."
-                : chatUnlocked
-                ? "Message anonymously..."
-                : "Unlock chat to send messages"
-            }
-            disabled={!chatUnlocked}
-            className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
-            className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${
-              pendingPhoto ? "gap-1.5 px-4" : "w-10"
-            }`}
-          >
-            {pendingPhoto ? (
-              uploadingPhoto ? (
-                <Loader2 size={16} className="animate-spin text-black" />
+        {/* Input form */}
+        <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoSelected}
+            />
+            <button
+              type="button"
+              onClick={triggerPhotoPicker}
+              disabled={uploadingPhoto}
+              title={`Send an image (${SEND_IMAGE_COST} coins)`}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
+            >
+              <ImagePlus size={18} />
+            </button>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                pendingPhoto
+                  ? "Add a caption (optional)..."
+                  : chatUnlocked
+                  ? "Message anonymously..."
+                  : "Unlock chat to send messages"
+              }
+              disabled={!chatUnlocked}
+              className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
+              className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+                pendingPhoto ? "gap-1.5 px-4" : "w-10"
+              }`}
+            >
+              {pendingPhoto ? (
+                uploadingPhoto ? (
+                  <Loader2 size={16} className="animate-spin text-black" />
+                ) : (
+                  <>
+                    <Coins size={16} className="text-black" />
+                    <span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span>
+                  </>
+                )
               ) : (
-                <>
-                  <Coins size={16} className="text-black" />
-                  <span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span>
-                </>
-              )
-            ) : (
-              <Send size={16} className="text-black" />
-            )}
-          </button>
-        </div>
-      </form>
+                <Send size={16} className="text-black" />
+              )}
+            </button>
+          </div>
+        </form>
 
+      </div>{/* end relative z-10 flex h-full flex-col */}
+
+      {/* Photo modal — outside z-10 wrapper so it overlays everything */}
       {photoModalUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
@@ -913,7 +895,6 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-      </div>
     </main>
   );
 }

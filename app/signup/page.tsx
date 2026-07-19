@@ -16,53 +16,58 @@ export default function SignupPage() {
 
     if (isNative) {
       try {
-        const { GoogleAuth } = await import("@capacitor-community/google-auth");
+        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
 
-        // Ensure initialized with the correct ID
         await GoogleAuth.initialize({
-          clientId: '226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com',
-          scopes: ['profile', 'email'],
+          clientId: "226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com",
+          scopes: ["profile", "email"],
           grantOfflineAccess: true,
         });
 
         const googleUser = await GoogleAuth.signIn();
 
-        if (googleUser.authentication.idToken) {
-          const { data, error } = await supabase.auth.signInWithIdToken({
-            provider: 'google',
-            token: googleUser.authentication.idToken,
-          });
-
-          if (error) {
-            showToast(error.message);
-          } else {
-            // Check if profile is completed
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("profile_completed")
-              .eq("id", data.user?.id)
-              .maybeSingle();
-
-            if (profile?.profile_completed) {
-              router.push("/dashboard");
-            } else {
-              router.push("/complete-profile");
-            }
-          }
+        const idToken = googleUser?.authentication?.idToken;
+        if (!idToken) {
+          showToast("Google sign-in failed. Please try again.");
           return;
         }
-      } catch (err: any) {
-        console.error(err);
-        return;
+
+        const { data, error } = await supabase.auth.signInWithIdToken({
+          provider: "google",
+          token: idToken,
+        });
+
+        if (error) {
+          showToast(error.message);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("profile_completed")
+          .eq("id", data.user?.id)
+          .maybeSingle();
+
+        if (profile?.profile_completed) {
+          router.push("/dashboard");
+        } else {
+          router.push("/complete-profile");
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Google sign-in was cancelled.";
+        console.error("[Google Sign-In]", err);
+        if (!message.toLowerCase().includes("cancel")) {
+          showToast(message);
+        }
       }
+      return;
     }
 
+    // Web fallback
     const redirectTo = `${window.location.origin}/complete-profile`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo,
-      },
+      options: { redirectTo },
     });
 
     if (error) {

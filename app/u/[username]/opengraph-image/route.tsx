@@ -1,11 +1,13 @@
-// app/u/[username]/opengraph-image/route.tsx
-import { ImageResponse } from "next/server";
-export const runtime = "edge";
+import { ImageResponse } from "next/og";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-export async function GET(_req: Request, { params }: { params: { username?: string } }) {
-  const username = params.username ?? "user";
+export const runtime = "nodejs";
 
-  // Simple OG image: 1200x630, dark background, site name and username
+export async function GET(_req: Request) {
+  const imageData = await readFile(join(process.cwd(), "public", "og-image.png"));
+  const base64 = `data:image/png;base64,${imageData.toString("base64")}`;
+
   return new ImageResponse(
     (
       <div
@@ -13,17 +15,16 @@ export async function GET(_req: Request, { params }: { params: { username?: stri
           width: 1200,
           height: 630,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(180deg, #0f172a 0%, #001219 100%)",
-          color: "#fff",
-          fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
         }}
       >
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 56, fontWeight: 800, letterSpacing: -1 }}>Whisper</div>
-          <div style={{ fontSize: 36, marginTop: 10, opacity: 0.95 }}>@{username}</div>
-        </div>
+        <img
+          src={base64}
+          style={{
+            width: 1200,
+            height: 630,
+            objectFit: "cover",
+          }}
+        />
       </div>
     ),
     { width: 1200, height: 630 }

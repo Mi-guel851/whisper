@@ -12,7 +12,7 @@ import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
 import { hashUserId, anonymousDisplayName as anonymousName } from "@/lib/anonymousIdentity";
 
-type FriendTab = "discover" | "requests" | "friends";
+type FriendTab = "discover" | "requests" | "friends" | "active";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
 
 type ProfileSummary = { id: string };
@@ -50,18 +50,15 @@ type RelatedUserIds = {
 
 const PAGE_SIZE = 5;
 
-const tabs: { value: FriendTab; label: string }[] = [
-  { value: "discover", label: "Discover" },
-  { value: "requests", label: "Requests" },
-  { value: "friends", label: "Friends" },
-];
-
 function uniqueChannelName(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function normalizeTab(value: string | null): FriendTab {
-  return value === "requests" || value === "friends" ? value : "discover";
+  if (value === "requests") return "requests";
+  if (value === "friends") return "friends";
+  if (value === "active") return "active";
+  return "discover";
 }
 
 function singleProfile<T extends ProfileSummary>(profile: T | T[] | null): T | null {
@@ -125,12 +122,7 @@ function FriendsPageContent() {
       .select("id,user_id,friend_id,created_at,friend:profiles!friends_friend_id_fkey(id)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
-
-    if (error) {
-      showSupabaseError("Could not load friends.", error);
-      return;
-    }
-
+    if (error) { showSupabaseError("Could not load friends.", error); return; }
     setFriends(normalizeFriendRows((data || []) as unknown as RawFriendRow[]));
   }, [showSupabaseError]);
 
@@ -140,16 +132,8 @@ function FriendsPageContent() {
       supabase.from("friend_requests").select(requestSelect).eq("receiver_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
       supabase.from("friend_requests").select(requestSelect).eq("sender_id", userId).eq("status", "pending").order("created_at", { ascending: false }),
     ]);
-
-    if (incomingRes.error) {
-      showSupabaseError("Could not load incoming requests.", incomingRes.error);
-      return;
-    }
-    if (outgoingRes.error) {
-      showSupabaseError("Could not load outgoing requests.", outgoingRes.error);
-      return;
-    }
-
+    if (incomingRes.error) { showSupabaseError("Could not load incoming requests.", incomingRes.error); return; }
+    if (outgoingRes.error) { showSupabaseError("Could not load outgoing requests.", outgoingRes.error); return; }
     setIncoming(normalizeRequestRows((incomingRes.data || []) as unknown as RawFriendRequestRow[]));
     setOutgoing(normalizeRequestRows((outgoingRes.data || []) as unknown as RawFriendRequestRow[]));
   }, [showSupabaseError]);
@@ -160,19 +144,16 @@ function FriendsPageContent() {
       supabase.from("friend_requests").select("sender_id,receiver_id,status").or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
       supabase.from("blocked_users").select("user_id,blocked_user_id").or(`user_id.eq.${userId},blocked_user_id.eq.${userId}`),
     ]);
-
     if (friendsRes.error) showSupabaseError("Could not load existing friends.", friendsRes.error);
     if (requestsRes.error) showSupabaseError("Could not load related requests.", requestsRes.error);
     if (blockedRes.error) showSupabaseError("Could not load blocked users.", blockedRes.error);
-
-    const friendIds = new Set((friendsRes.data || []).map((friend) => friend.friend_id as string));
+    const friendIds = new Set((friendsRes.data || []).map((f) => f.friend_id as string));
     const pendingIds = new Set<string>();
-    for (const request of (requestsRes.data || []) as { sender_id: string; receiver_id: string; status: RequestStatus }[]) {
-      if (request.status !== "pending") continue;
-      pendingIds.add(request.sender_id === userId ? request.receiver_id : request.sender_id);
+    for (const r of (requestsRes.data || []) as { sender_id: string; receiver_id: string; status: RequestStatus }[]) {
+      if (r.status !== "pending") continue;
+      pendingIds.add(r.sender_id === userId ? r.receiver_id : r.sender_id);
     }
     const blockedUserIds = new Set((blockedRes.data || []).map((row) => (row.user_id === userId ? row.blocked_user_id : row.user_id)));
-
     return { friendIds, pendingIds, blockedUserIds };
   }, [showSupabaseError]);
 
@@ -181,18 +162,10 @@ function FriendsPageContent() {
     const related = await loadRelatedUserIds(userId);
     const excluded = new Set([userId, ...related.friendIds, ...related.pendingIds, ...related.blockedUserIds]);
     const { data, error } = await supabase
-      .from("profiles")
-      .select("id")
-      .order("id", { ascending: true })
+      .from("profiles").select("id").order("id", { ascending: true })
       .range(0, Math.max((page + 1) * PAGE_SIZE * 4, PAGE_SIZE + 1));
-
-    if (error) {
-      showSupabaseError("Could not discover people.", error);
-      setDiscoverLoading(false);
-      return;
-    }
-
-    const visible = ((data || []) as ProfileSummary[]).filter((profile) => !excluded.has(profile.id));
+    if (error) { showSupabaseError("Could not discover people.", error); setDiscoverLoading(false); return; }
+    const visible = ((data || []) as ProfileSummary[]).filter((p) => !excluded.has(p.id));
     setPeople(visible.slice(0, (page + 1) * PAGE_SIZE));
     setHasMorePeople(visible.length > (page + 1) * PAGE_SIZE);
     setDiscoverLoading(false);
@@ -210,26 +183,19 @@ function FriendsPageContent() {
 
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setLoading(false);
-        return;
-      }
-
+      if (!session) { setLoading(false); return; }
       setMyId(session.user.id);
       await presenceManager.connect(session.user.id);
       unsubscribePresence = presenceManager.subscribe((users) => {
-        if (!cancelled) setOnlineUserIds(users.map((user) => user.id));
+        if (!cancelled) setOnlineUserIds(users.map((u) => u.id));
       });
-
       await Promise.all([loadFriends(session.user.id), loadRequests(session.user.id), loadPeople(session.user.id, 0)]);
       if (cancelled) return;
       setLoading(false);
-
       requestChannel = supabase
         .channel(uniqueChannelName(`friend-requests-${session.user.id}`))
         .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests" }, () => refreshAll(session.user.id))
         .subscribe();
-
       friendsChannel = supabase
         .channel(uniqueChannelName(`friends-${session.user.id}`))
         .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${session.user.id}` }, () => refreshAll(session.user.id))
@@ -237,7 +203,6 @@ function FriendsPageContent() {
     }
 
     init();
-
     return () => {
       cancelled = true;
       unsubscribePresence?.();
@@ -248,6 +213,20 @@ function FriendsPageContent() {
 
   const tab = normalizeTab(searchParams.get("tab"));
 
+  // Everyone online except me
+  const activeNow = onlineUserIds.filter((id) => id !== myId);
+
+  const tabs: { value: FriendTab; label: string }[] = [
+    { value: "discover", label: "Discover" },
+    { value: "active", label: `Active${activeNow.length > 0 ? ` (${activeNow.length})` : ""}` },
+    { value: "requests", label: "Requests" },
+    { value: "friends", label: "Friends" },
+  ];
+
+  function setActiveTab(nextTab: FriendTab) {
+    router.replace(`/friends${nextTab === "discover" ? "" : `?tab=${nextTab}`}`);
+  }
+
   async function showMorePeople() {
     if (!myId) return;
     const nextPage = discoverPage + 1;
@@ -255,56 +234,22 @@ function FriendsPageContent() {
     await loadPeople(myId, nextPage);
   }
 
-  function setActiveTab(nextTab: FriendTab) {
-    router.replace(`/friends${nextTab === "discover" ? "" : `?tab=${nextTab}`}`);
-  }
-
   async function addFriend(profileId: string) {
-    if (!myId) {
-      showToast("Authentication missing. Please sign in again.");
-      return;
-    }
-    if (profileId === myId) {
-      showToast("You cannot send a friend request to yourself.");
-      return;
-    }
+    if (!myId) { showToast("Authentication missing. Please sign in again."); return; }
+    if (profileId === myId) { showToast("You cannot send a friend request to yourself."); return; }
     setBusyId(profileId);
-
     const { data: existing, error: existingError } = await supabase
-      .from("friend_requests")
-      .select("id,sender_id,receiver_id,status")
+      .from("friend_requests").select("id,sender_id,receiver_id,status")
       .or(`and(sender_id.eq.${myId},receiver_id.eq.${profileId}),and(sender_id.eq.${profileId},receiver_id.eq.${myId})`)
-      .eq("status", "pending")
-      .maybeSingle();
-
-    if (existingError) {
-      showSupabaseError("Could not check for an existing request.", existingError);
-      await refreshAll(myId);
-      setBusyId(null);
-      return;
-    }
-
-    if (existing) {
-      showToast("A friend request already exists between you two.");
-      await refreshAll(myId);
-      setBusyId(null);
-      return;
-    }
-
-    const { error } = await supabase.from("friend_requests").insert({
-      sender_id: myId,
-      receiver_id: profileId,
-      status: "pending",
-    });
-
+      .eq("status", "pending").maybeSingle();
+    if (existingError) { showSupabaseError("Could not check for an existing request.", existingError); await refreshAll(myId); setBusyId(null); return; }
+    if (existing) { showToast("A friend request already exists between you two."); await refreshAll(myId); setBusyId(null); return; }
+    const { error } = await supabase.from("friend_requests").insert({ sender_id: myId, receiver_id: profileId, status: "pending" });
     if (error) {
-      if (error.code === "23505") {
-        showToast("A friend request already exists between you two.");
-      } else {
-        showSupabaseError("Friend request failed.", error);
-      }
+      if (error.code === "23505") showToast("A friend request already exists between you two.");
+      else showSupabaseError("Friend request failed.", error);
     } else {
-      setPeople((prev) => prev.filter((profile) => profile.id !== profileId));
+      setPeople((prev) => prev.filter((p) => p.id !== profileId));
       showToast("Friend request sent.");
     }
     await refreshAll(myId);
@@ -314,53 +259,19 @@ function FriendsPageContent() {
   async function acceptRequest(requestId: string) {
     if (!myId) return;
     setBusyId(requestId);
-
     const { data: requestRow, error: fetchError } = await supabase
-      .from("friend_requests")
-      .select("id,sender_id,receiver_id,status")
-      .eq("id", requestId)
-      .eq("receiver_id", myId)
-      .eq("status", "pending")
-      .maybeSingle();
-
-    if (fetchError) {
-      showSupabaseError("Could not load this request.", fetchError);
-      await refreshAll(myId);
-      setBusyId(null);
-      return;
-    }
-
-    if (!requestRow) {
-      showToast("This request is no longer available.");
-      await refreshAll(myId);
-      setBusyId(null);
-      return;
-    }
-
-    const { error: updateError } = await supabase
-      .from("friend_requests")
+      .from("friend_requests").select("id,sender_id,receiver_id,status")
+      .eq("id", requestId).eq("receiver_id", myId).eq("status", "pending").maybeSingle();
+    if (fetchError) { showSupabaseError("Could not load this request.", fetchError); await refreshAll(myId); setBusyId(null); return; }
+    if (!requestRow) { showToast("This request is no longer available."); await refreshAll(myId); setBusyId(null); return; }
+    const { error: updateError } = await supabase.from("friend_requests")
       .update({ status: "accepted", updated_at: new Date().toISOString() })
-      .eq("id", requestId)
-      .eq("receiver_id", myId)
-      .eq("status", "pending");
-
-    if (updateError) {
-      showSupabaseError("Could not accept request.", updateError);
-      await refreshAll(myId);
-      setBusyId(null);
-      return;
-    }
-
-    const { error: friendError } = await supabase
-      .from("friends")
+      .eq("id", requestId).eq("receiver_id", myId).eq("status", "pending");
+    if (updateError) { showSupabaseError("Could not accept request.", updateError); await refreshAll(myId); setBusyId(null); return; }
+    const { error: friendError } = await supabase.from("friends")
       .insert({ user_id: myId, friend_id: requestRow.sender_id, source: "request" });
-
-    if (friendError && friendError.code !== "23505") {
-      showSupabaseError("Request accepted, but adding the friend failed.", friendError);
-    } else {
-      showToast("Friend added.");
-    }
-
+    if (friendError && friendError.code !== "23505") showSupabaseError("Request accepted, but adding the friend failed.", friendError);
+    else showToast("Friend added.");
     await refreshAll(myId);
     setBusyId(null);
   }
@@ -388,66 +299,22 @@ function FriendsPageContent() {
   async function startChat(friendId: string) {
     if (!myId) return;
     setBusyId(friendId);
-
     const userA = myId < friendId ? myId : friendId;
     const userB = myId < friendId ? friendId : myId;
-
-    const { data: existing, error: fetchError } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("user_a", userA)
-      .eq("user_b", userB)
-      .maybeSingle();
-
-    if (fetchError) {
-      showSupabaseError("Could not check for an existing conversation.", fetchError);
-      setBusyId(null);
-      return;
-    }
-
-    if (existing) {
-      router.push(`/chat/${existing.id}`);
-      setBusyId(null);
-      return;
-    }
-
-    const { data: created, error: createError } = await supabase
-      .from("conversations")
-      .insert({
-        user_a: userA,
-        user_b: userB,
-        user_a_label: "Anonymous Friend",
-        user_b_label: "Anonymous Friend",
-        last_message_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
+    const { data: existing, error: fetchError } = await supabase.from("conversations").select("id").eq("user_a", userA).eq("user_b", userB).maybeSingle();
+    if (fetchError) { showSupabaseError("Could not check for an existing conversation.", fetchError); setBusyId(null); return; }
+    if (existing) { router.push(`/chat/${existing.id}`); setBusyId(null); return; }
+    const { data: created, error: createError } = await supabase.from("conversations")
+      .insert({ user_a: userA, user_b: userB, user_a_label: "Anonymous Friend", user_b_label: "Anonymous Friend", last_message_at: new Date().toISOString() })
+      .select("id").single();
     if (createError) {
       if (createError.code === "23505") {
-        const { data: raceRow, error: raceError } = await supabase
-          .from("conversations")
-          .select("id")
-          .eq("user_a", userA)
-          .eq("user_b", userB)
-          .maybeSingle();
-
-        if (raceError || !raceRow) {
-          showSupabaseError("Could not start chat.", raceError || createError);
-          setBusyId(null);
-          return;
-        }
-
-        router.push(`/chat/${raceRow.id}`);
-        setBusyId(null);
-        return;
+        const { data: raceRow, error: raceError } = await supabase.from("conversations").select("id").eq("user_a", userA).eq("user_b", userB).maybeSingle();
+        if (raceError || !raceRow) { showSupabaseError("Could not start chat.", raceError || createError); setBusyId(null); return; }
+        router.push(`/chat/${raceRow.id}`); setBusyId(null); return;
       }
-
-      showSupabaseError("Could not start chat.", createError);
-      setBusyId(null);
-      return;
+      showSupabaseError("Could not start chat.", createError); setBusyId(null); return;
     }
-
     if (created) router.push(`/chat/${created.id}`);
     setBusyId(null);
   }
@@ -464,22 +331,47 @@ function FriendsPageContent() {
         </div>
         <p className="mt-2 text-sm text-gray-400">Meet registered Whisper users anonymously.</p>
 
-        <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl bg-white/5 p-1">
-          {tabs.map((item) => <button key={item.value} onClick={() => setActiveTab(item.value)} className={`rounded-xl px-3 py-2 text-sm font-bold transition ${tab === item.value ? "bg-white text-[#10051f]" : "text-gray-300 hover:bg-white/10"}`}>{item.label}</button>)}
+        {/* ── Tab Bar ── */}
+        <div className="mt-6 grid grid-cols-4 gap-1 rounded-2xl bg-white/5 p-1">
+          {tabs.map((item) => (
+            <button
+              key={item.value}
+              onClick={() => setActiveTab(item.value)}
+              className={`relative rounded-xl px-2 py-2 text-xs font-bold transition ${
+                tab === item.value ? "bg-white text-[#10051f]" : "text-gray-300 hover:bg-white/10"
+              }`}
+            >
+              {item.value === "active" && activeNow.length > 0 && tab !== "active" && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[9px] font-black text-white">
+                  {activeNow.length}
+                </span>
+              )}
+              {item.label.split(" (")[0]}
+            </button>
+          ))}
         </div>
 
+        {/* ── Discover Tab ── */}
         {tab === "discover" && (
           <section className="mt-6 space-y-3">
-            {people.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No people to discover right now.</GlassPanel> : people.map((profile) => (
-              <GlassPanel key={profile.id} className="flex items-center gap-4 rounded-2xl p-4">
-                <AnonymousAvatar userId={profile.id} online={onlineUserIds.includes(profile.id)} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{anonymousName(profile.id)}</p>
-                  <p className="text-xs text-gray-400">Anonymous Whisper user</p>
-                </div>
-                <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"><UserPlus size={14} className="mr-1 inline" /> Add Friend</button>
-              </GlassPanel>
-            ))}
+            {people.length === 0
+              ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No people to discover right now.</GlassPanel>
+              : people.map((profile) => (
+                <GlassPanel key={profile.id} className="flex items-center gap-4 rounded-2xl p-4">
+                  <AnonymousAvatar userId={profile.id} online={onlineUserIds.includes(profile.id)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">{anonymousName(profile.id)}</p>
+                    <p className="text-xs">
+                      {onlineUserIds.includes(profile.id)
+                        ? <span className="font-semibold text-green-400">● Active now</span>
+                        : <span className="text-gray-400">Anonymous Whisper user</span>}
+                    </p>
+                  </div>
+                  <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60">
+                    <UserPlus size={14} className="mr-1 inline" /> Add Friend
+                  </button>
+                </GlassPanel>
+              ))}
             {hasMorePeople && (
               <button onClick={showMorePeople} disabled={discoverLoading} className="w-full rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:opacity-60">
                 {discoverLoading ? "Loading..." : "Show More People"}
@@ -488,6 +380,44 @@ function FriendsPageContent() {
           </section>
         )}
 
+        {/* ── Active Tab ── */}
+        {tab === "active" && (
+          <section className="mt-6">
+            <div className="mb-4 flex items-center gap-2">
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-green-400" />
+              <h2 className="text-sm font-black uppercase tracking-widest text-green-400">Online Right Now</h2>
+              <span className="rounded-full bg-green-400/20 px-2 py-0.5 text-xs font-bold text-green-300">{activeNow.length}</span>
+            </div>
+            {activeNow.length === 0 ? (
+              <GlassPanel className="rounded-3xl p-10 text-center text-gray-400">
+                <p className="text-2xl mb-2">👻</p>
+                <p className="font-semibold">No one else is online right now.</p>
+                <p className="text-xs mt-1">Check back soon!</p>
+              </GlassPanel>
+            ) : (
+              <div className="space-y-3">
+                {activeNow.map((id) => (
+                  <GlassPanel key={id} className="flex items-center gap-4 rounded-2xl p-4">
+                    <AnonymousAvatar userId={id} online={true} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold">{anonymousName(id)}</p>
+                      <p className="text-xs font-semibold text-green-400">● Active now</p>
+                    </div>
+                    <button
+                      onClick={() => addFriend(id)}
+                      disabled={busyId === id}
+                      className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"
+                    >
+                      <UserPlus size={14} className="mr-1 inline" /> Add Friend
+                    </button>
+                  </GlassPanel>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── Requests Tab ── */}
         {tab === "requests" && (
           <section className="mt-6 space-y-6">
             <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
@@ -495,9 +425,14 @@ function FriendsPageContent() {
           </section>
         )}
 
+        {/* ── Friends Tab ── */}
         {tab === "friends" && (
           <section className="mt-6 space-y-3">
-            {friends.length === 0 ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel> : friends.map((friend) => <FriendCard key={friend.id} friend={friend} busy={busyId === friend.friend_id} online={onlineUserIds.includes(friend.friend_id)} onChat={() => startChat(friend.friend_id)} />)}
+            {friends.length === 0
+              ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel>
+              : friends.map((friend) => (
+                <FriendCard key={friend.id} friend={friend} busy={busyId === friend.friend_id} online={onlineUserIds.includes(friend.friend_id)} onChat={() => startChat(friend.friend_id)} />
+              ))}
           </section>
         )}
       </div>
@@ -514,39 +449,50 @@ function FriendCard({ friend, onChat, busy, online }: { friend: FriendRow; onCha
         <p className="truncate font-semibold">{anonymousName(friend.friend_id)}</p>
         <p className="text-xs text-gray-400">Friend</p>
       </div>
-      <button onClick={onChat} disabled={busy} className="rounded-xl bg-white/10 p-3 transition hover:bg-white/15 disabled:opacity-60" aria-label="Open chat"><MessageCircle size={18} /></button>
+      <button onClick={onChat} disabled={busy} className="rounded-xl bg-white/10 p-3 transition hover:bg-white/15 disabled:opacity-60" aria-label="Open chat">
+        <MessageCircle size={18} />
+      </button>
     </GlassPanel>
   );
 }
 
-function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onlineUserIds }: { title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing"; busyId: string | null; onAccept: (requestId: string) => void; onDecline: (requestId: string) => void; onCancel: (requestId: string) => void; onlineUserIds: string[] }) {
+function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onlineUserIds }: {
+  title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing";
+  busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onlineUserIds: string[];
+}) {
   return (
     <div>
       <h2 className="mb-3 text-lg font-black">{title}</h2>
       <div className="space-y-3">
-        {requests.length === 0 ? <GlassPanel className="rounded-3xl p-6 text-center text-sm text-gray-400">{empty}</GlassPanel> : requests.map((request) => {
-          const profileId = mode === "incoming" ? request.sender_id : request.receiver_id;
-          return (
-            <GlassPanel key={request.id} className="flex items-center gap-3 rounded-2xl p-4">
-              <AnonymousAvatar userId={profileId} online={onlineUserIds.includes(profileId)} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">{anonymousName(profileId)}</p>
-                <p className="truncate text-xs text-gray-400">{mode === "incoming" ? "Wants to be friends" : "Request pending"}</p>
-              </div>
-              {mode === "incoming" ? (
-                <div className="flex gap-2">
-                  <button onClick={() => onAccept(request.id)} disabled={busyId === request.id} className="rounded-xl bg-green-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60" aria-label="Accept"><Check size={14} className="mr-1 inline" />Accept</button>
-                  <button onClick={() => onDecline(request.id)} disabled={busyId === request.id} className="rounded-xl bg-rose-500 p-2 text-white disabled:opacity-60" aria-label="Decline"><X size={16} /></button>
+        {requests.length === 0
+          ? <GlassPanel className="rounded-3xl p-6 text-center text-sm text-gray-400">{empty}</GlassPanel>
+          : requests.map((request) => {
+            const profileId = mode === "incoming" ? request.sender_id : request.receiver_id;
+            return (
+              <GlassPanel key={request.id} className="flex items-center gap-3 rounded-2xl p-4">
+                <AnonymousAvatar userId={profileId} online={onlineUserIds.includes(profileId)} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">{anonymousName(profileId)}</p>
+                  <p className="truncate text-xs text-gray-400">{mode === "incoming" ? "Wants to be friends" : "Request pending"}</p>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 text-xs font-bold text-yellow-300"><Clock size={14} />Pending</span>
-                  <button onClick={() => onCancel(request.id)} disabled={busyId === request.id} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Cancel</button>
-                </div>
-              )}
-            </GlassPanel>
-          );
-        })}
+                {mode === "incoming" ? (
+                  <div className="flex gap-2">
+                    <button onClick={() => onAccept(request.id)} disabled={busyId === request.id} className="rounded-xl bg-green-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60" aria-label="Accept">
+                      <Check size={14} className="mr-1 inline" />Accept
+                    </button>
+                    <button onClick={() => onDecline(request.id)} disabled={busyId === request.id} className="rounded-xl bg-rose-500 p-2 text-white disabled:opacity-60" aria-label="Decline">
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-xs font-bold text-yellow-300"><Clock size={14} />Pending</span>
+                    <button onClick={() => onCancel(request.id)} disabled={busyId === request.id} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Cancel</button>
+                  </div>
+                )}
+              </GlassPanel>
+            );
+          })}
       </div>
     </div>
   );

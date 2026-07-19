@@ -4,7 +4,7 @@ import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
 import ThemeProvider from "@/components/ThemeProvider";
 import PushNotificationsProvider from "@/components/PushNotificationsProvider";
-import NextTopLoader from "nextjs-toploader";
+import SplashScreen from "@/components/SplashScreen";
 import ClickHaptics from "@/components/ClickHaptics";
 import AppUrlHandler from "@/components/AppUrlHandler";
 
@@ -22,7 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
-        <NextTopLoader color="linear-gradient(to right, #22d3ee, #a855f7)" height={3} showSpinner={false} />
+        <SplashScreen />
         <AppUrlHandler />
         <ClickHaptics />
         <ThemeProvider>
