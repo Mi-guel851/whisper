@@ -1,4 +1,4 @@
-import { ImageResponse } from "next/server";
+import { ImageResponse } from "next/og";
 export const runtime = "edge";
 
 export async function GET(_req: Request, { params }: { params: { username?: string } }) {
