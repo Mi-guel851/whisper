@@ -31,11 +31,23 @@ export default function LoginPage() {
           grantOfflineAccess: true,
         });
 
-        const googleUser = await GoogleAuth.signIn();
+        let googleUser;
+        try {
+          googleUser = await GoogleAuth.signIn();
+        } catch (signInErr: unknown) {
+          const msg = signInErr instanceof Error ? signInErr.message : String(signInErr);
+          // 12501 = user cancelled, just exit silently
+          if (
+            msg.toLowerCase().includes("cancel") ||
+            msg.includes("12501") ||
+            msg.includes("sign_in_cancelled")
+          ) return;
+          throw signInErr;
+        }
 
         const idToken = googleUser?.authentication?.idToken;
         if (!idToken) {
-          showToast("Google sign-in failed. Please try again.");
+          showToast("Google sign-in failed. No token received.");
           return;
         }
 
@@ -55,17 +67,12 @@ export default function LoginPage() {
           .eq("id", data.user?.id)
           .maybeSingle();
 
-        if (profile?.profile_completed) {
-          router.push("/dashboard");
-        } else {
-          router.push("/complete-profile");
-        }
+        router.push(profile?.profile_completed ? "/dashboard" : "/complete-profile");
+
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Google sign-in was cancelled.";
+        const message = err instanceof Error ? err.message : "Google sign-in failed.";
         console.error("[Google Sign-In]", err);
-        if (!message.toLowerCase().includes("cancel")) {
-          showToast(message);
-        }
+        showToast(message);
       }
       return;
     }
