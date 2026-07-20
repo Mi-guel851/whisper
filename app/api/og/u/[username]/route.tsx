@@ -1,8 +1,10 @@
 import { ImageResponse } from "next/og";
+
 export const runtime = "edge";
 
-export async function GET(_req: Request, { params }: { params: { username?: string } }) {
-  const username = params.username ?? "user";
+export async function GET(_req: Request, { params }: { params: Promise<{ username?: string }> }) {
+  const { username: rawUsername } = await params;
+  const username = rawUsername ?? "user";
 
   return new ImageResponse(
     (
