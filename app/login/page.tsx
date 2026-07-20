@@ -26,17 +26,17 @@ export default function LoginPage() {
         const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
 
         await GoogleAuth.initialize({
-          clientId: "226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com",
-          scopes: ["profile", "email"],
-          grantOfflineAccess: true,
-        });
+  clientId: "226343458064-elt07l4bcjjdqcjdkrbr4stvq96ffr3b.apps.googleusercontent.com",
+  scopes: ["profile", "email"],
+  grantOfflineAccess: true,
+});
 
         let googleUser;
         try {
           googleUser = await GoogleAuth.signIn();
         } catch (signInErr: unknown) {
           const msg = signInErr instanceof Error ? signInErr.message : String(signInErr);
-          // 12501 = user cancelled, just exit silently
+          
           if (
             msg.toLowerCase().includes("cancel") ||
             msg.includes("12501") ||
