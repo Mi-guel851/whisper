@@ -2,28 +2,39 @@
 
 import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Coins, Gem, LockKeyhole, Sparkles, WalletCards, Eye, Loader2 } from "lucide-react";
+import { Coins, Gem, Sparkles, WalletCards, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
-import { COIN_PACKAGES, REVEAL_SENDER_COST, CoinPackage } from "@/lib/coins";
+import { COIN_PACKAGES, CoinPackage } from "@/lib/coins";
 import { CountryInfo, convertForDisplay, formatLocalAmount, getCountryInfo } from "@/lib/currency";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
 
+type PaystackSetupOptions = {
+  key: string | undefined;
+  email: string;
+  amount: number;
+  currency: "NGN";
+  metadata: { coins: number; region: "ngn" | "usd_via_ngn" };
+  ref: string;
+  callback: (response: { reference: string }) => void;
+  onClose: () => void;
+};
+
 declare global {
   interface Window {
-    PaystackPop: any;
+    PaystackPop?: {
+      setup: (options: PaystackSetupOptions) => { openIframe: () => void };
+    };
   }
 }
 
 const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
 type Transaction = { id: string; amount: number; description: string; transaction_type: string; created_at: string };
-type Whisper = { id: string; message: string | null; sender_username: string | null; sender_email_name: string | null; created_at: string };
-type Reveal = { message_id: string };
 
 function AnimatedBalance({ value }: { value: number }) {
   const count = useMotionValue(value);
@@ -43,8 +54,6 @@ export default function PremiumPage() {
   const [userId, setUserId] = useState("");
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [whispers, setWhispers] = useState<Whisper[]>([]);
-  const [reveals, setReveals] = useState<Reveal[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -54,20 +63,15 @@ export default function PremiumPage() {
 
   const country: CountryInfo = getCountryInfo(countryCode);
 
-  const revealedIds = useMemo(() => new Set(reveals.map((r) => r.message_id)), [reveals]);
 
   async function refresh(uid: string) {
     await supabase.rpc("ensure_coin_wallet", { target_user: uid });
-    const [{ data: wallet }, { data: txs }, { data: msgs }, { data: unlocked }] = await Promise.all([
+    const [{ data: wallet }, { data: txs }] = await Promise.all([
       supabase.from("coins").select("balance").eq("user_id", uid).maybeSingle(),
       supabase.from("coin_transactions").select("id,amount,description,transaction_type,created_at").eq("user_id", uid).order("created_at", { ascending: false }).limit(12),
-      supabase.from("messages").select("id,message,sender_username,sender_email_name,created_at").eq("recipient_id", uid).order("created_at", { ascending: false }).limit(6),
-      supabase.from("anonymous_sender_reveals").select("message_id").eq("user_id", uid),
     ]);
     setBalance(wallet?.balance || 0);
     setTransactions(txs || []);
-    setWhispers(msgs || []);
-    setReveals(unlocked || []);
   }
 
   useEffect(() => {
@@ -122,12 +126,12 @@ export default function PremiumPage() {
     return formatLocalAmount(converted, country.symbol);
   }
 
-  async function buyCoins(pkg: CoinPackage) {
+  async function buyCoins(pkg: CoinPackage, eventTimeStamp: number) {
     if (!userId) return;
-    await payWithPaystack(pkg);
+    await payWithPaystack(pkg, `whisper_${userId}_${pkg.coins}_${Math.round(eventTimeStamp)}`);
   }
 
-  async function payWithPaystack(pkg: CoinPackage) {
+  async function payWithPaystack(pkg: CoinPackage, reference: string) {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.user.email) {
@@ -160,7 +164,7 @@ export default function PremiumPage() {
       amount: chargeAmountKobo,
       currency: "NGN",
       metadata: { coins: pkg.coins, region },
-      ref: `whisper_${session.user.id}_${pkg.coins}_${Date.now()}`,
+      ref: reference,
       callback: (response: { reference: string }) => {
         (async () => {
           try {
@@ -197,32 +201,20 @@ export default function PremiumPage() {
     handler.openIframe();
   }
 
-  async function revealSender(messageId: string) {
-    if (!userId) return;
-    setBusy(`reveal-${messageId}`);
-    const { data, error } = await supabase.rpc("reveal_sender_with_coins", { target_message_id: messageId });
-    if (error) showToast(error.message);
-    else {
-      setBalance(data || 0);
-      showToast("Sender reveal unlocked.");
-      await refresh(userId);
-    }
-    setBusy(null);
-  }
 
   if (loading) {
     return <main className="min-h-screen theme-bg-gradient flex items-center justify-center text-white"><Loader2 className="animate-spin text-cyan-300" /></main>;
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden theme-bg-gradient pb-32 text-white">
+    <main className="relative min-h-screen w-full overflow-x-clip theme-bg-gradient pb-32 text-white">
       <div className="pointer-events-none absolute -top-24 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-cyan-400/20 blur-[110px]" />
       <div className="pointer-events-none absolute right-[-80px] top-48 h-72 w-72 rounded-full bg-pink-500/20 blur-[110px]" />
 
-      <div className="relative mx-auto max-w-5xl px-6 py-8">
+      <div className="relative mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
         <BackButton />
 
-        <motion.section initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="mt-6 overflow-hidden rounded-[2rem] border border-white/15 bg-white/[0.08] p-6 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl">
+        <motion.section initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="mt-6 max-w-full overflow-hidden rounded-[2rem] border border-white/15 bg-white/[0.08] p-6 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl">
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.25em] text-cyan-200"><Sparkles size={14} /> Premium Wallet</p>
@@ -230,7 +222,7 @@ export default function PremiumPage() {
   <WhisperCoinIcon size={44} />
   Whisper Coins
 </h1>
-              <p className="mt-3 max-w-xl text-sm text-gray-300">Unlock sender reveals and one-time inbox chat access from one premium wallet.</p>
+              <p className="mt-3 max-w-xl text-sm text-gray-300">Buy coins for whisper hints, image sends, and one-time inbox chat access from one premium wallet.</p>
             </div>
             <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity }} className="rounded-[2rem] border border-yellow-200/30 bg-gradient-to-br from-yellow-200/25 via-pink-400/15 to-cyan-400/20 p-6 text-center shadow-2xl shadow-yellow-300/10">
               <Coins className="mx-auto mb-3 h-14 w-14 text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,.65)]" />
@@ -248,7 +240,7 @@ export default function PremiumPage() {
               <motion.div
                 key={pkg.coins}
                 whileHover={{ y: -6, scale: 1.01 }}
-                className="relative overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-6 text-center shadow-xl backdrop-blur-xl"
+                className="relative min-w-0 overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-6 text-center shadow-xl backdrop-blur-xl"
               >
                 {pkg.popular && (
                   <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-300 to-pink-300 px-3 py-1 text-[10px] font-black text-black">
@@ -262,7 +254,7 @@ export default function PremiumPage() {
                   {ratesLoading ? <Loader2 size={16} className="mx-auto animate-spin" /> : localPriceFor(pkg)}
                 </p>
                 <button
-                  onClick={() => buyCoins(pkg)}
+                  onClick={(event) => buyCoins(pkg, event.timeStamp)}
                   disabled={busy === `buy-${pkg.coins}` || ratesLoading}
                   className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-4 py-3 text-base font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
                 >
@@ -276,21 +268,7 @@ export default function PremiumPage() {
           </p>
         </section>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
-          <GlassPanel className="rounded-3xl p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><Eye className="text-cyan-300" /> Reveal anonymous sender</h2>
-            <p className="mb-4 text-sm text-gray-400">Costs {REVEAL_SENDER_COST} coins. Reveals only username and Gmail alphabetic name — never the full email or domain.</p>
-            <div className="space-y-3">
-              {whispers.length === 0 ? <p className="text-sm text-gray-400">No whispers yet.</p> : whispers.map((msg) => {
-                const unlocked = revealedIds.has(msg.id);
-                return <div key={msg.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="truncate text-sm text-gray-300">{msg.message || "📷 Image whisper"}</p>
-                  {unlocked ? <div className="mt-3 grid gap-2 rounded-2xl bg-emerald-400/10 p-3 text-sm"><span>Username: <b>{msg.sender_username || "Unknown"}</b></span><span>Email name: <b>{msg.sender_email_name || "Unavailable"}</b></span></div> : <button onClick={() => revealSender(msg.id)} disabled={busy === `reveal-${msg.id}`} className="mt-3 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-white/15 disabled:opacity-60"><LockKeyhole className="mr-2 inline h-4 w-4" /> Unlock for {REVEAL_SENDER_COST}</button>}
-                </div>;
-              })}
-            </div>
-          </GlassPanel>
-
+        <div className="mt-8">
           <GlassPanel className="rounded-3xl p-5">
             <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><WalletCards className="text-purple-300" /> Wallet History</h2>
             <div className="space-y-3">

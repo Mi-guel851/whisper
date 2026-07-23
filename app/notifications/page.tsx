@@ -7,7 +7,9 @@ import BackButton from "@/components/BackButton";
 import ShareMessageCard from "@/components/ShareMessageCard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import GlassPanel from "@/components/GlassPanel";
-import { Heart, Download, Trash2 } from "lucide-react";
+import { HINT_UNLOCK_COST } from "@/lib/coins";
+import { useToast } from "@/components/ToastProvider";
+import { Heart, Download, Trash2, Lightbulb, LockKeyhole, Loader2, ChevronDown } from "lucide-react";
 
 type Notification = {
   id: string;
@@ -15,15 +17,23 @@ type Notification = {
   image_url: string | null;
   created_at: string;
   is_read: boolean;
+  sender_username: string | null;
+  sender_email_name: string | null;
 };
 
+type HintUnlock = { message_id: string };
+
 export default function NotificationsPage() {
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewing, setViewing] = useState<{ message: string; imageUrl: string | null } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Notification | null>(null);
+  const [hintUnlocks, setHintUnlocks] = useState<HintUnlock[]>([]);
+  const [expandedHintId, setExpandedHintId] = useState<string | null>(null);
+  const [unlockingHintId, setUnlockingHintId] = useState<string | null>(null);
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -40,13 +50,19 @@ export default function NotificationsPage() {
 
       const { data, error } = await supabase
         .from("messages")
-        .select("id,message,image_url,created_at,is_read")
+        .select("id,message,image_url,created_at,is_read,sender_username,sender_email_name")
         .eq("recipient_id", session.user.id)
         .order("created_at", { ascending: false });
 
       if (!error) {
         setNotifications(data || []);
       }
+
+      const { data: unlocks } = await supabase
+        .from("anonymous_sender_reveals")
+        .select("message_id")
+        .eq("user_id", session.user.id);
+      setHintUnlocks(unlocks || []);
 
       setLoading(false);
 
@@ -77,6 +93,39 @@ export default function NotificationsPage() {
     };
   }, []);
 
+  function hintUnlocked(messageId: string) {
+    return hintUnlocks.some((unlock) => unlock.message_id === messageId);
+  }
+
+  async function unlockHint(messageId: string) {
+    if (hintUnlocked(messageId)) return;
+
+    setUnlockingHintId(messageId);
+    const { data, error } = await supabase.rpc("unlock_hint_with_coins", { target_message_id: messageId });
+
+    if (error) {
+      showToast(error.message);
+    } else {
+      setHintUnlocks((prev) =>
+        prev.some((unlock) => unlock.message_id === messageId)
+          ? prev
+          : [...prev, { message_id: messageId }]
+      );
+      showToast(`Hint unlocked. Balance: ${data ?? 0} coins`);
+    }
+
+    setUnlockingHintId(null);
+  }
+
+  function hintContent(item: Notification) {
+    return (
+      <div className="grid gap-2 rounded-2xl bg-emerald-400/10 p-3 text-sm text-emerald-50 ring-1 ring-emerald-300/20">
+        <span>Username hint: <b>{item.sender_username || "Unknown"}</b></span>
+        <span>Gmail name hint: <b>{item.sender_email_name || "Unavailable"}</b></span>
+      </div>
+    );
+  }
+
   async function openNotification(item: Notification) {
     setViewing({ message: item.message || "", imageUrl: item.image_url });
 
@@ -87,10 +136,22 @@ export default function NotificationsPage() {
       prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
     );
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === item.id ? { ...n, is_read: false } : n))
+      );
+      return;
+    }
+
     const { error } = await supabase
       .from("messages")
       .update({ is_read: true })
-      .eq("id", item.id);
+      .eq("id", item.id)
+      .eq("recipient_id", session.user.id);
 
     if (error) {
       console.error("Failed to mark notification as read:", error.message);
@@ -182,8 +243,8 @@ export default function NotificationsPage() {
                   key={item.id}
                   className={`rounded-2xl p-4 transition-all duration-300 ${
                     unread
-                      ? "bg-gradient-to-r from-pink-500/20 to-rose-500/10 ring-2 ring-pink-400/70 shadow-lg shadow-pink-500/40"
-                      : "bg-white/5 opacity-70"
+                      ? "bg-white/5 ring-1 ring-white/10 shadow-lg shadow-black/20"
+                      : "bg-white/[0.03] opacity-60"
                   }`}
                 >
                   <div className="flex w-full items-center gap-4">
@@ -191,26 +252,26 @@ export default function NotificationsPage() {
                       onClick={() => openNotification(item)}
                       className="flex min-w-0 flex-1 items-center gap-4 text-left"
                     >
-                      <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${unread ? "bg-gradient-to-br from-pink-500 to-red-500" : "bg-gradient-to-br from-gray-500 to-slate-600"}`}>
-                        <Heart size={20} className={`fill-white text-white ${unread ? "" : "opacity-80"}`} />
+                      <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${unread ? "bg-gradient-to-br from-pink-500 to-red-500" : "bg-gradient-to-br from-pink-500/45 to-red-500/45"}`}>
+                        <Heart size={20} className={`fill-white text-white ${unread ? "" : "opacity-60"}`} />
                         {unread && (
                           <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black/40 bg-rose-500 shadow-lg shadow-rose-500/40" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={`font-semibold ${unread ? "text-pink-300" : "text-gray-300"}`}>
+                        <p className={`font-semibold ${unread ? "text-white" : "text-gray-300"}`}>
                           New Message!
                         </p>
                         {item.message && (
-                          <p className={`truncate text-sm ${unread ? "text-gray-400" : "text-gray-500"}`}>{item.message}</p>
+                          <p className={`truncate text-sm ${unread ? "text-gray-100" : "text-gray-500"}`}>{item.message}</p>
                         )}
                         {!item.message && item.image_url && (
-                          <p className={`truncate text-sm ${unread ? "text-gray-400" : "text-gray-500"}`}>📷 Image</p>
+                          <p className={`truncate text-sm ${unread ? "text-gray-100" : "text-gray-500"}`}>📷 Image</p>
                         )}
                       </div>
                     </button>
 
-                    <span className={`shrink-0 text-xs ${unread ? "text-gray-500" : "text-gray-500/80"}`}>
+                    <span className={`shrink-0 text-xs ${unread ? "text-gray-300" : "text-gray-500/80"}`}>
                       {new Date(item.created_at).toLocaleDateString()}
                     </span>
 
@@ -241,6 +302,49 @@ export default function NotificationsPage() {
                       </button>
                     </div>
                   )}
+
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setExpandedHintId((current) => (current === item.id ? null : item.id))}
+                      className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-white/15 active:scale-95"
+                    >
+                      <Lightbulb size={14} className="text-yellow-200" />
+                      Hint
+                      <ChevronDown
+                        size={14}
+                        className={`transition-transform duration-300 ${expandedHintId === item.id ? "rotate-180" : ""}`}
+                      />
+                    </button>
+
+                    <div
+                      className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                        expandedHintId === item.id ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                      }`}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+                          {hintUnlocked(item.id) ? (
+                            hintContent(item)
+                          ) : (
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-sm font-black text-white">Unlock hint for {HINT_UNLOCK_COST} coins</p>
+                                <p className="mt-1 text-xs text-gray-400">Shows the sender username and Gmail name hint for this whisper.</p>
+                              </div>
+                              <button
+                                onClick={() => unlockHint(item.id)}
+                                disabled={unlockingHintId === item.id}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-300 to-pink-300 px-4 py-2 text-sm font-black text-black transition active:scale-95 disabled:opacity-60"
+                              >
+                                {unlockingHintId === item.id ? <Loader2 size={16} className="animate-spin" /> : <LockKeyhole size={16} />}
+                                {unlockingHintId === item.id ? "Unlocking..." : "Unlock"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </GlassPanel>
               );
             })}

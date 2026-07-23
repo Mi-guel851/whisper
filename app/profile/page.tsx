@@ -75,8 +75,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen theme-bg-gradient text-white pb-28">
-      <div className="mx-auto max-w-xl p-6">
+    <main className="min-h-screen w-full overflow-x-clip theme-bg-gradient text-white pb-28">
+      <div className="mx-auto w-full max-w-xl px-4 py-6 sm:px-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.back()}
@@ -123,15 +123,15 @@ export default function ProfilePage() {
               <AtSign size={12} />
               Username
             </label>
-            <div className="mt-2 flex items-center text-lg">
-              <span className="text-gray-400">whisper.app/u/</span>
+            <div className="mt-2 flex min-w-0 items-center text-lg">
+              <span className="shrink-0 text-gray-400">whisper.app/u/</span>
               <input
                 value={username}
                 onChange={(e) =>
                   setUsername(e.target.value.replace(/\s+/g, "").toLowerCase())
                 }
                 placeholder="username"
-                className="flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-500"
+                className="min-w-0 flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-500"
               />
             </div>
           </GlassPanel>
@@ -173,8 +173,8 @@ export default function ProfilePage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <ShieldCheck size={18} />
               </div>
-              <div className="flex-1">
-                <p className="font-semibold text-white">Privacy & safety</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Privacy & safety</p>
                 <p className="text-xs text-gray-400">Fully protected</p>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
@@ -184,9 +184,9 @@ export default function ProfilePage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <Palette size={18} />
               </div>
-              <div className="flex-1">
-                <p className="font-semibold text-white">Appearance</p>
-                <p className="text-xs text-gray-400">{theme.name}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Appearance</p>
+                <p className="truncate text-xs text-gray-400">{theme.name}</p>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
             </Link>
