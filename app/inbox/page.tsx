@@ -16,6 +16,7 @@ type ConversationRow = {
   user_a_last_read_at: string | null;
   user_b_last_read_at: string | null;
   last_message_at: string;
+  last_message_sender_id: string | null;
 };
 
 export default function InboxPage() {
@@ -40,7 +41,7 @@ export default function InboxPage() {
       const { data } = await supabase
         .from("conversations")
         .select(
-          "id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at"
+          "id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id"
         )
         .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
         .order("last_message_at", { ascending: false });
@@ -61,7 +62,7 @@ export default function InboxPage() {
   }
 
   function isUnread(c: ConversationRow) {
-    if (!c.last_message_at) return false;
+    if (!c.last_message_at || c.last_message_sender_id === myId || !c.last_message_sender_id) return false;
     const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
     if (!lastRead) return true;
     return new Date(c.last_message_at) > new Date(lastRead);
