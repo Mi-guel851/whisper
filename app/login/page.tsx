@@ -24,26 +24,7 @@ export default function LoginPage() {
     if (isNative) {
       try {
         const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
-
-        await GoogleAuth.initialize({
-  clientId: "226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com",
-  scopes: ["profile", "email"],
-  grantOfflineAccess: true,
-});
-
-        let googleUser;
-        try {
-          googleUser = await GoogleAuth.signIn();
-        } catch (signInErr: unknown) {
-          const msg = signInErr instanceof Error ? signInErr.message : String(signInErr);
-          
-          if (
-            msg.toLowerCase().includes("cancel") ||
-            msg.includes("12501") ||
-            msg.includes("sign_in_cancelled")
-          ) return;
-          throw signInErr;
-        }
+        const googleUser = await GoogleAuth.signIn();
 
         const idToken = googleUser?.authentication?.idToken;
         if (!idToken) {
