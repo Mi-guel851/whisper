@@ -22,19 +22,20 @@ export default function GlassPanel({
   return (
     <Tag
       {...props}
-      className={`border border-white/10 ${className}`}
+      className={`border ${className}`}
       style={{
         background: strong
-          ? "rgba(255,255,255,0.08)"
-          : "rgba(255,255,255,0.06)",
+          ? "var(--theme-surface-strong)"
+          : "var(--theme-card)",
         backdropFilter: strong
           ? "blur(60px) saturate(180%)"
           : "blur(40px) saturate(180%)",
         WebkitBackdropFilter: strong
           ? "blur(60px) saturate(180%)"
           : "blur(40px) saturate(180%)",
-        boxShadow:
-          "0 8px 32px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.15), inset 0 -1px 1px rgba(0,0,0,0.2)",
+        borderColor: "var(--theme-border)",
+        boxShadow: "var(--theme-shadow)",
+        transition: "background-color 260ms ease, border-color 220ms ease, box-shadow 260ms ease",
         ...style,
       }}
     >

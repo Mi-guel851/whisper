@@ -33,7 +33,7 @@ export default function BottomNavigation() {
   const loadUnreadChats = useCallback(async (uid: string) => {
     const { data: convos } = await supabase
       .from("conversations")
-      .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
+      .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
       .or(`user_a.eq.${uid},user_b.eq.${uid}`);
 
     if (!convos) {
@@ -42,8 +42,8 @@ export default function BottomNavigation() {
     }
 
     const unread = convos.filter((c) => {
+      if (!c.last_message_at || c.last_message_sender_id === uid || !c.last_message_sender_id) return false;
       const lastRead = c.user_a === uid ? c.user_a_last_read_at : c.user_b_last_read_at;
-      if (!c.last_message_at) return false;
       if (!lastRead) return true;
       return new Date(c.last_message_at) > new Date(lastRead);
     });
@@ -170,55 +170,12 @@ export default function BottomNavigation() {
     };
   }, [myId, loadUnreadWhispers, loadUnreadChats]);
 
-  async function handleActivityClick() {
-    setUnreadWhispers(0);
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session) return;
-
-    const { error } = await supabase
-      .from("messages")
-      .update({ is_read: true })
-      .eq("recipient_id", session.user.id)
-      .eq("is_read", false);
-
-    if (error) {
-      console.error("Failed to mark whispers as read:", error.message);
-      await loadUnreadWhispers(session.user.id);
-    }
-  }
-
-  async function handleInboxClick() {
-    setUnreadChats(0);
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session) return;
-
-    const uid = session.user.id;
-    const nowIso = new Date().toISOString();
-
-    const [{ error: errA }, { error: errB }] = await Promise.all([
-      supabase.from("conversations").update({ user_a_last_read_at: nowIso }).eq("user_a", uid),
-      supabase.from("conversations").update({ user_b_last_read_at: nowIso }).eq("user_b", uid),
-    ]);
-
-    if (errA || errB) {
-      console.error("Failed to mark inbox as read:", errA?.message || errB?.message);
-      await loadUnreadChats(uid);
-    }
-  }
 
   const nav = [
     { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined, onClick: undefined },
     { href: "/friends", icon: Users, label: "Friends", showPresenceDot: true, badge: undefined, onClick: undefined },
-    { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats, onClick: handleInboxClick },
-    { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers, onClick: handleActivityClick },
+    { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats, onClick: undefined },
+    { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers, onClick: undefined },
     { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined, onClick: undefined },
     { href: "/premium", icon: Gem, label: "Coins", showPresenceDot: false, badge: undefined, onClick: undefined },
   ];
@@ -275,11 +232,12 @@ export default function BottomNavigation() {
                 )}
 
                 {item.showPresenceDot && anyFriendOnline && (
-                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 bg-green-400" style={{ borderColor: "var(--theme-nav-bg)" }} />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2" style={{ borderColor: "var(--theme-nav-bg)", background: "var(--theme-success)" }} />
                 )}
 
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white shadow-lg shadow-rose-500/30">
+                  <span className="absolute -top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-black shadow-lg"
+                    style={{ background: "var(--theme-notification)", color: "var(--theme-accent-contrast)" }}>
                     {item.badge > 9 ? "9+" : item.badge}
                   </span>
                 )}

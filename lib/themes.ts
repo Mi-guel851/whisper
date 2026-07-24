@@ -1,131 +1,129 @@
-export type ThemeId = "midnight" | "pinkBlack" | "ngl";
+export type BackgroundThemeId = "darkAsh" | "milkyWhite";
+export type AccentColorId = "lightPurple" | "peach" | "lightGold";
 
-export type Theme = {
-  id: ThemeId;
+export type ThemeId = BackgroundThemeId;
+
+export type BackgroundTheme = {
+  id: BackgroundThemeId;
   name: string;
-  bgFrom: string;
-  bgVia: string;
-  bgTo: string;
-  blob1: string;
-  blob2: string;
-  blob3: string;
-  accentFrom: string;
-  accentTo: string;
-  accentText: string;
-  accentContrast: string;
-  surface: string;
-  surfaceStrong: string;
-  surfaceMuted: string;
-  border: string;
-  borderStrong: string;
-  text: string;
-  textMuted: string;
-  textSubtle: string;
-  divider: string;
-  shadow: string;
-  navBg: string;
-  navBorder: string;
-  navShadow: string;
-  navInactive: string;
-  navActiveText: string;
-  navPress: string;
+  colors: {
+    background: string;
+    surface: string;
+    surfaceSecondary: string;
+    card: string;
+    border: string;
+    input: string;
+    inputBorder: string;
+    textPrimary: string;
+    textSecondary: string;
+    textMuted: string;
+    shadow: string;
+    overlay: string;
+  };
   swatch: [string, string, string];
 };
 
-export const themes: Record<ThemeId, Theme> = {
-  midnight: {
-    id: "midnight",
-    name: "Aurora Midnight",
-    bgFrom: "#15062d",
-    bgVia: "#241052",
-    bgTo: "#041d34",
-    blob1: "rgba(34, 211, 238, 0.32)",
-    blob2: "rgba(168, 85, 247, 0.34)",
-    blob3: "rgba(244, 114, 182, 0.18)",
-    accentFrom: "#c084fc",
-    accentTo: "#22d3ee",
-    accentText: "#f0e7ff",
-    accentContrast: "#08111f",
-    surface: "rgba(255, 255, 255, 0.10)",
-    surfaceStrong: "rgba(255, 255, 255, 0.16)",
-    surfaceMuted: "rgba(255, 255, 255, 0.07)",
-    border: "rgba(255, 255, 255, 0.16)",
-    borderStrong: "rgba(255, 255, 255, 0.32)",
-    text: "#ffffff",
-    textMuted: "#e4dbfb",
-    textSubtle: "#c3b8e0",
-    divider: "rgba(255, 255, 255, 0.10)",
-    shadow: "0 24px 70px rgba(4, 7, 31, 0.52)",
-    navBg: "rgba(17, 9, 44, 0.82)",
-    navBorder: "rgba(255, 255, 255, 0.18)",
-    navShadow: "0 -18px 60px rgba(34, 211, 238, 0.16), 0 -8px 30px rgba(0, 0, 0, 0.42)",
-    navInactive: "#b8acd5",
-    navActiveText: "#ffffff",
-    navPress: "rgba(255, 255, 255, 0.14)",
-    swatch: ["#241052", "#c084fc", "#22d3ee"],
+export type AccentColor = {
+  id: AccentColorId;
+  name: string;
+  color: string;
+  contrast: string;
+};
+
+export type Theme = BackgroundTheme & {
+  accent: AccentColor;
+  colors: BackgroundTheme["colors"] & {
+    accent: string;
+    accentSoft: string;
+    accentStrong: string;
+    accentContrast: string;
+    icon: string;
+    success: string;
+    warning: string;
+    error: string;
+    notification: string;
+  };
+};
+
+export const backgroundThemes: Record<BackgroundThemeId, BackgroundTheme> = {
+  darkAsh: {
+    id: "darkAsh",
+    name: "Dark Ash",
+    colors: {
+      background: "#161616",
+      surface: "#202020",
+      surfaceSecondary: "#242424",
+      card: "#2A2A2A",
+      border: "#363636",
+      input: "#303030",
+      inputBorder: "#464646",
+      textPrimary: "#FFFFFF",
+      textSecondary: "#D8D8D8",
+      textMuted: "#9A9A9A",
+      shadow: "0 24px 70px rgba(0, 0, 0, 0.45)",
+      overlay: "rgba(0, 0, 0, 0.72)",
+    },
+    swatch: ["#161616", "#202020", "#2A2A2A"],
   },
-  pinkBlack: {
-    id: "pinkBlack",
-    name: "Neon Rose",
-    bgFrom: "#210313",
-    bgVia: "#4a0d2f",
-    bgTo: "#160719",
-    blob1: "rgba(236, 72, 153, 0.36)",
-    blob2: "rgba(251, 113, 133, 0.30)",
-    blob3: "rgba(244, 114, 182, 0.20)",
-    accentFrom: "#fb7185",
-    accentTo: "#f9a8d4",
-    accentText: "#ffe4f1",
-    accentContrast: "#220411",
-    surface: "rgba(255, 255, 255, 0.11)",
-    surfaceStrong: "rgba(255, 255, 255, 0.17)",
-    surfaceMuted: "rgba(255, 255, 255, 0.075)",
-    border: "rgba(255, 228, 241, 0.18)",
-    borderStrong: "rgba(255, 228, 241, 0.34)",
-    text: "#ffffff",
-    textMuted: "#ffe1ef",
-    textSubtle: "#e6bdd0",
-    divider: "rgba(255, 228, 241, 0.11)",
-    shadow: "0 24px 70px rgba(74, 13, 47, 0.46)",
-    navBg: "rgba(42, 5, 25, 0.84)",
-    navBorder: "rgba(255, 228, 241, 0.20)",
-    navShadow: "0 -18px 60px rgba(236, 72, 153, 0.20), 0 -8px 30px rgba(0, 0, 0, 0.42)",
-    navInactive: "#e7b8cc",
-    navActiveText: "#ffffff",
-    navPress: "rgba(255, 228, 241, 0.15)",
-    swatch: ["#4a0d2f", "#fb7185", "#f9a8d4"],
-  },
-  ngl: {
-    id: "ngl",
-    name: "Golden Glow",
-    bgFrom: "#2b2100",
-    bgVia: "#5a4200",
-    bgTo: "#111407",
-    blob1: "rgba(250, 204, 21, 0.38)",
-    blob2: "rgba(251, 146, 60, 0.26)",
-    blob3: "rgba(254, 240, 138, 0.18)",
-    accentFrom: "#facc15",
-    accentTo: "#fde68a",
-    accentText: "#fff7c2",
-    accentContrast: "#211900",
-    surface: "rgba(255, 255, 255, 0.12)",
-    surfaceStrong: "rgba(255, 255, 255, 0.18)",
-    surfaceMuted: "rgba(255, 255, 255, 0.08)",
-    border: "rgba(254, 240, 138, 0.20)",
-    borderStrong: "rgba(254, 240, 138, 0.36)",
-    text: "#ffffff",
-    textMuted: "#fff5cc",
-    textSubtle: "#e8d494",
-    divider: "rgba(254, 240, 138, 0.12)",
-    shadow: "0 24px 70px rgba(90, 66, 0, 0.42)",
-    navBg: "rgba(45, 34, 3, 0.84)",
-    navBorder: "rgba(254, 240, 138, 0.22)",
-    navShadow: "0 -18px 60px rgba(250, 204, 21, 0.20), 0 -8px 30px rgba(0, 0, 0, 0.40)",
-    navInactive: "#e9d68b",
-    navActiveText: "#ffffff",
-    navPress: "rgba(254, 240, 138, 0.16)",
-    swatch: ["#5a4200", "#facc15", "#fde68a"],
+  milkyWhite: {
+    id: "milkyWhite",
+    name: "Milky White",
+    colors: {
+      background: "#F7F6F4",
+      surface: "#ECE9E5",
+      surfaceSecondary: "#F0EEEA",
+      card: "#FFFFFF",
+      border: "#D6D2CC",
+      input: "#EFECE7",
+      inputBorder: "#C9C3BA",
+      textPrimary: "#191817",
+      textSecondary: "#4C4945",
+      textMuted: "#77716A",
+      shadow: "0 24px 70px rgba(60, 48, 36, 0.14)",
+      overlay: "rgba(25, 24, 23, 0.42)",
+    },
+    swatch: ["#F7F6F4", "#FFFFFF", "#ECE9E5"],
   },
 };
 
-export const themeList = Object.values(themes);
+export const accentColors: Record<AccentColorId, AccentColor> = {
+  lightPurple: { id: "lightPurple", name: "Light Purple", color: "#B38CFF", contrast: "#160A2C" },
+  peach: { id: "peach", name: "Peach", color: "#FFB58C", contrast: "#2B1306" },
+  lightGold: { id: "lightGold", name: "Light Gold", color: "#F2D16B", contrast: "#241B00" },
+};
+
+function hexToRgb(hex: string) {
+  const value = hex.replace("#", "");
+  const bigint = Number.parseInt(value, 16);
+  return `${(bigint >> 16) & 255} ${(bigint >> 8) & 255} ${bigint & 255}`;
+}
+
+export function createTheme(backgroundId: BackgroundThemeId, accentId: AccentColorId): Theme {
+  const background = backgroundThemes[backgroundId];
+  const accent = accentColors[accentId];
+  const accentRgb = hexToRgb(accent.color);
+
+  return {
+    ...background,
+    accent,
+    colors: {
+      ...background.colors,
+      accent: accent.color,
+      accentSoft: `rgb(${accentRgb} / 0.16)`,
+      accentStrong: `rgb(${accentRgb} / 0.28)`,
+      accentContrast: accent.contrast,
+      icon: accent.color,
+      success: "#3DDC97",
+      warning: "#F2D16B",
+      error: "#FF6B7A",
+      notification: accent.color,
+    },
+  };
+}
+
+export const defaultBackgroundThemeId: BackgroundThemeId = "darkAsh";
+export const defaultAccentColorId: AccentColorId = "lightPurple";
+export const backgroundThemeList = Object.values(backgroundThemes);
+export const accentColorList = Object.values(accentColors);
+export const themes = backgroundThemes;
+export const themeList = backgroundThemeList;
