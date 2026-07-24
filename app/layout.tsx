@@ -4,9 +4,9 @@ import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
 import ThemeProvider from "@/components/ThemeProvider";
 import PushNotificationsProvider from "@/components/PushNotificationsProvider";
-import SplashScreen from "@/components/SplashScreen";
 import ClickHaptics from "@/components/ClickHaptics";
 import AppUrlHandler from "@/components/AppUrlHandler";
+import OfflineHandler from "@/components/OfflineHandler";
 
 export const metadata: Metadata = {
   title: "Whisper",
@@ -22,7 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
-        <SplashScreen />
+        <OfflineHandler />
         <AppUrlHandler />
         <ClickHaptics />
         <ThemeProvider>

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Image from "next/image";
 import html2canvas from "html2canvas-pro";
 import { X, Download } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 
 type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
 
@@ -100,8 +101,42 @@ export default function ShareMessageCard({
     const blob = await getImageBlob();
     setGenerating(false);
     if (!blob) return;
-    downloadBlob(blob);
-    flashToast("Saved to your device 📥");
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        const { Share } = await import("@capacitor/share");
+
+        // Convert blob to base64
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64Data = reader.result as string;
+          const fileName = `whisper-${Date.now()}.png`;
+
+          // Save to temporary cache
+          const savedFile = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache,
+          });
+
+          // Share it (this allows user to "Save Image" to gallery or send it)
+          await Share.share({
+            title: "Save Whisper",
+            text: "Save this whisper to your device",
+            url: savedFile.uri,
+            dialogTitle: "Save to device",
+          });
+        };
+      } catch (err) {
+        console.error("Save error:", err);
+        flashToast("Couldn't save image.");
+      }
+    } else {
+      downloadBlob(blob);
+      flashToast("Saved to your device 📥");
+    }
   }
 
   async function handlePlatformShare(platform: Platform) {
@@ -116,8 +151,36 @@ export default function ShareMessageCard({
     const shareUrl = "https://whisper.app";
     const file = new File([blob], "whisper-message.png", { type: "image/png" });
 
-    // Try native share first — this is what lets WhatsApp, Instagram, etc.
-    // receive the actual image directly, the way NGL-style cards work.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        const { Share } = await import("@capacitor/share");
+
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64Data = reader.result as string;
+          const fileName = `whisper-share-${Date.now()}.png`;
+
+          const savedFile = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache,
+          });
+
+          await Share.share({
+            title: "Whisper",
+            text: shareText,
+            url: savedFile.uri,
+          });
+        };
+        return;
+      } catch (err) {
+        console.error("Native share error:", err);
+      }
+    }
+
+    // Try native web share first — this is what lets WhatsApp, Instagram, etc.
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: "Whisper", text: shareText });
