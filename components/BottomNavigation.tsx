@@ -232,11 +232,12 @@ export default function BottomNavigation() {
                 )}
 
                 {item.showPresenceDot && anyFriendOnline && (
-                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 bg-green-400" style={{ borderColor: "var(--theme-nav-bg)" }} />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2" style={{ borderColor: "var(--theme-nav-bg)", background: "var(--theme-success)" }} />
                 )}
 
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white shadow-lg shadow-rose-500/30">
+                  <span className="absolute -top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-black shadow-lg"
+                    style={{ background: "var(--theme-notification)", color: "var(--theme-accent-contrast)" }}>
                     {item.badge > 9 ? "9+" : item.badge}
                   </span>
                 )}

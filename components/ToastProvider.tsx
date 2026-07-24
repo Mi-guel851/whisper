@@ -30,7 +30,8 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="animate-[slideIn_0.25s_ease-out] rounded-2xl bg-black/80 border border-cyan-400 px-6 py-4 text-white shadow-lg backdrop-blur-xl"
+            className="animate-[slideIn_0.25s_ease-out] rounded-2xl border px-6 py-4 shadow-lg backdrop-blur-xl"
+            style={{ background: "var(--theme-card)", borderColor: "var(--theme-accent)", color: "var(--theme-text-primary)", boxShadow: "var(--theme-shadow)" }}
           >
             {t.message}
           </div>
