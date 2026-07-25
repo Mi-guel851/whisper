@@ -729,9 +729,7 @@ export default function ChatPage() {
 
   return (
     <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
-      <ChatDoodleBackground />
-      <div className="relative z-10 flex h-full flex-col">
-
+  <div className="relative z-10 flex h-full flex-col">
         {/* Header */}
         <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
           <BackButton />
@@ -747,7 +745,8 @@ export default function ChatPage() {
         </div>
 
         {/* Messages */}
-        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4 relative">
+  <ChatDoodleBackground />
           {!chatUnlocked && (
             <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
