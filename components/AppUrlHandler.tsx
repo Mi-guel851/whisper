@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { supabase } from "@/lib/supabase/client";
 
 export default function AppUrlHandler() {
@@ -19,7 +19,7 @@ export default function AppUrlHandler() {
         console.log("[deeplink] Handling URL:", urlStr);
 
         // Force close any in-app browser
-        try { await Browser.close(); } catch (e) {}
+        try { await Browser.close(); } catch {}
 
         const url = new URL(urlStr);
 
@@ -59,19 +59,29 @@ export default function AppUrlHandler() {
       }
 
       // Handle the URL when the app is already open
-      App.addListener("appUrlOpen", (data: any) => {
-        handleUrl(data.url);
+      const listener = await App.addListener("appUrlOpen", (data) => {
+        void handleUrl(data.url);
       });
 
       // Handle the URL when the app is launched from a link
       App.getLaunchUrl().then((launchUrl) => {
         if (launchUrl?.url) {
-          handleUrl(launchUrl.url);
+          void handleUrl(launchUrl.url);
         }
       });
+
+      return listener;
     }
 
-    setupDeepLinks();
+    let listener: PluginListenerHandle | undefined;
+
+    void setupDeepLinks().then((handle) => {
+      listener = handle;
+    });
+
+    return () => {
+      void listener?.remove();
+    };
   }, [router]);
 
   return null;

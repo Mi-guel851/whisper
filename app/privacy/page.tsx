@@ -17,7 +17,7 @@ export default function PrivacyPage() {
         <div className="space-y-8 text-gray-200 leading-relaxed">
           <section>
             <p>
-              Whisper ("we," "our," or "us") lets users create a personal link to receive
+              Whisper (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;) lets users create a personal link to receive
               anonymous messages from others. This policy explains what information we collect,
               how we use it, and the choices you have.
             </p>
