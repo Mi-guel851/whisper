@@ -26,7 +26,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-bold text-white mb-2">1. The Service</h2>
             <p>
               Whisper allows users to create a personal link where others can send anonymous
-              messages. We provide the service on an "as is" and "as available" basis.
+              messages. We provide the service on an &quot;as is&quot; and &quot;as available&quot; basis.
             </p>
           </section>
 
