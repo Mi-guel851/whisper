@@ -11,7 +11,15 @@ import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST } from "@/lib/coins";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { useToast } from "@/components/ToastProvider";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2 } from "lucide-react";
+
+interface SecureScreenPlugin {
+  enable(): Promise<void>;
+  disable(): Promise<void>;
+}
+
+const SecureScreen = registerPlugin<SecureScreenPlugin>("SecureScreen");
 
 type Message = {
   id: string;
@@ -483,7 +491,6 @@ export default function ChatPage() {
       .from("conversations")
       .update({
         last_message_at: new Date().toISOString(),
-        last_message_sender_id: myId,
       })
       .eq("id", conversationId);
   }
@@ -589,7 +596,6 @@ export default function ChatPage() {
         .from("conversations")
         .update({
           last_message_at: new Date().toISOString(),
-          last_message_sender_id: myId,
         })
         .eq("id", conversationId);
 
@@ -625,6 +631,11 @@ export default function ChatPage() {
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
+
+      if (Capacitor.isNativePlatform()) {
+        try { await SecureScreen.enable(); } catch (e) {}
+      }
+
       setPhotoModalUrl(url);
       setPhotoModalCaption(msg.content);
     } catch {
@@ -635,6 +646,9 @@ export default function ChatPage() {
   }
 
   function closePhotoModal() {
+    if (Capacitor.isNativePlatform()) {
+      try { SecureScreen.disable(); } catch (e) {}
+    }
     if (photoModalUrl) URL.revokeObjectURL(photoModalUrl);
     setPhotoModalUrl(null);
     setPhotoModalCaption(null);

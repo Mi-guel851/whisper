@@ -30,6 +30,9 @@ export default function RecentMessages() {
   const [sharing, setSharing] = useState<{ message: string; imageUrl: string | null } | null>(null);
 
   useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
     async function load() {
       const {
         data: { session },
@@ -47,11 +50,35 @@ export default function RecentMessages() {
         .order("created_at", { ascending: false })
         .limit(3);
 
-      setMessages(data || []);
-      setLoading(false);
+      if (!cancelled) {
+        setMessages(data || []);
+        setLoading(false);
+      }
+
+      channel = supabase
+        .channel(`recent-messages-${session.user.id}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `recipient_id=eq.${session.user.id}`,
+          },
+          (payload) => {
+            const incoming = payload.new as RecentMessage;
+            setMessages((prev) => [incoming, ...prev].slice(0, 3));
+          }
+        )
+        .subscribe();
     }
 
     load();
+
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   return (

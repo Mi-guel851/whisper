@@ -16,8 +16,12 @@ type ConversationRow = {
   user_a_last_read_at: string | null;
   user_b_last_read_at: string | null;
   last_message_at: string;
-  last_message_sender_id: string | null;
+  last_message_sender_id?: string | null;
 };
+
+function uniqueChannelName(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 export default function InboxPage() {
   const router = useRouter();
@@ -26,31 +30,90 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
 
-      if (!session) {
+    async function init() {
+      // Wait for auth to be ready
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user?.id) {
         setLoading(false);
         return;
       }
 
-      setMyId(session.user.id);
+      const userId = session.user.id;
+      if (!cancelled) setMyId(userId);
 
-      const { data } = await supabase
+      // Fetch conversations
+      const { data, error } = await supabase
         .from("conversations")
-        .select(
-          "id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id"
-        )
-        .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
+        .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
+        .or(`user_a.eq.${userId},user_b.eq.${userId}`)
         .order("last_message_at", { ascending: false });
 
-      setConversations(data || []);
-      setLoading(false);
+      if (!cancelled) {
+        if (error) console.error("Inbox fetch error:", error);
+        setConversations(data || []);
+        setLoading(false);
+      }
+
+      async function refreshConversations() {
+        if (cancelled) return;
+        const { data: fresh, error: refreshError } = await supabase
+          .from("conversations")
+          .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
+          .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+          .order("last_message_at", { ascending: false });
+
+        if (refreshError) {
+          console.error("Inbox refresh error:", refreshError);
+          return;
+        }
+
+        if (!cancelled) setConversations(fresh || []);
+      }
+
+      // Real-time
+      channel = supabase
+        .channel(uniqueChannelName(`inbox-${userId}`))
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "conversations",
+            filter: `user_a=eq.${userId}`,
+          },
+          refreshConversations
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "conversations",
+            filter: `user_b=eq.${userId}`,
+          },
+          refreshConversations
+        )
+        .subscribe();
     }
 
-    load();
+    // Also listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.id && !cancelled) {
+        init();
+      }
+    });
+
+    init();
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   function otherUserId(c: ConversationRow) {
@@ -62,15 +125,13 @@ export default function InboxPage() {
   }
 
   function isUnread(c: ConversationRow) {
-    if (!c.last_message_at || c.last_message_sender_id === myId || !c.last_message_sender_id) return false;
+    if (!c.last_message_at) return false;
     const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
     if (!lastRead) return true;
     return new Date(c.last_message_at) > new Date(lastRead);
   }
 
   function openConversation(c: ConversationRow) {
-    // Optimistic instant clear — the actual read-marking write happens
-    // when the chat page itself loads, this just updates the list view now.
     setConversations((prev) =>
       prev.map((row) =>
         row.id === c.id
@@ -97,7 +158,6 @@ export default function InboxPage() {
     <main className="min-h-screen theme-bg-gradient text-white">
       <div className="max-w-2xl mx-auto px-6 py-10 pb-28">
         <BackButton />
-
         <h1 className="text-5xl font-black mb-2 mt-4">💬 Inbox</h1>
         <p className="text-gray-400 mb-8">Your anonymous conversations</p>
 
@@ -112,13 +172,8 @@ export default function InboxPage() {
           <div className="space-y-3">
             {conversations.map((c) => {
               const unread = isUnread(c);
-
               return (
-                <button
-                  key={c.id}
-                  onClick={() => openConversation(c)}
-                  className="w-full text-left"
-                >
+                <button key={c.id} onClick={() => openConversation(c)} className="w-full text-left">
                   <GlassPanel className="relative flex items-center gap-4 rounded-2xl p-4 transition hover:bg-white/[0.09]">
                     <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
                       <MessageCircle size={20} className="text-white" />
@@ -144,7 +199,6 @@ export default function InboxPage() {
           </div>
         )}
       </div>
-
       <BottomNavigation />
     </main>
   );

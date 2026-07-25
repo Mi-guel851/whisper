@@ -111,23 +111,30 @@ export default function ShareMessageCard({
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
-          const base64Data = reader.result as string;
+          const base64Data = (reader.result as string).split(",")[1]; // Strip "data:image/png;base64,"
           const fileName = `whisper-${Date.now()}.png`;
 
-          // Save to temporary cache
-          const savedFile = await Filesystem.writeFile({
-            path: fileName,
-            data: base64Data,
-            directory: Directory.Cache,
-          });
+          try {
+            // Save to the public Pictures directory so it shows up in Gallery
+            const savedFile = await Filesystem.writeFile({
+              path: fileName,
+              data: base64Data,
+              directory: Directory.Documents, // On Android this is usually easier to access
+              recursive: true
+            });
 
-          // Share it (this allows user to "Save Image" to gallery or send it)
-          await Share.share({
-            title: "Save Whisper",
-            text: "Save this whisper to your device",
-            url: savedFile.uri,
-            dialogTitle: "Save to device",
-          });
+            // Also trigger Share so they can choose "Save Image" or send to a friend
+            await Share.share({
+              title: "Save Whisper",
+              text: "Anonymous Whisper",
+              url: savedFile.uri,
+            });
+
+            flashToast("Image generated! 📥");
+          } catch (writeErr) {
+            console.error("Write error:", writeErr);
+            flashToast("Permission error. Check app settings.");
+          }
         };
       } catch (err) {
         console.error("Save error:", err);
@@ -159,13 +166,14 @@ export default function ShareMessageCard({
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
-          const base64Data = reader.result as string;
+          const base64Data = (reader.result as string).split(",")[1];
           const fileName = `whisper-share-${Date.now()}.png`;
 
           const savedFile = await Filesystem.writeFile({
             path: fileName,
             data: base64Data,
-            directory: Directory.Cache,
+            directory: Directory.Documents,
+            recursive: true
           });
 
           await Share.share({

@@ -9,6 +9,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(SecureScreenPlugin.class);
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         WebView.setWebContentsDebuggingEnabled(true);

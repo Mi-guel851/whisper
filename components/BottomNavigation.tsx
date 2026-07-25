@@ -33,7 +33,7 @@ export default function BottomNavigation() {
   const loadUnreadChats = useCallback(async (uid: string) => {
     const { data: convos } = await supabase
       .from("conversations")
-      .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
+      .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
       .or(`user_a.eq.${uid},user_b.eq.${uid}`);
 
     if (!convos) {
@@ -42,7 +42,7 @@ export default function BottomNavigation() {
     }
 
     const unread = convos.filter((c) => {
-      if (!c.last_message_at || c.last_message_sender_id === uid || !c.last_message_sender_id) return false;
+      if (!c.last_message_at) return false;
       const lastRead = c.user_a === uid ? c.user_a_last_read_at : c.user_b_last_read_at;
       if (!lastRead) return true;
       return new Date(c.last_message_at) > new Date(lastRead);
