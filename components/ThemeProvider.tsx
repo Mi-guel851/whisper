@@ -61,6 +61,7 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
     if (saved && themes[saved]) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only available after hydration.
       setThemeIdState(saved);
     }
   }, []);

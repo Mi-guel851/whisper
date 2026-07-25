@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
+import type { URLOpenListenerEvent } from "@capacitor/app";
 import { supabase } from "@/lib/supabase/client";
 
 export default function AppUrlHandler() {
@@ -19,7 +20,7 @@ export default function AppUrlHandler() {
         console.log("[deeplink] Handling URL:", urlStr);
 
         // Force close any in-app browser
-        try { await Browser.close(); } catch (e) {}
+        try { await Browser.close(); } catch {}
 
         const url = new URL(urlStr);
 
@@ -59,7 +60,7 @@ export default function AppUrlHandler() {
       }
 
       // Handle the URL when the app is already open
-      App.addListener("appUrlOpen", (data: any) => {
+      App.addListener("appUrlOpen", (data: URLOpenListenerEvent) => {
         handleUrl(data.url);
       });
 

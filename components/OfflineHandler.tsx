@@ -25,7 +25,7 @@ export default function OfflineHandler() {
     });
 
     return () => {
-      listener.remove();
+      listener.then((handle) => handle.remove());
     };
   }, []);
 
