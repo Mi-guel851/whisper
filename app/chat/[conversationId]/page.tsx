@@ -158,11 +158,11 @@ function MessageBubble({
                   </button>
                 )}
                 {msg.content && (
-                  <p className="mt-1 text-sm text-gray-100 break-words">{msg.content}</p>
+                  <p className="mt-1 text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-100 break-words">{msg.content}</p>
+              <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
             )}
           </GlassPanel>
         </motion.div>
@@ -481,21 +481,21 @@ export default function ChatPage() {
 
   async function sendMessage() {
     if (pendingPhoto) { await sendPendingPhoto(); return; }
-    const trimmed = input.trim();
+    const hasMessage = input.trim().length > 0;
     if (!chatUnlocked) {
       showToast(isFriendConversation
         ? "You need 40 coins to unlock this conversation."
         : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
       return;
     }
-    if (!trimmed || !myId) return;
+    if (!hasMessage || !myId) return;
     setInput("");
     const replyId = replyingTo?.id || null;
     setReplyingTo(null);
     const { error } = await supabase.from("direct_messages").insert({
       conversation_id: conversationId,
       sender_id: myId,
-      content: trimmed,
+      content: input,
       reply_to_id: replyId,
     });
     if (error) { showToast(error.message); return; }
@@ -586,12 +586,12 @@ export default function ChatPage() {
         return;
       }
 
-      const caption = input.trim();
+      const hasCaption = input.trim().length > 0;
       const replyId = replyingTo?.id || null;
       const { error: insertError } = await supabase.from("direct_messages").insert({
         conversation_id: conversationId,
         sender_id: myId,
-        content: caption || null,
+        content: hasCaption ? input : null,
         reply_to_id: replyId,
         image_path: path,
         is_view_once: true,

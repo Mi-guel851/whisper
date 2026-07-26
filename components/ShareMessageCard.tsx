@@ -316,7 +316,7 @@ export default function ShareMessageCard({
               <div className="mt-8 flex w-full flex-col items-center gap-5">
                 {message && (
                   <p
-                    className={`font-extrabold leading-snug text-white break-words whitespace-pre-wrap ${messageFontSize(
+                    className={`font-extrabold leading-snug text-white break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${messageFontSize(
                       message.length
                     )}`}
                   >

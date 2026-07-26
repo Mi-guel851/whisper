@@ -114,7 +114,7 @@ export default function PublicProfile() {
 
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
-      message: message.trim() || null,
+      message: message.trim() ? message : null,
       image_url: imageUrl,
       sender_user_id: session?.user.id || null,
       sender_username: senderUsername,
