@@ -558,7 +558,10 @@ export default function ChatPage() {
 
     await supabase
       .from("conversations")
-      .update({ last_message_at: new Date().toISOString() })
+      .update({
+        last_message_at: new Date().toISOString(),
+        last_message_sender_id: myId, // ← fixes sender seeing unread badge
+      })
       .eq("id", conversationId);
   }
 
@@ -669,7 +672,10 @@ export default function ChatPage() {
 
       await supabase
         .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_message_sender_id: myId, // ← fixes sender seeing unread badge
+        })
         .eq("id", conversationId);
 
       URL.revokeObjectURL(pendingPhoto.previewUrl);
