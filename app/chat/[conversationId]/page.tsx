@@ -730,56 +730,59 @@ export default function ChatPage() {
         {/* Messages */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto px-6 py-6 space-y-4 relative"
+          className="flex-1 overflow-y-auto"
         >
-          <ChatDoodleBackground />
-          {!chatUnlocked && (
-            <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
-                <LockKeyhole className="text-cyan-200" />
-              </div>
-              <h2 className="text-2xl font-black">Chat locked</h2>
-              <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
-                {isFriendConversation
-                  ? "Unlock this friend conversation once for 40 Coins to send messages. If you accepted the request, it is already unlocked."
-                  : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
-              </p>
-              <button
-                onClick={unlockChat}
-                disabled={unlocking}
-                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
-              >
-                <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
-              </button>
-            </GlassPanel>
-          )}
+          <div className="relative min-h-full px-6 py-6 space-y-4">
+            <ChatDoodleBackground />
 
-          {messages.length === 0 ? (
-            <p className="mt-10 text-center text-gray-500">Say hi 👻 — they won&apos;t know who you are.</p>
-          ) : (
-            messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                isMe={msg.sender_id === myId}
-                repliedMsg={getRepliedMessage(msg.reply_to_id)}
-                msgReactions={getReactionsFor(msg.id)}
-                actionMenuFor={actionMenuFor}
-                setActionMenuFor={setActionMenuFor}
-                toggleReaction={toggleReaction}
-                setReplyingTo={setReplyingTo}
-                startPress={startPress}
-                cancelPress={cancelPress}
-                onSwipeReply={setReplyingTo}
-                onViewPhoto={handleViewPhoto}
-                viewingPhotoId={viewingPhotoId}
-                onDelete={(msg) => setDeleteConfirm(msg)}
-                onPin={togglePin}
-                isPinned={pinnedMessageIds.has(msg.id)}
-              />
-            ))
-          )}
-          <div ref={bottomRef} />
+            {!chatUnlocked && (
+              <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
+                  <LockKeyhole className="text-cyan-200" />
+                </div>
+                <h2 className="text-2xl font-black">Chat locked</h2>
+                <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
+                  {isFriendConversation
+                    ? "Unlock this friend conversation once for 40 Coins to send messages. If you accepted the request, it is already unlocked."
+                    : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
+                </p>
+                <button
+                  onClick={unlockChat}
+                  disabled={unlocking}
+                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+                >
+                  <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
+                </button>
+              </GlassPanel>
+            )}
+
+            {messages.length === 0 ? (
+              <p className="mt-10 text-center text-gray-500">Say hi 👻 — they won&apos;t know who you are.</p>
+            ) : (
+              messages.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  isMe={msg.sender_id === myId}
+                  repliedMsg={getRepliedMessage(msg.reply_to_id)}
+                  msgReactions={getReactionsFor(msg.id)}
+                  actionMenuFor={actionMenuFor}
+                  setActionMenuFor={setActionMenuFor}
+                  toggleReaction={toggleReaction}
+                  setReplyingTo={setReplyingTo}
+                  startPress={startPress}
+                  cancelPress={cancelPress}
+                  onSwipeReply={setReplyingTo}
+                  onViewPhoto={handleViewPhoto}
+                  viewingPhotoId={viewingPhotoId}
+                  onDelete={(msg) => setDeleteConfirm(msg)}
+                  onPin={togglePin}
+                  isPinned={pinnedMessageIds.has(msg.id)}
+                />
+              ))
+            )}
+            <div ref={bottomRef} />
+          </div>
         </div>
 
         {/* Pending photo preview */}
