@@ -633,7 +633,7 @@ export default function ChatPage() {
       const url = URL.createObjectURL(blob);
 
       if (Capacitor.isNativePlatform()) {
-        try { await SecureScreen.enable(); } catch (e) {}
+        try { await SecureScreen.enable(); } catch {}
       }
 
       setPhotoModalUrl(url);
@@ -647,7 +647,7 @@ export default function ChatPage() {
 
   function closePhotoModal() {
     if (Capacitor.isNativePlatform()) {
-      try { SecureScreen.disable(); } catch (e) {}
+      try { SecureScreen.disable(); } catch {}
     }
     if (photoModalUrl) URL.revokeObjectURL(photoModalUrl);
     setPhotoModalUrl(null);
