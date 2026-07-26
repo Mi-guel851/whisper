@@ -65,8 +65,7 @@ export default function PublicProfile() {
     setImagePreview(null);
   }
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
+  async function sendMessage() {
     if (!receiverId) return;
 
     if (!message.trim() && !imageFile) {
@@ -214,7 +213,7 @@ export default function PublicProfile() {
             </p>
           </div>
         ) : (
-          <form onSubmit={sendMessage} className="space-y-4 mt-6">
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-4 mt-6">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -251,7 +250,8 @@ export default function PublicProfile() {
             )}
 
             <button
-              type="submit"
+              type="button"
+              onClick={sendMessage}
               disabled={loading}
               className="w-full rounded-2xl bg-cyan-400 p-4 font-bold text-black disabled:opacity-60"
             >
