@@ -12,7 +12,6 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SecureScreenPlugin.class);
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
-        WebView.setWebContentsDebuggingEnabled(true);
     }
 
     @Override

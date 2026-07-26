@@ -8,7 +8,8 @@ const config: CapacitorConfig = {
     url: 'https://whisper-anonymous.vercel.app',
     cleartext: false,
     hostname: 'whisper-anonymous.vercel.app',
-    androidScheme: 'https'
+    androidScheme: 'https',
+    errorPath: 'offline.html'
   },
   plugins: {
     PushNotifications: {
