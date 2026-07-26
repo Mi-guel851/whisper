@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import { useEffect, useState } from "react";
 import { Network } from "@capacitor/network";
@@ -10,33 +10,33 @@ export default function OfflineHandler() {
   const [showPopup, setShowPopup] = useState(false);
 
   useEffect(() => {
-    async function checkNetwork() {
+    let listener: Awaited<ReturnType<typeof Network.addListener>> | null = null;
+
+    async function setup() {
       const status = await Network.getStatus();
       setIsOffline(!status.connected);
+
+      listener = await Network.addListener("networkStatusChange", (status) => {
+        setIsOffline(!status.connected);
+        if (status.connected) {
+          setShowPopup(false);
+        }
+      });
     }
 
-    checkNetwork();
-
-    const listener = Network.addListener("networkStatusChange", (status) => {
-      setIsOffline(!status.connected);
-      if (status.connected) {
-        setShowPopup(false);
-      }
-    });
+    setup();
 
     return () => {
-      listener.remove();
+      listener?.remove();
     };
   }, []);
 
   useEffect(() => {
     if (!isOffline) return;
 
-    // Handle any click on the document while offline
     function handleDocumentClick(e: MouseEvent) {
       if (isOffline) {
         setShowPopup(true);
-        // Prevent interaction with the rest of the app
         e.stopPropagation();
         e.preventDefault();
       }
@@ -50,7 +50,7 @@ export default function OfflineHandler() {
 
   return (
     <>
-      {/* Subtle Offline Indicator (The "Static Page" Vibe) */}
+      {/* Subtle Offline Indicator */}
       <div className="fixed bottom-24 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-red-500/20 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-red-200 backdrop-blur-md animate-pulse border border-red-500/30">
         <div className="flex items-center gap-2">
           <WifiOff size={12} />
@@ -82,10 +82,8 @@ export default function OfflineHandler() {
               onClick={async () => {
                 const status = await Network.getStatus();
                 if (status.connected) {
-                   setIsOffline(false);
-                   setShowPopup(false);
-                } else {
-                   // Vibrate or show slight shake if still offline
+                  setIsOffline(false);
+                  setShowPopup(false);
                 }
               }}
               className="mt-8 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 p-4 font-bold text-black shadow-lg shadow-cyan-500/20 active:scale-95 transition"
