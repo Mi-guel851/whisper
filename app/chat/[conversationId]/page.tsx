@@ -3,7 +3,7 @@
 import ChatDoodleBackground from "@/components/ChatDoodleBackground";
 import MessageTicks from "@/components/MessageTicks";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import BackButton from "@/components/BackButton";
@@ -234,6 +234,42 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Keep a ref to messages so the visibilitychange handler can access latest state
+  const messagesRef = useRef<Message[]>([]);
+  const myIdRef = useRef<string>("");
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    myIdRef.current = myId;
+  }, [myId]);
+
+  // ── Mark unread incoming messages as read and update local state immediately ──
+  const markMessagesRead = useCallback(async (msgs: Message[], currentUserId: string) => {
+    if (document.visibilityState !== "visible") return;
+
+    const unreadIds = msgs
+      .filter((m) => m.sender_id !== currentUserId && !m.read_at)
+      .map((m) => m.id);
+
+    if (unreadIds.length === 0) return;
+
+    const readNow = new Date().toISOString();
+    const { error } = await supabase
+      .from("direct_messages")
+      .update({ read_at: readNow })
+      .in("id", unreadIds);
+
+    if (!error) {
+      // ✅ Update local state immediately — sender sees blue ticks via realtime UPDATE event
+      setMessages((prev) =>
+        prev.map((m) => (unreadIds.includes(m.id) ? { ...m, read_at: readNow } : m))
+      );
+    }
+  }, []);
+
   useEffect(() => {
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
     let reactionChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -249,6 +285,7 @@ export default function ChatPage() {
       }
 
       setMyId(session.user.id);
+      myIdRef.current = session.user.id;
 
       const { data: convo } = await supabase
         .from("conversations")
@@ -263,14 +300,10 @@ export default function ChatPage() {
 
       const readColumn =
         convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
-      const { error: readError } = await supabase
+      await supabase
         .from("conversations")
         .update({ [readColumn]: new Date().toISOString() })
         .eq("id", conversationId);
-
-      if (readError) {
-        console.error("[chat] failed to mark conversation as read:", readError.message);
-      }
 
       const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
       setOtherLabel(anonymousDisplayName(otherUserId));
@@ -283,8 +316,7 @@ export default function ChatPage() {
         .eq("user_id", session.user.id)
         .eq("friend_id", otherUserId)
         .maybeSingle();
-      const friendConversation = Boolean(otherFriendship.data);
-      setIsFriendConversation(friendConversation);
+      setIsFriendConversation(Boolean(otherFriendship.data));
 
       const { data: unlock } = await supabase
         .from("chat_unlocks")
@@ -300,45 +332,45 @@ export default function ChatPage() {
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true });
 
-      setMessages(msgs || []);
+      const fetchedMsgs = msgs || [];
+      setMessages(fetchedMsgs);
+      messagesRef.current = fetchedMsgs;
 
       const { data: reacts } = await supabase
         .from("message_reactions")
         .select("message_id, user_id, emoji")
-        .in("message_id", (msgs || []).map((m) => m.id));
+        .in("message_id", fetchedMsgs.map((m) => m.id));
 
       setReactions(reacts || []);
       setLoading(false);
 
-      const incomingIds = (msgs || [])
+      // ── Mark delivered (update local state too) ──
+      const now = new Date().toISOString();
+      const undeliveredIds = fetchedMsgs
         .filter((m) => m.sender_id !== session.user.id && !m.delivered_at)
         .map((m) => m.id);
 
-      if (incomingIds.length > 0) {
+      if (undeliveredIds.length > 0) {
         const { error: deliverError } = await supabase
           .from("direct_messages")
-          .update({ delivered_at: new Date().toISOString() })
-          .in("id", incomingIds);
-        if (deliverError) {
-          console.error("[chat] failed to mark delivered:", deliverError.message);
+          .update({ delivered_at: now })
+          .in("id", undeliveredIds);
+
+        if (!deliverError) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              undeliveredIds.includes(m.id) ? { ...m, delivered_at: now } : m
+            )
+          );
         }
       }
 
-      setTimeout(async () => {
-        if (document.visibilityState !== "visible") return;
-        const unreadIds = (msgs || [])
-          .filter((m) => m.sender_id !== session.user.id && !m.read_at)
-          .map((m) => m.id);
-        if (unreadIds.length === 0) return;
-        const { error: readMsgError } = await supabase
-          .from("direct_messages")
-          .update({ read_at: new Date().toISOString() })
-          .in("id", unreadIds);
-        if (readMsgError) {
-          console.error("[chat] failed to mark read:", readMsgError.message);
-        }
+      // ── Mark read after 1.2s and update local state immediately ──
+      setTimeout(() => {
+        markMessagesRead(messagesRef.current, session.user.id);
       }, 1200);
 
+      // ── Realtime: new messages ──
       msgChannel = supabase
         .channel(`chat-msgs-${conversationId}-${Date.now()}`)
         .on(
@@ -351,21 +383,33 @@ export default function ChatPage() {
           },
           (payload) => {
             const incoming = payload.new as Message;
-            setMessages((prev) =>
-              prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
-            );
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === incoming.id)) return prev;
+              return [...prev, incoming];
+            });
 
             if (incoming.sender_id !== session.user.id) {
+              const msgNow = new Date().toISOString();
+              const readAt =
+                document.visibilityState === "visible" ? msgNow : null;
+
               supabase
                 .from("direct_messages")
-                .update({
-                  delivered_at: new Date().toISOString(),
-                  read_at:
-                    document.visibilityState === "visible" ? new Date().toISOString() : null,
-                })
+                .update({ delivered_at: msgNow, read_at: readAt })
                 .eq("id", incoming.id)
                 .then(({ error }) => {
-                  if (error) console.error("[chat] failed to mark live message:", error.message);
+                  if (error) {
+                    console.error("[chat] failed to mark live message:", error.message);
+                  } else {
+                    // ✅ Update local state immediately so sender's ticks update
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === incoming.id
+                          ? { ...m, delivered_at: msgNow, read_at: readAt }
+                          : m
+                      )
+                    );
+                  }
                 });
             }
           }
@@ -379,12 +423,16 @@ export default function ChatPage() {
             filter: `conversation_id=eq.${conversationId}`,
           },
           (payload) => {
+            // ✅ This fires on the SENDER's screen when recipient marks read
             const updated = payload.new as Message;
-            setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+            setMessages((prev) =>
+              prev.map((m) => (m.id === updated.id ? updated : m))
+            );
           }
         )
         .subscribe();
 
+      // ── Realtime: reactions ──
       reactionChannel = supabase
         .channel(`chat-reactions-${conversationId}-${Date.now()}`)
         .on(
@@ -399,13 +447,14 @@ export default function ChatPage() {
               const incoming = payload.new as Reaction;
               setReactions((prev) =>
                 prev.some(
-                  (r) => r.message_id === incoming.message_id && r.user_id === incoming.user_id
+                  (r) =>
+                    r.message_id === incoming.message_id &&
+                    r.user_id === incoming.user_id
                 )
                   ? prev
                   : [...prev, incoming]
               );
             }
-
             if (payload.eventType === "UPDATE") {
               setReactions((prev) =>
                 prev.map((r) =>
@@ -416,13 +465,13 @@ export default function ChatPage() {
                 )
               );
             }
-
             if (payload.eventType === "DELETE") {
               setReactions((prev) =>
                 prev.filter(
                   (r) =>
                     !(
-                      r.message_id === (payload.old as Partial<Reaction>).message_id &&
+                      r.message_id ===
+                        (payload.old as Partial<Reaction>).message_id &&
                       r.user_id === (payload.old as Partial<Reaction>).user_id
                     )
                 )
@@ -431,15 +480,31 @@ export default function ChatPage() {
           }
         )
         .subscribe();
+
+      // ── Visibility change: mark read when user tabs back in ──
+      function handleVisibilityChange() {
+        if (document.visibilityState !== "visible") return;
+        markMessagesRead(messagesRef.current, myIdRef.current);
+      }
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      return () => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
     }
 
-    init();
+    let cleanupVisibility: (() => void) | undefined;
+    init().then((cleanup) => {
+      cleanupVisibility = cleanup;
+    });
 
     return () => {
+      cleanupVisibility?.();
       if (msgChannel) supabase.removeChannel(msgChannel);
       if (reactionChannel) supabase.removeChannel(reactionChannel);
     };
-  }, [conversationId, router]);
+  }, [conversationId, router, markMessagesRead]);
 
   useEffect(() => {
     if (loading) return;
@@ -466,7 +531,11 @@ export default function ChatPage() {
 
     const trimmed = input.trim();
     if (!chatUnlocked) {
-      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
+      showToast(
+        isFriendConversation
+          ? "You need 40 coins to unlock this conversation."
+          : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`
+      );
       return;
     }
     if (!trimmed || !myId) return;
@@ -489,15 +558,17 @@ export default function ChatPage() {
 
     await supabase
       .from("conversations")
-      .update({
-        last_message_at: new Date().toISOString(),
-      })
+      .update({ last_message_at: new Date().toISOString() })
       .eq("id", conversationId);
   }
 
   function triggerPhotoPicker() {
     if (!chatUnlocked) {
-      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      showToast(
+        isFriendConversation
+          ? "You need 40 coins to unlock this conversation."
+          : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`
+      );
       return;
     }
     fileInputRef.current?.click();
@@ -530,7 +601,11 @@ export default function ChatPage() {
     if (!pendingPhoto || !myId) return;
 
     if (!chatUnlocked) {
-      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      showToast(
+        isFriendConversation
+          ? "You need 40 coins to unlock this conversation."
+          : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`
+      );
       return;
     }
 
@@ -594,9 +669,7 @@ export default function ChatPage() {
 
       await supabase
         .from("conversations")
-        .update({
-          last_message_at: new Date().toISOString(),
-        })
+        .update({ last_message_at: new Date().toISOString() })
         .eq("id", conversationId);
 
       URL.revokeObjectURL(pendingPhoto.previewUrl);
@@ -609,7 +682,9 @@ export default function ChatPage() {
   }
 
   async function handleViewPhoto(msg: Message) {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session) return;
 
     setViewingPhotoId(msg.id);
@@ -633,7 +708,9 @@ export default function ChatPage() {
       const url = URL.createObjectURL(blob);
 
       if (Capacitor.isNativePlatform()) {
-        try { await SecureScreen.enable(); } catch (e) {}
+        try {
+          await SecureScreen.enable();
+        } catch (e) {}
       }
 
       setPhotoModalUrl(url);
@@ -647,7 +724,9 @@ export default function ChatPage() {
 
   function closePhotoModal() {
     if (Capacitor.isNativePlatform()) {
-      try { SecureScreen.disable(); } catch (e) {}
+      try {
+        SecureScreen.disable();
+      } catch (e) {}
     }
     if (photoModalUrl) URL.revokeObjectURL(photoModalUrl);
     setPhotoModalUrl(null);
@@ -684,7 +763,9 @@ export default function ChatPage() {
 
   async function unlockChat() {
     setUnlocking(true);
-    const { error } = await supabase.rpc("unlock_chat_with_coins", { target_conversation_id: conversationId });
+    const { error } = await supabase.rpc("unlock_chat_with_coins", {
+      target_conversation_id: conversationId,
+    });
     if (error) {
       showToast(error.message);
     } else {
@@ -729,7 +810,7 @@ export default function ChatPage() {
 
   return (
     <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
-  <div className="relative z-10 flex h-full flex-col">
+      <div className="relative z-10 flex h-full flex-col">
         {/* Header */}
         <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
           <BackButton />
@@ -745,8 +826,11 @@ export default function ChatPage() {
         </div>
 
         {/* Messages */}
-        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4 relative">
-  <ChatDoodleBackground />
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto px-6 py-6 space-y-4 relative"
+        >
+          <ChatDoodleBackground />
           {!chatUnlocked && (
             <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
@@ -763,7 +847,8 @@ export default function ChatPage() {
                 disabled={unlocking}
                 className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
               >
-                <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
+                <Coins size={18} />{" "}
+                {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
               </button>
             </GlassPanel>
           )}
@@ -884,18 +969,22 @@ export default function ChatPage() {
             </button>
           </div>
         </form>
+      </div>
 
-      </div>{/* end relative z-10 flex h-full flex-col */}
-
-      {/* Photo modal — outside z-10 wrapper so it overlays everything */}
+      {/* Photo modal */}
       {photoModalUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
           onClick={closePhotoModal}
         >
-          <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative max-h-full max-w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             {photoModalCaption && (
-              <p className="mb-3 text-center text-sm font-medium text-white">{photoModalCaption}</p>
+              <p className="mb-3 text-center text-sm font-medium text-white">
+                {photoModalCaption}
+              </p>
             )}
             <img
               src={photoModalUrl}

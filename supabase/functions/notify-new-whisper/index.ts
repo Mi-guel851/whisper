@@ -80,6 +80,17 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "no recipient_id on message" }), { status: 200 });
     }
 
+    // Check if the receiver has push notifications enabled in their profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("push_notifications")
+      .eq("id", receiverId)
+      .single();
+
+    if (!profile?.push_notifications) {
+      return new Response(JSON.stringify({ skipped: "user disabled notifications" }), { status: 200 });
+    }
+
     const { data: tokens } = await supabase
       .from("device_tokens")
       .select("fcm_token")
