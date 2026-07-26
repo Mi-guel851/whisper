@@ -17,7 +17,7 @@ export default function OfflineHandler() {
 
     checkNetwork();
 
-    const listener = Network.addListener("networkStatusChange", (status) => {
+    const listenerPromise = Network.addListener("networkStatusChange", (status) => {
       setIsOffline(!status.connected);
       if (status.connected) {
         setShowPopup(false);
@@ -25,7 +25,7 @@ export default function OfflineHandler() {
     });
 
     return () => {
-      listener.remove();
+      listenerPromise.then((listener) => listener.remove());
     };
   }, []);
 
