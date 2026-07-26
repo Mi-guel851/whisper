@@ -16,7 +16,7 @@ type ConversationRow = {
   user_a_last_read_at: string | null;
   user_b_last_read_at: string | null;
   last_message_at: string;
-  last_message_sender_id?: string | null;
+  last_message_sender_id: string | null;
 };
 
 function uniqueChannelName(prefix: string) {
@@ -34,7 +34,6 @@ export default function InboxPage() {
     let cancelled = false;
 
     async function init() {
-      // Wait for auth to be ready
       const { data: { session } } = await supabase.auth.getSession();
 
       if (!session?.user?.id) {
@@ -45,10 +44,9 @@ export default function InboxPage() {
       const userId = session.user.id;
       if (!cancelled) setMyId(userId);
 
-      // Fetch conversations
       const { data, error } = await supabase
         .from("conversations")
-        .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
+        .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
         .or(`user_a.eq.${userId},user_b.eq.${userId}`)
         .order("last_message_at", { ascending: false });
 
@@ -62,7 +60,7 @@ export default function InboxPage() {
         if (cancelled) return;
         const { data: fresh, error: refreshError } = await supabase
           .from("conversations")
-          .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at")
+          .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
           .or(`user_a.eq.${userId},user_b.eq.${userId}`)
           .order("last_message_at", { ascending: false });
 
@@ -74,7 +72,6 @@ export default function InboxPage() {
         if (!cancelled) setConversations(fresh || []);
       }
 
-      // Real-time
       channel = supabase
         .channel(uniqueChannelName(`inbox-${userId}`))
         .on(
@@ -100,7 +97,6 @@ export default function InboxPage() {
         .subscribe();
     }
 
-    // Also listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user?.id && !cancelled) {
         init();
@@ -126,6 +122,7 @@ export default function InboxPage() {
 
   function isUnread(c: ConversationRow) {
     if (!c.last_message_at) return false;
+    if (c.last_message_sender_id === myId) return false; // you sent it — not unread for you
     const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
     if (!lastRead) return true;
     return new Date(c.last_message_at) > new Date(lastRead);
