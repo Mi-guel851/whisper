@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Image from "next/image";
 import html2canvas from "html2canvas-pro";
-import { X, Download } from "lucide-react";
+import { X, Download, Image as ImageIcon } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 
 type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
@@ -143,6 +143,54 @@ export default function ShareMessageCard({
     } else {
       downloadBlob(blob);
       flashToast("Saved to your device 📥");
+    }
+  }
+
+  async function handleSaveAttachment() {
+    if (!imageUrl) return;
+    setGenerating(true);
+
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+
+      if (Capacitor.isNativePlatform()) {
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        const { Share } = await import("@capacitor/share");
+
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64Data = (reader.result as string).split(",")[1];
+          const fileName = `whisper-photo-${Date.now()}.jpg`;
+
+          const savedFile = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+
+          await Share.share({
+            title: "Save Photo",
+            url: savedFile.uri,
+          });
+          flashToast("Photo saved! 📷");
+        };
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "whisper-photo.jpg";
+        link.click();
+        URL.revokeObjectURL(url);
+        flashToast("Photo saved! 📷");
+      }
+    } catch (err) {
+      console.error(err);
+      flashToast("Couldn't save photo.");
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -315,8 +363,19 @@ export default function ShareMessageCard({
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 p-4 font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
         >
           <Download size={18} />
-          {generating ? "Generating..." : "Save to device"}
+          {generating ? "Generating..." : "Save share card"}
         </button>
+
+        {imageUrl && (
+          <button
+            onClick={handleSaveAttachment}
+            disabled={generating}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4 font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+          >
+            <ImageIcon size={18} />
+            {generating ? "Processing..." : "Save original photo"}
+          </button>
+        )}
 
         {toast && (
           <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur-md">

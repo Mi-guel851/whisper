@@ -139,10 +139,10 @@ export default function DashboardHeader() {
         onClick={handleNotifyClick}
         disabled={loading}
         className={`flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
-          pushEnabled ? "bg-cyan-500 text-black" : "bg-white/5 text-white hover:bg-white/10"
+          pushEnabled ? "bg-cyan-500 text-black shadow-lg shadow-cyan-500/20" : "bg-white/5 text-white hover:bg-white/10"
         }`}
       >
-        {pushEnabled ? <Bell size={15} /> : <BellOff size={15} />}
+        <Bell size={15} fill={pushEnabled ? "currentColor" : "none"} />
         {loading ? "..." : pushEnabled ? "On" : "Notify"}
       </button>
     </div>
