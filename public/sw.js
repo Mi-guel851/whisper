@@ -1,17 +1,18 @@
 const CACHE_NAME = "whisper-cache-v1";
-const OFFLINE_URL = "/index.html";
 
-// Files to cache immediately
+// Files to cache immediately on first visit
 const STATIC_ASSETS = [
   "/",
   "/ghost.png",
   "/globals.css",
-  "/favicon.ico"
+  "/favicon.ico",
+  "/index.html"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      console.log("[SW] Pre-caching static assets");
       return cache.addAll(STATIC_ASSETS);
     })
   );
@@ -31,35 +32,49 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Stale-while-revalidate strategy for the "premium vibe"
+// Network-first strategy for navigation, Cache-first for assets
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
-  event.respondWith(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request).then((networkResponse) => {
-          // If network is successful, update cache
-          if (networkResponse.ok) {
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(() => {
-          // If network fails and no cache, maybe return offline page?
-          return cachedResponse;
-        });
+  const url = new URL(event.request.url);
 
-        // Return cached response immediately if available, otherwise wait for network
-        return cachedResponse || fetchPromise;
+  // For navigation requests (pages), try network first, fallback to cache
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cachedResponse) => {
+            // If the specific page isn't cached, return the cached root (Dashboard/Home)
+            return cachedResponse || caches.match("/");
+          });
+        })
+    );
+    return;
+  }
+
+  // For images and CSS, try cache first
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse.ok) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return networkResponse;
       });
+      return cachedResponse || fetchPromise;
     })
   );
 });
 
-// Push Notification Logic
+// Push Notification Logic (Unchanged)
 self.addEventListener("push", (event) => {
   const data = event.data ? event.data.json() : {};
-
   const title = data.title || "Whisper";
   const options = {
     body: data.body || "You got a new anonymous message 👻",
@@ -67,7 +82,6 @@ self.addEventListener("push", (event) => {
     badge: "/ghost.png",
     data: { url: data.url || "/dashboard" },
   };
-
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
@@ -77,13 +91,9 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     clients.matchAll({ type: "window" }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url.includes(url) && "focus" in client) {
-          return client.focus();
-        }
+        if (client.url.includes(url) && "focus" in client) return client.focus();
       }
-      if (clients.openWindow) {
-        return clients.openWindow(url);
-      }
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
