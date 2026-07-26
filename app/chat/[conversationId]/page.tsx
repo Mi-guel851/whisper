@@ -273,11 +273,18 @@ export default function ChatPage() {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+
+  useEffect(() => {
+    if (!inputRef.current) return;
+    inputRef.current.style.height = "auto";
+    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 144)}px`;
+  }, [input]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
 
   const markMessagesRead = useCallback(async (msgs: Message[], currentUserId: string) => {
@@ -472,8 +479,7 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
+  async function sendMessage() {
     if (pendingPhoto) { await sendPendingPhoto(); return; }
     const trimmed = input.trim();
     if (!chatUnlocked) {
@@ -805,7 +811,7 @@ export default function ChatPage() {
         )}
 
         {/* Input form */}
-        <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
+        <form onSubmit={(e) => e.preventDefault()} className="flex-shrink-0 p-6 pt-0">
           <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
             <button
@@ -815,15 +821,18 @@ export default function ChatPage() {
             >
               <ImagePlus size={18} />
             </button>
-            <input
+            <textarea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
               disabled={!chatUnlocked}
-              className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+              rows={1}
+              className="max-h-36 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2 leading-6 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
-              type="submit"
+              type="button"
+              onClick={sendMessage}
               disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
               className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
             >
