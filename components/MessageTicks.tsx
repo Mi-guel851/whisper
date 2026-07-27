@@ -12,8 +12,8 @@ export default function MessageTicks({
     return (
       <span className="inline-flex items-center">
         <svg width="18" height="11" viewBox="0 0 18 11" fill="none">
-          <path d="M1 5.5L5 9.5L13 1.5" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M5 5.5L9 9.5L17 1.5" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M1 5.5L5 9.5L13 1.5" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M5 5.5L9 9.5L17 1.5" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </span>
     );
@@ -24,7 +24,7 @@ export default function MessageTicks({
     return (
       <span className="inline-flex items-center">
         <svg width="18" height="11" viewBox="0 0 18 11" fill="none">
-          <path d="M1 5.5L5 9.5L13 1.5" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M1 5.5L5 9.5L13 1.5" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M5 5.5L9 9.5L17 1.5" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </span>

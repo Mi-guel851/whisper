@@ -48,10 +48,7 @@ export default function AppearancePage() {
                   <p className="font-semibold text-white">{t.name}</p>
                 </div>
                 {active && (
-                  <div
-                    className="flex h-6 w-6 items-center justify-center rounded-full"
-                    style={{ background: t.accentFrom }}
-                  >
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full premium-gradient">
                     <Check size={14} className="text-black" />
                   </div>
                 )}

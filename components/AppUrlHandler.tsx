@@ -19,7 +19,7 @@ export default function AppUrlHandler() {
         console.log("[deeplink] Handling URL:", urlStr);
 
         // Force close any in-app browser
-        try { await Browser.close(); } catch (e) {}
+        try { await Browser.close(); } catch {}
 
         const url = new URL(urlStr);
 
@@ -59,7 +59,7 @@ export default function AppUrlHandler() {
       }
 
       // Handle the URL when the app is already open
-      App.addListener("appUrlOpen", (data: any) => {
+      App.addListener("appUrlOpen", (data: { url: string }) => {
         handleUrl(data.url);
       });
 

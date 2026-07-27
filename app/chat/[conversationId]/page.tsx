@@ -91,7 +91,7 @@ function MessageBubble({
     <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
       <div className="relative max-w-[75%]">
         <motion.div
-          className="absolute left-2 top-1/2 -translate-y-1/2 text-cyan-400 pointer-events-none"
+          className="absolute left-2 top-1/2 -translate-y-1/2 text-purple-500 pointer-events-none"
           style={{ opacity: replyIconOpacity }}
         >
           <CornerUpLeft size={18} />
@@ -128,7 +128,7 @@ function MessageBubble({
               </div>
             )}
             {repliedMsg && (
-              <div className="mb-2 border-l-2 border-cyan-400 pl-2 text-xs text-gray-400 truncate">
+              <div className="mb-2 border-l-2 border-purple-500 pl-2 text-xs text-gray-400 truncate">
                 {repliedMsg.content || "📷 Photo"}
               </div>
             )}
@@ -147,7 +147,7 @@ function MessageBubble({
                   <button
                     onClick={() => onViewPhoto(msg)}
                     disabled={viewingPhotoId === msg.id}
-                    className="flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-cyan-100 disabled:opacity-60"
+                    className="flex items-center gap-2 text-sm font-bold text-purple-300 hover:text-cyan-100 disabled:opacity-60"
                   >
                     {viewingPhotoId === msg.id ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -710,7 +710,7 @@ export default function ChatPage() {
         <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
           <BackButton />
           <div className="mt-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-600">
               👻
             </div>
             <div>
@@ -742,9 +742,9 @@ export default function ChatPage() {
             <ChatDoodleBackground />
 
             {!chatUnlocked && (
-              <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
-                  <LockKeyhole className="text-cyan-200" />
+              <GlassPanel className="rounded-3xl border border-purple-400/20 p-6 text-center shadow-2xl shadow-purple-600/10">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-400/25 to-purple-400/25">
+                  <LockKeyhole className="text-purple-300" />
                 </div>
                 <h2 className="text-2xl font-black">Chat locked</h2>
                 <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
@@ -755,7 +755,7 @@ export default function ChatPage() {
                 <button
                   onClick={unlockChat}
                   disabled={unlocking}
-                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-purple-400 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-purple-500/20 transition active:scale-95 disabled:opacity-60"
                 >
                   <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
                 </button>
@@ -793,7 +793,7 @@ export default function ChatPage() {
 
         {/* Pending photo preview */}
         {pendingPhoto && (
-          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-300/30 bg-white/5 px-3 py-2">
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-purple-400/30 bg-white/5 px-3 py-2">
             <img src={pendingPhoto.previewUrl} alt="Selected photo" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
             <p className="flex-1 truncate text-xs text-gray-300">Ready to send — costs {SEND_IMAGE_COST} coins</p>
             <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="disabled:opacity-60">
@@ -804,7 +804,7 @@ export default function ChatPage() {
 
         {/* Reply preview */}
         {replyingTo && (
-          <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-purple-500 bg-white/5 px-3 py-2">
             <p className="truncate text-xs text-gray-300">Replying to: {replyingTo.content || "📷 Photo"}</p>
             <button onClick={() => setReplyingTo(null)}><X size={14} className="text-gray-400" /></button>
           </div>
@@ -817,7 +817,7 @@ export default function ChatPage() {
             <button
               type="button" onClick={triggerPhotoPicker} disabled={uploadingPhoto}
               title={`Send an image (${SEND_IMAGE_COST} coins)`}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-purple-300 transition hover:bg-white/10 disabled:opacity-60"
             >
               <ImagePlus size={18} />
             </button>
@@ -834,7 +834,7 @@ export default function ChatPage() {
               type="button"
               onClick={sendMessage}
               disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
-              className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
+              className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
             >
               {pendingPhoto ? (
                 uploadingPhoto ? <Loader2 size={16} className="animate-spin text-black" /> : (

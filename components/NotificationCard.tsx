@@ -39,9 +39,9 @@ export default function NotificationCard() {
 
         </div>
 
-        <div className="rounded-2xl bg-cyan-500/10 p-4">
+        <div className="rounded-2xl bg-purple-600/10 p-4">
 
-          <p className="font-semibold text-cyan-300">
+          <p className="font-semibold text-purple-400">
             🎉 Premium features coming soon!
           </p>
 

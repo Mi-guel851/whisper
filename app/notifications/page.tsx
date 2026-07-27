@@ -334,7 +334,7 @@ export default function NotificationsPage() {
                               <button
                                 onClick={() => unlockHint(item.id)}
                                 disabled={unlockingHintId === item.id}
-                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-300 to-pink-300 px-4 py-2 text-sm font-black text-black transition active:scale-95 disabled:opacity-60"
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-400 to-pink-300 px-4 py-2 text-sm font-black text-black transition active:scale-95 disabled:opacity-60"
                               >
                                 {unlockingHintId === item.id ? <Loader2 size={16} className="animate-spin" /> : <LockKeyhole size={16} />}
                                 {unlockingHintId === item.id ? "Unlocking..." : "Unlock"}

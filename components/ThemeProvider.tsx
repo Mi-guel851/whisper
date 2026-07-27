@@ -1,84 +1,75 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { themes, type ThemeId, type Theme } from "@/lib/themes";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { themes, type ResolvedThemeId, type Theme, type ThemeId } from "@/lib/themes";
 
 type ThemeContextType = {
   themeId: ThemeId;
   theme: Theme;
+  resolvedTheme: ResolvedThemeId;
   setThemeId: (id: ThemeId) => void;
+  toggleTheme: () => void;
 };
 
 const ThemeContext = createContext<ThemeContextType | null>(null);
 const STORAGE_KEY = "whisper-theme";
+const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
-const cssVariableMap: Record<keyof Omit<Theme, "id" | "name" | "swatch">, string> = {
-  bgFrom: "--theme-bg-from",
-  bgVia: "--theme-bg-via",
-  bgTo: "--theme-bg-to",
-  blob1: "--theme-blob-1",
-  blob2: "--theme-blob-2",
-  blob3: "--theme-blob-3",
-  accentFrom: "--theme-accent-from",
-  accentTo: "--theme-accent-to",
-  accentText: "--theme-accent-text",
-  accentContrast: "--theme-accent-contrast",
-  surface: "--theme-surface",
-  surfaceStrong: "--theme-surface-strong",
-  surfaceMuted: "--theme-surface-muted",
-  border: "--theme-border",
-  borderStrong: "--theme-border-strong",
-  text: "--theme-text",
-  textMuted: "--theme-text-muted",
-  textSubtle: "--theme-text-subtle",
-  divider: "--theme-divider",
-  shadow: "--theme-shadow",
-  navBg: "--theme-nav-bg",
-  navBorder: "--theme-nav-border",
-  navShadow: "--theme-nav-shadow",
-  navInactive: "--theme-nav-inactive",
-  navActiveText: "--theme-nav-active-text",
-  navPress: "--theme-nav-press",
-};
+function getSystemTheme(): ResolvedThemeId {
+  if (typeof window === "undefined") return "dark";
+  return window.matchMedia(MEDIA_QUERY).matches ? "dark" : "light";
+}
 
-function applyTheme(theme: Theme) {
+function resolveTheme(themeId: ThemeId): ResolvedThemeId {
+  return themeId === "system" ? getSystemTheme() : themeId;
+}
+
+function applyTheme(themeId: ThemeId) {
+  const resolved = resolveTheme(themeId);
   const root = document.documentElement;
-
-  for (const [themeKey, cssVariable] of Object.entries(cssVariableMap) as [keyof typeof cssVariableMap, string][]) {
-    root.style.setProperty(cssVariable, theme[themeKey]);
-  }
-
-  root.dataset.theme = theme.id;
+  root.dataset.themePreference = themeId;
+  root.dataset.theme = resolved;
+  root.style.colorScheme = resolved;
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Always start with the same default on both server and client so the
-  // first client render matches the server-rendered HTML exactly.
-  const [themeId, setThemeIdState] = useState<ThemeId>("midnight");
-
-  // After mount (client-only), read the saved preference and apply it.
-  // This runs after hydration, so it can safely diverge from the server render.
-  useEffect(() => {
+  const [themeId, setThemeIdState] = useState<ThemeId>(() => {
+    if (typeof window === "undefined") return "system";
     const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-    if (saved && themes[saved]) {
-      setThemeIdState(saved);
-    }
-  }, []);
+    return saved && themes[saved] ? saved : "system";
+  });
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedThemeId>(() => resolveTheme(themeId));
 
   useEffect(() => {
-    applyTheme(themes[themeId]);
+    const media = window.matchMedia(MEDIA_QUERY);
+
+    function handleSystemThemeChange() {
+      setResolvedTheme(resolveTheme(themeId));
+      applyTheme(themeId);
+    }
+
+    handleSystemThemeChange();
+    media.addEventListener("change", handleSystemThemeChange);
+    return () => media.removeEventListener("change", handleSystemThemeChange);
   }, [themeId]);
 
-  function setThemeId(id: ThemeId) {
+  const setThemeId = useCallback((id: ThemeId) => {
     setThemeIdState(id);
     localStorage.setItem(STORAGE_KEY, id);
-  }
+    setResolvedTheme(resolveTheme(id));
+    applyTheme(id);
+  }, []);
 
-  return (
-    <ThemeContext.Provider value={{ themeId, theme: themes[themeId], setThemeId }}>
-      {children}
-    </ThemeContext.Provider>
+  const toggleTheme = useCallback(() => {
+    setThemeId(resolvedTheme === "dark" ? "light" : "dark");
+  }, [resolvedTheme, setThemeId]);
+
+  const value = useMemo(
+    () => ({ themeId, theme: themes[themeId], resolvedTheme, setThemeId, toggleTheme }),
+    [themeId, resolvedTheme, setThemeId, toggleTheme]
   );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

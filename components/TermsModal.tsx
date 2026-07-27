@@ -42,8 +42,8 @@ export default function TermsModal({ onAccept }: { onAccept: () => void }) {
 
         <div className="mt-6 space-y-4">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-400/15">
-              <HeartHandshake size={16} className="text-cyan-300" />
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-500/15">
+              <HeartHandshake size={16} className="text-purple-400" />
             </div>
             <p className="text-sm text-gray-300">
               Be kind. Anonymous doesn&apos;t mean cruel — treat every whisper the way you&apos;d want to be treated.
@@ -60,8 +60,8 @@ export default function TermsModal({ onAccept }: { onAccept: () => void }) {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-400/15">
-              <ShieldCheck size={16} className="text-cyan-300" />
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-500/15">
+              <ShieldCheck size={16} className="text-purple-400" />
             </div>
             <p className="text-sm text-gray-300">
               Whisper isn&apos;t a place for scandals, rumors, or targeting anyone. It&apos;s for honest, respectful connection.
@@ -72,7 +72,7 @@ export default function TermsModal({ onAccept }: { onAccept: () => void }) {
         <button
           onClick={handleAccept}
           disabled={loading}
-          className="mt-8 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 p-4 font-bold text-black transition hover:opacity-90 disabled:opacity-60"
+          className="mt-8 w-full rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 p-4 font-bold text-black transition hover:opacity-90 disabled:opacity-60"
         >
           {loading ? "Confirming..." : "I Agree — Let's Whisper"}
         </button>

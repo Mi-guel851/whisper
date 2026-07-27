@@ -76,9 +76,9 @@ function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
 function AnonymousAvatar({ userId, online = false }: { userId?: string | null; online?: boolean }) {
   const hash = hashUserId(userId || "ghost");
   const gradients = [
-    "from-cyan-500 to-purple-600",
+    "from-purple-600 to-purple-600",
     "from-fuchsia-500 to-indigo-600",
-    "from-emerald-400 to-cyan-600",
+    "from-emerald-400 to-purple-700",
     "from-amber-300 to-rose-500",
     "from-slate-400 to-violet-700",
   ];
@@ -326,7 +326,7 @@ function FriendsPageContent() {
       <div className="mx-auto max-w-2xl px-6 py-8">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
-          <Users className="text-cyan-300" size={28} />
+          <Users className="text-purple-400" size={28} />
           <h1 className="text-3xl font-black">Discover People</h1>
         </div>
         <p className="mt-2 text-sm text-gray-400">Meet registered Whisper users anonymously.</p>
@@ -367,7 +367,7 @@ function FriendsPageContent() {
                         : <span className="text-gray-400">Anonymous Whisper user</span>}
                     </p>
                   </div>
-                  <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60">
+                  <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-purple-500 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60">
                     <UserPlus size={14} className="mr-1 inline" /> Add Friend
                   </button>
                 </GlassPanel>
@@ -406,7 +406,7 @@ function FriendsPageContent() {
                     <button
                       onClick={() => addFriend(id)}
                       disabled={busyId === id}
-                      className="rounded-xl bg-cyan-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"
+                      className="rounded-xl bg-purple-500 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"
                     >
                       <UserPlus size={14} className="mr-1 inline" /> Add Friend
                     </button>

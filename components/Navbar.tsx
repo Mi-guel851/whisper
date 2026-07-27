@@ -36,7 +36,7 @@ export default function Navbar() {
           </Link>
           <Link
             href="/signup"
-            className="rounded-xl bg-gradient-to-r from-cyan-500 via-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-bold text-white transition hover:scale-105 sm:rounded-2xl sm:px-7 sm:py-3 sm:text-base"
+            className="rounded-xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-bold text-white transition hover:scale-105 sm:rounded-2xl sm:px-7 sm:py-3 sm:text-base"
           >
             Get link
           </Link>

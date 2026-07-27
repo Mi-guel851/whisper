@@ -148,7 +148,7 @@ export default function ActivityChart() {
           <div
             className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${
               trend > 0
-                ? "bg-cyan-400/15 text-cyan-300"
+                ? "bg-purple-500/15 text-purple-400"
                 : "bg-red-400/15 text-red-300"
             }`}
           >

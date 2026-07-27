@@ -9,7 +9,7 @@ export default function WhisperCoinIcon({ size = 40 }: { size?: number }) {
       <defs>
         <linearGradient id="coinRim" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#c084fc" />
-          <stop offset="100%" stopColor="#22d3ee" />
+          <stop offset="100%" stopColor="#8B5CF6" />
         </linearGradient>
         <linearGradient id="coinFace" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor="#1a0b33" />

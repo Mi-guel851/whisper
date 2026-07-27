@@ -172,7 +172,7 @@ export default function InboxPage() {
               return (
                 <button key={c.id} onClick={() => openConversation(c)} className="w-full text-left">
                   <GlassPanel className="relative flex items-center gap-4 rounded-2xl p-4 transition hover:bg-white/[0.09]">
-                    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+                    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-600">
                       <MessageCircle size={20} className="text-white" />
                       {unread && (
                         <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black/40 bg-rose-500 shadow-lg shadow-rose-500/40" />

@@ -76,7 +76,7 @@ export default function StatsRow() {
           Whispers
         </div>
         <div className="mt-2 text-4xl font-black text-white">{totalMessages}</div>
-        <div className="mt-1 text-xs font-semibold text-cyan-400">
+        <div className="mt-1 text-xs font-semibold text-purple-500">
           +{messagesThisWeek} this week
         </div>
       </GlassPanel>
