@@ -156,7 +156,7 @@ export default function ProfilePage() {
           <button
             onClick={saveProfile}
             disabled={loading || initialLoad}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-cyan-400 py-4 font-bold text-black transition hover:scale-[1.01] disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 py-4 font-bold text-black transition hover:scale-[1.01] disabled:opacity-60"
           >
             <Save size={18} />
             {loading ? "Saving..." : "Save changes"}

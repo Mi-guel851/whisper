@@ -33,7 +33,7 @@ export default function EditProfileModal() {
 
       <button
         onClick={save}
-        className="mt-4 w-full bg-cyan-400 text-black font-bold p-3 rounded-xl"
+        className="mt-4 w-full bg-purple-500 text-black font-bold p-3 rounded-xl"
       >
         Save
       </button>

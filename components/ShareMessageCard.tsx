@@ -304,7 +304,7 @@ export default function ShareMessageCard({
             ref={cardRef}
             className="relative flex w-full flex-col overflow-hidden rounded-[2rem] border border-white/10 theme-bg-gradient p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
           >
-            <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-cyan-500/20 blur-[60px]" />
+            <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />
             <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />
 
             <div className="relative flex flex-col items-center text-center">
@@ -316,13 +316,13 @@ export default function ShareMessageCard({
               <div className="mt-8 flex w-full flex-col items-center gap-5">
                 {message && (
                   <p
-                    className={`font-extrabold leading-snug text-white break-words whitespace-pre-wrap ${messageFontSize(
+                    className={`font-extrabold leading-snug text-white break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${messageFontSize(
                       message.length
                     )}`}
                   >
-                    <span className="text-cyan-400">&ldquo;</span>
+                    <span className="text-purple-500">&ldquo;</span>
                     {message}
-                    <span className="text-cyan-400">&rdquo;</span>
+                    <span className="text-purple-500">&rdquo;</span>
                   </p>
                 )}
 
@@ -370,7 +370,7 @@ export default function ShareMessageCard({
           <button
             onClick={handleSaveAttachment}
             disabled={generating}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4 font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-purple-600/30 bg-purple-600/10 p-4 font-semibold text-purple-300 transition hover:bg-purple-600/20 disabled:opacity-50"
           >
             <ImageIcon size={18} />
             {generating ? "Processing..." : "Save original photo"}

@@ -65,8 +65,7 @@ export default function PublicProfile() {
     setImagePreview(null);
   }
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
+  async function sendMessage() {
     if (!receiverId) return;
 
     if (!message.trim() && !imageFile) {
@@ -115,7 +114,7 @@ export default function PublicProfile() {
 
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
-      message: message.trim() || null,
+      message: message.trim() ? message : null,
       image_url: imageUrl,
       sender_user_id: session?.user.id || null,
       sender_username: senderUsername,
@@ -163,10 +162,10 @@ export default function PublicProfile() {
             <img
               src={avatarUrl}
               alt={username}
-              className="h-16 w-16 rounded-full object-cover border-2 border-cyan-400"
+              className="h-16 w-16 rounded-full object-cover border-2 border-purple-500"
             />
           ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-600">
               <User size={28} className="text-white" />
             </div>
           )}
@@ -176,7 +175,7 @@ export default function PublicProfile() {
               {displayName || `@${username}`}
             </h1>
             {displayName && (
-              <p className="text-cyan-300 text-sm">@{username}</p>
+              <p className="text-purple-400 text-sm">@{username}</p>
             )}
           </div>
         </div>
@@ -187,7 +186,7 @@ export default function PublicProfile() {
 
         {sent ? (
           <div className="mt-8 space-y-6">
-            <div className="rounded-2xl bg-cyan-500/10 border border-cyan-400/30 p-6 text-center">
+            <div className="rounded-2xl bg-purple-600/10 border border-purple-500/30 p-6 text-center">
               <p className="text-lg font-semibold">Sent! 🎉</p>
               <p className="text-gray-400 text-sm mt-1">
                 Completely anonymous — they&apos;ll never know it was you.
@@ -203,7 +202,7 @@ export default function PublicProfile() {
               </button>
              <button
   onClick={() => window.open("https://whisper-anonymous.vercel.app/signup")}
-  className="flex-1 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black hover:opacity-90 transition"
+  className="flex-1 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black hover:opacity-90 transition"
 >
   Create your own link
 </button>
@@ -214,7 +213,7 @@ export default function PublicProfile() {
             </p>
           </div>
         ) : (
-          <form onSubmit={sendMessage} className="space-y-4 mt-6">
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-4 mt-6">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -238,7 +237,7 @@ export default function PublicProfile() {
                 </button>
               </div>
             ) : (
-              <label className="flex items-center justify-center gap-2 w-full rounded-2xl border border-dashed border-white/20 p-4 text-gray-400 hover:border-cyan-400 hover:text-cyan-300 cursor-pointer transition">
+              <label className="flex items-center justify-center gap-2 w-full rounded-2xl border border-dashed border-white/20 p-4 text-gray-400 hover:border-purple-500 hover:text-purple-400 cursor-pointer transition">
                 <ImagePlus size={20} />
                 Attach an image (optional)
                 <input
@@ -251,9 +250,10 @@ export default function PublicProfile() {
             )}
 
             <button
-              type="submit"
+              type="button"
+              onClick={sendMessage}
               disabled={loading}
-              className="w-full rounded-2xl bg-cyan-400 p-4 font-bold text-black disabled:opacity-60"
+              className="w-full rounded-2xl bg-purple-500 p-4 font-bold text-black disabled:opacity-60"
             >
               {loading ? "Sending..." : "Send Message"}
             </button>

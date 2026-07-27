@@ -89,7 +89,7 @@ export default function LoginPage() {
   return (
     <main className="relative min-h-screen overflow-hidden theme-bg-gradient flex items-center justify-center text-white">
 
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
       <div className="absolute top-1/2 left-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-500/10 blur-[120px]" />
 
@@ -102,7 +102,7 @@ export default function LoginPage() {
           <input
             type="email"
             placeholder="Email Address"
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
+            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -112,7 +112,7 @@ export default function LoginPage() {
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-cyan-400"
+              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-purple-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -130,7 +130,7 @@ export default function LoginPage() {
           <div className="text-right -mt-2">
             <Link
               href="/forgot-password"
-              className="text-sm font-semibold text-cyan-300 hover:text-cyan-200"
+              className="text-sm font-semibold text-purple-400 hover:text-purple-300"
             >
               Forgot password?
             </Link>
@@ -139,7 +139,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 p-4 font-bold text-black hover:opacity-90 disabled:opacity-60 transition"
+            className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 p-4 font-bold text-black hover:opacity-90 disabled:opacity-60 transition"
           >
             {loading ? "Logging In..." : "Login"}
           </button>
@@ -166,7 +166,7 @@ export default function LoginPage() {
 
         <p className="mt-8 text-center text-sm text-gray-400">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-bold text-cyan-300 hover:underline">
+          <Link href="/signup" className="font-bold text-purple-400 hover:underline">
             Sign Up
           </Link>
         </p>

@@ -102,17 +102,17 @@ export default function AvatarUpload() {
           <img
             src={avatarUrl}
             alt="Profile"
-            className="h-28 w-28 rounded-full object-cover border-4 border-cyan-400"
+            className="h-28 w-28 rounded-full object-cover border-4 border-purple-500"
           />
         ) : (
-          <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+          <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-600">
             <User size={44} className="text-white" />
           </div>
         )}
 
         <label
           htmlFor="avatar-input"
-          className="absolute bottom-0 right-0 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-cyan-400 hover:bg-cyan-300 transition"
+          className="absolute bottom-0 right-0 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-purple-500 hover:bg-purple-400 transition"
         >
           <Camera size={18} className="text-black" />
         </label>
@@ -126,7 +126,7 @@ export default function AvatarUpload() {
         />
       </div>
 
-      {loading && <p className="text-sm text-cyan-400">Uploading...</p>}
+      {loading && <p className="text-sm text-purple-500">Uploading...</p>}
 
     </div>
   );

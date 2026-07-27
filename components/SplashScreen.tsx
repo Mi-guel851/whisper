@@ -36,7 +36,7 @@ export default function SplashScreen() {
 
         <div className="mt-6 h-2 w-56 overflow-hidden rounded-full bg-white/10">
 
-          <div className="h-full w-full animate-[loading_2.5s_linear] bg-gradient-to-r from-cyan-400 to-purple-500" />
+          <div className="h-full w-full animate-[loading_2.5s_linear] bg-gradient-to-r from-purple-500 to-purple-500" />
 
         </div>
 

@@ -56,7 +56,7 @@ export default function PhoneMockup() {
   return (
     <div className="relative" style={{ perspective: "1200px" }}>
 
-      <div className="absolute -inset-12 rounded-full bg-cyan-500/20 blur-[120px]" />
+      <div className="absolute -inset-12 rounded-full bg-purple-600/20 blur-[120px]" />
 
       <div
   className="relative w-[85vw] max-w-[340px] rounded-[36px] overflow-hidden animate-[phoneTilt_7s_ease-in-out_infinite]"
@@ -79,7 +79,7 @@ export default function PhoneMockup() {
           />
           <div>
             <p className="font-bold text-white leading-tight">anonymous</p>
-            <p className="flex items-center gap-1 text-xs text-cyan-300">
+            <p className="flex items-center gap-1 text-xs text-purple-400">
               <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
               whispering to @you
             </p>
@@ -98,9 +98,9 @@ export default function PhoneMockup() {
 
           {typing && (
             <div className="flex w-fit items-center gap-1 self-start rounded-2xl rounded-tl-sm bg-white/10 px-4 py-3">
-              <span className="h-2 w-2 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.2s]" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.1s]" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-cyan-300" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-purple-400 [animation-delay:-0.2s]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-purple-400 [animation-delay:-0.1s]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-purple-400" />
             </div>
           )}
         </div>
@@ -110,7 +110,7 @@ export default function PhoneMockup() {
             send a whisper...
           </div>
           <Mic size={18} className="text-gray-400" />
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-purple-500">
             <Send size={16} className="text-black" />
           </div>
         </div>

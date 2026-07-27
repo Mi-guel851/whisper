@@ -59,15 +59,15 @@ export default function ProfileCard() {
                 <img
                   src={profile.avatar_url}
                   alt="Avatar"
-                  className="h-24 w-24 rounded-full object-cover border-4 border-cyan-400"
+                  className="h-24 w-24 rounded-full object-cover border-4 border-purple-500"
                 />
               ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-600">
                   <User size={40} className="text-white" />
                 </div>
               )}
 
-              <div className="absolute bottom-0 right-0 rounded-full bg-cyan-400 p-2">
+              <div className="absolute bottom-0 right-0 rounded-full bg-purple-500 p-2">
                 <Camera size={16} className="text-black" />
               </div>
 
@@ -79,7 +79,7 @@ export default function ProfileCard() {
                 {profile.display_name || "New User"}
               </h2>
 
-              <p className="text-cyan-300">
+              <p className="text-purple-400">
                 @{profile.username}
               </p>
 
@@ -93,7 +93,7 @@ export default function ProfileCard() {
 
           <Link
             href="/profile"
-            className="mt-6 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 p-4 font-bold text-white transition hover:scale-105"
+            className="mt-6 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-600 p-4 font-bold text-white transition hover:scale-105"
           >
             <Pencil size={18} />
             Edit Profile

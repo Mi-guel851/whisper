@@ -111,10 +111,10 @@ export default function RecentMessages() {
               className="w-full rounded-2xl bg-white/5 p-4 text-left transition hover:bg-white/10"
             >
               {msg.message && (
-                <p className="text-sm text-gray-100">&ldquo;{msg.message}&rdquo;</p>
+                <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">&ldquo;{msg.message}&rdquo;</p>
               )}
               {!msg.message && msg.image_url && (
-                <p className="text-sm text-gray-100">📷 Image</p>
+                <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">📷 Image</p>
               )}
               <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
                 <span className="flex items-center gap-1.5">

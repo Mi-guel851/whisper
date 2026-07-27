@@ -69,7 +69,7 @@ export default function OfflineHandler() {
               <X size={20} />
             </button>
 
-            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-purple-600/10 text-purple-500">
               <WifiOff size={40} />
             </div>
 
@@ -86,7 +86,7 @@ export default function OfflineHandler() {
                   setShowPopup(false);
                 }
               }}
-              className="mt-8 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 p-4 font-bold text-black shadow-lg shadow-cyan-500/20 active:scale-95 transition"
+              className="mt-8 w-full rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 p-4 font-bold text-black shadow-lg shadow-purple-600/20 active:scale-95 transition"
             >
               Retry Connection
             </button>

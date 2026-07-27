@@ -32,7 +32,7 @@ export default function HowItWorks() {
       <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-3">
         {steps.map((step) => (
           <GlassPanel key={step.number} className="relative rounded-3xl p-6 sm:p-8">
-            <div className="mb-6 bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-5xl font-black text-transparent sm:text-6xl">
+            <div className="mb-6 bg-gradient-to-r from-purple-500 to-purple-500 bg-clip-text text-5xl font-black text-transparent sm:text-6xl">
               {step.number}
             </div>
             <h3 className="mb-3 text-2xl font-bold text-white">{step.title}</h3>

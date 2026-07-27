@@ -15,13 +15,13 @@ export default function ShareCard() {
         Your Anonymous Link
       </h2>
 
-      <div className="bg-black/40 p-3 rounded-xl text-cyan-300 text-sm">
+      <div className="bg-black/40 p-3 rounded-xl text-purple-400 text-sm">
         {link}
       </div>
 
       <button
         onClick={copy}
-        className="mt-4 w-full bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-bold p-3 rounded-xl"
+        className="mt-4 w-full bg-gradient-to-r from-purple-600 to-purple-600 text-white font-bold p-3 rounded-xl"
       >
         Copy Link
       </button>

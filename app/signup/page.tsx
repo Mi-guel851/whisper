@@ -78,7 +78,7 @@ export default function SignupPage() {
   return (
     <main className="relative min-h-screen overflow-hidden theme-bg-gradient flex items-center justify-center text-white px-4">
 
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
       <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8 text-center">

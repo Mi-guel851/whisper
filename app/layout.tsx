@@ -19,8 +19,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
+        <Script id="theme-init" strategy="beforeInteractive">{`
+          try {
+            const saved = localStorage.getItem("whisper-theme") || "system";
+            const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            const resolved = saved === "system" ? (systemDark ? "dark" : "light") : saved;
+            document.documentElement.dataset.themePreference = saved;
+            document.documentElement.dataset.theme = resolved;
+            document.documentElement.style.colorScheme = resolved;
+          } catch {}
+        `}</Script>
         <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
         <OfflineHandler />
         <AppUrlHandler />
