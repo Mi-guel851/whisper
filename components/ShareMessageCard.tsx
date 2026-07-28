@@ -249,24 +249,61 @@ export default function ShareMessageCard({
   const platforms: Platform[] = ["instagram", "snapchat", "whatsapp", "x", "tiktok"];
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    /* ── BACKDROP with blur ── */
+    <div
+      className="fixed inset-0 z-[999] flex items-center justify-center p-4"
+      style={{
+        background: "rgba(0,0,0,0.75)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+      }}
+    >
+      {/* ── GLOW ORBS behind modal ── */}
+      <div className="pointer-events-none absolute -top-20 -left-20 h-80 w-80 rounded-full bg-purple-600/20 blur-[100px]" />
+      <div className="pointer-events-none absolute -bottom-20 -right-20 h-80 w-80 rounded-full bg-cyan-500/15 blur-[100px]" />
+
       <div className="relative w-full max-w-sm">
+
+        {/* ── CLOSE BUTTON ── */}
         <button
           onClick={onClose}
-          className="absolute -top-12 right-0 text-white/70 hover:text-white"
+          className="absolute -top-12 right-0 flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition hover:text-white"
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            backdropFilter: "blur(12px)",
+          }}
         >
-          <X size={28} />
+          <X size={18} />
         </button>
 
-        <div className="max-h-[85vh] overflow-y-auto rounded-[2rem] bg-black">
-          {/* ── CARD captured by html2canvas ── */}
+        {/* ── GLASS CONTAINER ── */}
+        <div
+          className="relative rounded-[2rem] p-5"
+          style={{
+            background: "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)",
+            backdropFilter: "blur(32px) saturate(180%)",
+            WebkitBackdropFilter: "blur(32px) saturate(180%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)",
+          }}
+        >
+          {/* ── TOP SHINE ── */}
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[2rem]"
+            style={{
+              background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
+            }}
+          />
+
+          {/* ── SHAREABLE CARD (captured by html2canvas) ── */}
           <div
             ref={cardRef}
-            className="relative flex w-full flex-col bg-black px-6 pt-10 pb-10"
+            className="relative flex w-full flex-col bg-black px-4 pt-8 pb-8 rounded-[1.5rem] overflow-hidden"
           >
-            <div className="overflow-hidden rounded-[2rem] shadow-2xl">
+            <div className="overflow-hidden rounded-[1.5rem] shadow-2xl">
 
-              {/* ── GRADIENT HEADER — cyan to purple, properly sized ── */}
+              {/* ── GRADIENT HEADER ── */}
               <div
                 className="px-5 py-4 text-center"
                 style={{
@@ -310,63 +347,70 @@ export default function ShareMessageCard({
             {/* ── WHISPER BRANDING FOOTER ── */}
             <div className="mt-6 flex flex-col items-center justify-center gap-1">
               <div className="flex items-center gap-2">
-                <Image
-                  src="/ghost.png"
-                  alt="Whisper"
-                  width={20}
-                  height={20}
-                  className="grayscale invert"
-                />
-                <span className="text-base font-black tracking-tight text-white">
-                  Whisper
-                </span>
+                <Image src="/ghost.png" alt="Whisper" width={20} height={20} className="grayscale invert" />
+                <span className="text-base font-black tracking-tight text-white">Whisper</span>
               </div>
-              <p
-                className="font-bold uppercase text-gray-400"
-                style={{ fontSize: "9px", letterSpacing: "0.45em" }}
-              >
+              <p className="font-bold uppercase text-gray-400" style={{ fontSize: "9px", letterSpacing: "0.45em" }}>
                 anonymous q&a
               </p>
             </div>
           </div>
-        </div>
 
-        {/* ── PLATFORM SHARE BUTTONS ── */}
-        <div className="mt-5 flex items-center justify-center gap-3">
-          {platforms.map((platform) => (
-            <button
-              key={platform}
-              onClick={() => handlePlatformShare(platform)}
-              disabled={generating}
-              className={`flex h-12 w-12 items-center justify-center rounded-full p-3 text-white transition hover:scale-110 disabled:opacity-50 ${PLATFORM_STYLES[platform]}`}
-            >
-              <PlatformIcon platform={platform} />
-            </button>
-          ))}
-        </div>
+          {/* ── PLATFORM SHARE BUTTONS ── */}
+          <div className="mt-5 flex items-center justify-center gap-3">
+            {platforms.map((platform) => (
+              <button
+                key={platform}
+                onClick={() => handlePlatformShare(platform)}
+                disabled={generating}
+                className={`flex h-12 w-12 items-center justify-center rounded-full p-3 text-white transition hover:scale-110 disabled:opacity-50 ${PLATFORM_STYLES[platform]}`}
+              >
+                <PlatformIcon platform={platform} />
+              </button>
+            ))}
+          </div>
 
-        <button
-          onClick={handleDownload}
-          disabled={generating}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 p-4 font-black text-white transition hover:bg-white/20 disabled:opacity-50"
-        >
-          <Download size={18} />
-          {generating ? "Generating..." : "Save share card"}
-        </button>
-
-        {imageUrl && (
+          {/* ── SAVE BUTTON ── */}
           <button
-            onClick={handleSaveAttachment}
+            onClick={handleDownload}
             disabled={generating}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4 font-black text-cyan-400 transition hover:bg-cyan-400/20 disabled:opacity-50"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black text-white transition hover:opacity-90 disabled:opacity-50"
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
           >
-            <ImageIcon size={18} />
-            {generating ? "Processing..." : "Save original photo"}
+            <Download size={18} />
+            {generating ? "Generating..." : "Save share card"}
           </button>
-        )}
 
+          {/* ── SAVE PHOTO BUTTON ── */}
+          {imageUrl && (
+            <button
+              onClick={handleSaveAttachment}
+              disabled={generating}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black text-cyan-400 transition hover:opacity-90 disabled:opacity-50"
+              style={{
+                background: "rgba(34,211,238,0.08)",
+                border: "1px solid rgba(34,211,238,0.2)",
+              }}
+            >
+              <ImageIcon size={18} />
+              {generating ? "Processing..." : "Save original photo"}
+            </button>
+          )}
+        </div>
+
+        {/* ── TOAST ── */}
         {toast && (
-          <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur-md">
+          <div
+            className="absolute -bottom-14 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold text-white"
+            style={{
+              background: "rgba(255,255,255,0.10)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
             {toast}
           </div>
         )}
