@@ -9,21 +9,20 @@ export function useRegisterPushNotifications(userId: string | null) {
   useEffect(() => {
     if (!userId || !Capacitor.isNativePlatform()) return;
 
-    let profileSubscription: any;
+    let profileSubscription: ReturnType<typeof supabase.channel> | null = null;
 
     async function setup() {
-      // Check initial status
       const { data: profile } = await supabase
         .from("profiles")
         .select("push_notifications")
         .eq("id", userId)
         .single();
 
-      if (profile?.push_notifications) {
+      // 👇 Register if push_notifications is true OR null/undefined (default to on)
+      if (profile?.push_notifications !== false) {
         register();
       }
 
-      // Listen for changes to the push_notifications setting
       profileSubscription = supabase
         .channel(`profile-push-${userId}`)
         .on(
@@ -35,7 +34,7 @@ export function useRegisterPushNotifications(userId: string | null) {
             filter: `id=eq.${userId}`,
           },
           (payload) => {
-            if (payload.new.push_notifications) {
+            if (payload.new.push_notifications !== false) {
               register();
             } else {
               PushNotifications.removeAllListeners();
@@ -66,9 +65,9 @@ export function useRegisterPushNotifications(userId: string | null) {
         );
 
         if (!error) {
-           console.log("[push] Token saved successfully");
+          console.log("[push] Token saved successfully");
         } else {
-           console.error("[push] Token save error:", error.message);
+          console.error("[push] Token save error:", error.message);
         }
       });
 
