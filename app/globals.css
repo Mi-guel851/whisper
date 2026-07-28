@@ -304,4 +304,16 @@ main.min-h-screen {
 .bg-black\/30 { background-color: rgba(0, 0, 0, 0.3) !important; }
 .bg-black\/40 { background-color: rgba(0, 0, 0, 0.4) !important; }
 
+/* ── WHISPER LOGO GLOW PULSE ── */
+@keyframes whisper-glow {
+  0%   { opacity: 0.06; filter: blur(0px) drop-shadow(0 0 24px #a855f7); transform: scale(1); }
+  50%  { opacity: 0.18; filter: blur(0px) drop-shadow(0 0 60px #22d3ee) drop-shadow(0 0 80px #a855f7); transform: scale(1.06); }
+  100% { opacity: 0.06; filter: blur(0px) drop-shadow(0 0 24px #a855f7); transform: scale(1); }
+}
+
+.whisper-logo-glow {
+  animation: whisper-glow 3.5s ease-in-out infinite;
+  pointer-events: none;
+  user-select: none;
+}
 

@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
 import { ImagePlus, X, User } from "lucide-react";
+import Image from "next/image";
 
 export default function PublicProfile() {
   const params = useParams();
@@ -79,7 +80,9 @@ export default function PublicProfile() {
 
     if (imageFile) {
       const fileExt = imageFile.name.split(".").pop();
-      const filePath = `${receiverId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      const filePath = `${receiverId}/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from("message-images")
@@ -154,39 +157,97 @@ export default function PublicProfile() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white px-4">
-      <div className="w-full max-w-lg rounded-3xl bg-white/10 p-8 backdrop-blur-xl">
+    <main className="relative min-h-screen flex items-center justify-center theme-bg-gradient text-white px-4 overflow-hidden">
 
+      {/* ── BACKGROUND GLOW ORBS ── */}
+      <div className="pointer-events-none absolute -top-32 -left-32 h-[500px] w-[500px] rounded-full bg-purple-600/25 blur-[120px]" />
+      <div className="pointer-events-none absolute -bottom-32 -right-32 h-[500px] w-[500px] rounded-full bg-cyan-500/20 blur-[120px]" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-500/10 blur-[100px]" />
+
+      {/* ── GLOWING WHISPER LOGO IN BACKGROUND ── */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <Image
+          src="/ghost.png"
+          alt=""
+          width={320}
+          height={320}
+          className="whisper-logo-glow select-none"
+          style={{
+            filter: "grayscale(1) invert(1)",
+          }}
+          aria-hidden
+        />
+      </div>
+
+      {/* ── GLASS CARD ── */}
+      <div
+        className="relative z-10 w-full max-w-lg rounded-3xl p-8"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)",
+          backdropFilter: "blur(32px) saturate(180%)",
+          WebkitBackdropFilter: "blur(32px) saturate(180%)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          boxShadow:
+            "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.15)",
+        }}
+      >
+        {/* ── INNER TOP SHINE ── */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-3xl"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)",
+          }}
+        />
+
+        {/* ── PROFILE HEADER ── */}
         <div className="flex items-center gap-4">
           {avatarUrl ? (
             <img
               src={avatarUrl}
               alt={username}
-              className="h-16 w-16 rounded-full object-cover border-2 border-purple-500"
+              className="h-16 w-16 rounded-full object-cover"
+              style={{
+                border: "2px solid rgba(255,255,255,0.2)",
+                boxShadow: "0 0 0 3px rgba(168,85,247,0.4)",
+              }}
             />
           ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-600">
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-full"
+              style={{
+                background: "linear-gradient(135deg, #22d3ee, #a855f7)",
+                boxShadow: "0 0 0 3px rgba(168,85,247,0.4)",
+              }}
+            >
               <User size={28} className="text-white" />
             </div>
           )}
 
           <div>
-            <h1 className="text-3xl font-bold leading-tight">
+            <h1 className="text-2xl font-bold leading-tight">
               {displayName || `@${username}`}
             </h1>
             {displayName && (
-              <p className="text-purple-400 text-sm">@{username}</p>
+              <p className="text-sm mt-0.5" style={{ color: "#a78bfa" }}>
+                @{username}
+              </p>
             )}
           </div>
         </div>
 
-        <p className="mt-4 text-gray-300">
-          Send an anonymous message
-        </p>
+        <p className="mt-4 text-sm text-gray-300">Send an anonymous message</p>
 
         {sent ? (
           <div className="mt-8 space-y-6">
-            <div className="rounded-2xl bg-purple-600/10 border border-purple-500/30 p-6 text-center">
+            <div
+              className="rounded-2xl p-6 text-center"
+              style={{
+                background: "rgba(168,85,247,0.08)",
+                border: "1px solid rgba(168,85,247,0.25)",
+              }}
+            >
               <p className="text-lg font-semibold">Sent! 🎉</p>
               <p className="text-gray-400 text-sm mt-1">
                 Completely anonymous — they&apos;ll never know it was you.
@@ -196,16 +257,25 @@ export default function PublicProfile() {
             <div className="flex gap-3">
               <button
                 onClick={() => setSent(false)}
-                className="flex-1 rounded-2xl bg-white/10 p-4 font-semibold text-white hover:bg-white/20 transition"
+                className="flex-1 rounded-2xl p-4 font-semibold text-white transition hover:bg-white/10"
+                style={{
+                  background: "rgba(255,255,255,0.07)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}
               >
                 Send another
               </button>
-             <button
-  onClick={() => window.open("https://whisper-anonymous.vercel.app/signup")}
-  className="flex-1 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black hover:opacity-90 transition"
->
-  Create your own link
-</button>
+              <button
+                onClick={() =>
+                  window.open("https://whisper-anonymous.vercel.app/signup")
+                }
+                className="flex-1 rounded-2xl p-4 font-bold text-white transition hover:opacity-90"
+                style={{
+                  background: "linear-gradient(135deg, #22d3ee, #a855f7)",
+                }}
+              >
+                Get your link
+              </button>
             </div>
 
             <p className="text-center text-xs text-gray-500">
@@ -213,14 +283,29 @@ export default function PublicProfile() {
             </p>
           </div>
         ) : (
-          <form onSubmit={(e) => e.preventDefault()} className="space-y-4 mt-6">
+          <div className="space-y-4 mt-6">
+            {/* ── TEXTAREA ── */}
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type your anonymous message..."
-              className="h-32 w-full rounded-2xl bg-black/30 p-4 outline-none resize-none"
+              className="h-32 w-full rounded-2xl p-4 outline-none resize-none text-white placeholder:text-gray-500 transition"
+              style={{
+                background: "rgba(0,0,0,0.25)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                backdropFilter: "blur(8px)",
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.border =
+                  "1px solid rgba(168,85,247,0.5)";
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.border =
+                  "1px solid rgba(255,255,255,0.08)";
+              }}
             />
 
+            {/* ── IMAGE ATTACHMENT ── */}
             {imagePreview ? (
               <div className="relative">
                 <img
@@ -237,7 +322,18 @@ export default function PublicProfile() {
                 </button>
               </div>
             ) : (
-              <label className="flex items-center justify-center gap-2 w-full rounded-2xl border border-dashed border-white/20 p-4 text-gray-400 hover:border-purple-500 hover:text-purple-400 cursor-pointer transition">
+              <label
+                className="flex items-center justify-center gap-2 w-full rounded-2xl p-4 text-gray-400 cursor-pointer transition hover:text-purple-400"
+                style={{ border: "1px dashed rgba(255,255,255,0.15)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.border =
+                    "1px dashed rgba(168,85,247,0.5)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.border =
+                    "1px dashed rgba(255,255,255,0.15)";
+                }}
+              >
                 <ImagePlus size={20} />
                 Attach an image (optional)
                 <input
@@ -249,17 +345,21 @@ export default function PublicProfile() {
               </label>
             )}
 
+            {/* ── SEND BUTTON ── */}
             <button
               type="button"
               onClick={sendMessage}
               disabled={loading}
-              className="w-full rounded-2xl bg-purple-500 p-4 font-bold text-black disabled:opacity-60"
+              className="w-full rounded-2xl p-4 font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+              style={{
+                background: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)",
+                boxShadow: "0 4px 24px rgba(168,85,247,0.35)",
+              }}
             >
               {loading ? "Sending..." : "Send Message"}
             </button>
-          </form>
+          </div>
         )}
-
       </div>
     </main>
   );
