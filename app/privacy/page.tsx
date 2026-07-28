@@ -35,7 +35,7 @@ export default function PrivacyPage() {
                 <span className="font-semibold text-white">Messages:</span> content sent to your
                 Whisper link is stored so you can view it. Senders of anonymous messages are not
                 required to create an account, and we do not knowingly collect identifying
-                information from anonymous senders beyond standard technical data (see below).
+                information from anonymous senders beyond standard technical data.
               </li>
               <li>
                 <span className="font-semibold text-white">Technical data:</span> IP address,
@@ -62,9 +62,9 @@ export default function PrivacyPage() {
               We use trusted third-party providers to operate Whisper, including:
             </p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
-              <li><span className="font-semibold text-white">Supabase</span> — authentication and database hosting</li>
+              <li><span className="font-semibold text-white">Cloudstorage</span> — authentication and database hosting</li>
               <li><span className="font-semibold text-white">Google</span> — optional sign-in (OAuth)</li>
-              <li><span className="font-semibold text-white">Vercel</span> — application hosting</li>
+              
             </ul>
             <p className="mt-2">
               These providers may process your data on our behalf under their own privacy and
