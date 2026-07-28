@@ -284,7 +284,7 @@ main.min-h-screen {
 .text-gray-300, .text-gray-400 { color: var(--theme-text-secondary) !important; }
 .text-gray-500, .text-gray-600 { color: var(--theme-text-muted) !important; }
 
-/* Preserve accent colors */
+/* Preserve accent colors - Cyan to Purple gradients */
 .text-cyan-400 { color: #22d3ee !important; }
 .text-purple-400 { color: #a855f7 !important; }
 .text-pink-500 { color: #ec4899 !important; }
@@ -294,10 +294,14 @@ main.min-h-screen {
 .bg-purple-600 { background-color: #7c3aed !important; }
 
 .from-cyan-400 { --tw-gradient-from: #22d3ee !important; --tw-gradient-to: rgb(34 211 238 / 0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+.from-purple-500 { --tw-gradient-from: #8b5cf6 !important; --tw-gradient-to: rgb(139 92 246 / 0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
 .to-purple-500 { --tw-gradient-to: #8b5cf6 !important; }
 .to-purple-600 { --tw-gradient-to: #7c3aed !important; }
+.to-cyan-400 { --tw-gradient-to: #22d3ee !important; }
 
 .bg-white\/5 { background-color: rgba(255, 255, 255, 0.05) !important; }
 .bg-white\/10 { background-color: rgba(255, 255, 255, 0.1) !important; }
 .bg-black\/30 { background-color: rgba(0, 0, 0, 0.3) !important; }
+.bg-black\/40 { background-color: rgba(0, 0, 0, 0.4) !important; }
+
 

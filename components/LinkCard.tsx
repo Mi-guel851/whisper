@@ -67,14 +67,14 @@ export default function LinkCard() {
     <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
 
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-300">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-cyan-400">
         <Link2 size={14} />
         Your Whisper Link
       </div>
 
       <h2 className="mt-2 text-2xl font-black leading-snug text-white">
         Share it. Wait for the{" "}
-        <span className="bg-gradient-to-r from-purple-500 to-purple-400 bg-clip-text text-transparent">
+        <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
           honest ones
         </span>
         .
@@ -97,7 +97,7 @@ export default function LinkCard() {
         </button>
         <button
           onClick={shareLink}
-          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 py-3 font-semibold text-black transition hover:scale-[1.02]"
+          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 py-3 font-black text-black shadow-lg shadow-cyan-500/20 transition hover:scale-[1.02] active:scale-95"
         >
           <Share2 size={16} />
           Share

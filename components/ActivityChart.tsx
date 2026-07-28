@@ -146,9 +146,9 @@ export default function ActivityChart() {
 
         {trend !== 0 && (
           <div
-            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-black ${
               trend > 0
-                ? "bg-purple-500/15 text-purple-400"
+                ? "bg-cyan-400/20 text-cyan-400"
                 : "bg-red-400/15 text-red-300"
             }`}
           >
@@ -163,14 +163,14 @@ export default function ActivityChart() {
         <AreaChart data={data} margin={{ top: 20, left: 0, right: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.5} />
-              <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+              <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.5} />
+              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
             </linearGradient>
           </defs>
           <XAxis dataKey="label" hide />
           <Tooltip
             contentStyle={{
-              background: "#120021",
+              background: "#1a1a1a",
               border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: "12px",
               color: "#fff",
@@ -179,8 +179,8 @@ export default function ActivityChart() {
           <Area
             type="monotone"
             dataKey="total"
-            stroke="#a855f7"
-            strokeWidth={2.5}
+            stroke="#22d3ee"
+            strokeWidth={3}
             fill="url(#totalGradient)"
           />
         </AreaChart>

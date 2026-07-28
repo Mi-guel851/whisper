@@ -233,7 +233,7 @@ export default function PremiumPage() {
         </motion.section>
 
         <section className="mt-8">
-          <h2 className="mb-4 flex items-center gap-2 text-2xl font-black"><Gem className="text-pink-300" /> Buy Coins</h2>
+          <h2 className="mb-4 flex items-center gap-2 text-2xl font-black"><Gem className="text-cyan-400" /> Buy Coins</h2>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {COIN_PACKAGES.map((pkg) => (
@@ -243,20 +243,20 @@ export default function PremiumPage() {
                 className="relative min-w-0 overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-6 text-center shadow-xl backdrop-blur-xl"
               >
                 {pkg.popular && (
-                  <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-purple-400 to-pink-300 px-3 py-1 text-[10px] font-black text-black">
+                  <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-400 to-purple-400 px-3 py-1 text-[10px] font-black text-black">
                     MOST POPULAR
                   </span>
                 )}
                 <Coins className="mx-auto mb-4 h-10 w-10 text-yellow-200" />
                 <p className="text-3xl font-black">{pkg.coins.toLocaleString()}</p>
                 <p className="text-sm text-gray-300">Whisper Coins</p>
-                <p className="mt-3 text-lg font-black text-purple-300">
+                <p className="mt-3 text-lg font-black text-cyan-400">
                   {ratesLoading ? <Loader2 size={16} className="mx-auto animate-spin" /> : localPriceFor(pkg)}
                 </p>
                 <button
                   onClick={(event) => buyCoins(pkg, event.timeStamp)}
                   disabled={busy === `buy-${pkg.coins}` || ratesLoading}
-                  className="mt-5 w-full rounded-2xl bg-gradient-to-r from-purple-400 via-purple-300 to-pink-300 px-4 py-3 text-base font-black text-black shadow-lg shadow-purple-500/20 transition active:scale-95 disabled:opacity-60"
+                  className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-400 via-purple-300 to-purple-600 px-4 py-3 text-base font-black text-black shadow-lg shadow-cyan-500/20 transition active:scale-95 disabled:opacity-60"
                 >
                   {busy === `buy-${pkg.coins}` ? "Processing..." : "Buy"}
                 </button>

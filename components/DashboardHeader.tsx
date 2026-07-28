@@ -128,7 +128,9 @@ export default function DashboardHeader() {
         </p>
         <h1 className="mt-1 flex items-center gap-2 text-3xl font-black text-white">
           Hey, {name || "there"}
-          <Image src="/ghost.png" alt="Whisper" width={28} height={28} />
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-sm">
+            <Image src="/ghost.png" alt="Whisper" width={18} height={18} />
+          </div>
         </h1>
         <p className="mt-1 text-sm text-gray-300">
           Your inbox is open. Whispers welcome.
@@ -139,7 +141,7 @@ export default function DashboardHeader() {
         onClick={handleNotifyClick}
         disabled={loading}
         className={`flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
-          pushEnabled ? "bg-purple-600 text-black shadow-lg shadow-purple-600/20" : "bg-white/5 text-white hover:bg-white/10"
+          pushEnabled ? "bg-cyan-400 text-black shadow-lg shadow-cyan-500/20" : "bg-white/5 text-white hover:bg-white/10"
         }`}
       >
         <Bell size={15} fill={pushEnabled ? "currentColor" : "none"} />

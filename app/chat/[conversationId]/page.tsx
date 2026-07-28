@@ -158,11 +158,11 @@ function MessageBubble({
                   </button>
                 )}
                 {msg.content && (
-                  <p className="mt-1 text-sm text-gray-100 break-words">{msg.content}</p>
+                  <p className="mt-1 text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-100 break-words">{msg.content}</p>
+              <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
             )}
           </GlassPanel>
         </motion.div>
@@ -269,12 +269,20 @@ export default function ChatPage() {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    }
+  }, [input]);
 
   const markMessagesRead = useCallback(async (msgs: Message[], currentUserId: string) => {
     if (document.visibilityState !== "visible") return;
@@ -464,27 +472,26 @@ export default function ChatPage() {
 
   useEffect(() => {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pendingPhoto]);
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
+  async function sendMessage() {
     if (pendingPhoto) { await sendPendingPhoto(); return; }
-    const trimmed = input.trim();
+    const hasMessage = input.trim().length > 0;
     if (!chatUnlocked) {
       showToast(isFriendConversation
         ? "You need 40 coins to unlock this conversation."
         : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
       return;
     }
-    if (!trimmed || !myId) return;
+    if (!hasMessage || !myId) return;
+    const content = input.trim();
     setInput("");
     const replyId = replyingTo?.id || null;
     setReplyingTo(null);
     const { error } = await supabase.from("direct_messages").insert({
       conversation_id: conversationId,
       sender_id: myId,
-      content: trimmed,
+      content: content,
       reply_to_id: replyId,
     });
     if (error) { showToast(error.message); return; }
@@ -700,7 +707,7 @@ export default function ChatPage() {
         <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
           <BackButton />
           <div className="mt-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-lg shadow-cyan-500/20">
               👻
             </div>
             <div>
@@ -736,13 +743,13 @@ export default function ChatPage() {
                 <h2 className="text-2xl font-black">Chat locked</h2>
                 <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
                   {isFriendConversation
-                    ? "Unlock this friend conversation once for 40 Coins to send messages. If you accepted the request, it is already unlocked."
-                    : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
+                    ? "Unlock this friend conversation once for 40 Coins to send messages."
+                    : "Unlock this anonymous conversation once to send messages normally."}
                 </p>
                 <button
                   onClick={unlockChat}
                   disabled={unlocking}
-                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-600 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
                 >
                   <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
                 </button>
@@ -780,7 +787,7 @@ export default function ChatPage() {
 
         {/* Pending photo preview */}
         {pendingPhoto && (
-          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-300/30 bg-white/5 px-3 py-2">
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-400/30 bg-white/5 px-3 py-2">
             <img src={pendingPhoto.previewUrl} alt="Selected photo" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
             <p className="flex-1 truncate text-xs text-gray-300">Ready to send — costs {SEND_IMAGE_COST} coins</p>
             <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="disabled:opacity-60">
@@ -798,46 +805,39 @@ export default function ChatPage() {
         )}
 
         {/* Input form */}
-        <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
-          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
+        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-6 pt-0">
+          <div className="flex items-end gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
             <button
-              type="button"
-              onClick={triggerPhotoPicker}
-              disabled={uploadingPhoto}
+              type="button" onClick={triggerPhotoPicker} disabled={uploadingPhoto}
               title={`Send an image (${SEND_IMAGE_COST} coins)`}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
+              className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-400 transition hover:bg-white/10 disabled:opacity-60"
             >
               <ImagePlus size={18} />
             </button>
-            <input
+            <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                pendingPhoto
-                  ? "Add a caption (optional)..."
-                  : chatUnlocked
-                  ? "Message anonymously..."
-                  : "Unlock chat to send messages"
-              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  // Allow default behavior (new line)
+                  // Form won't submit on Enter in a textarea
+                }
+              }}
+              placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
               disabled={!chatUnlocked}
-              className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+              rows={1}
+              className="max-h-40 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2.5 leading-6 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 text-white"
             />
             <button
               type="submit"
-              disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
-              className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${
-                pendingPhoto ? "gap-1.5 px-4" : "w-10"
-              }`}
+              disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : (input.trim().length === 0))}
+              className={`mb-1 flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-600 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-cyan-500/20 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
             >
               {pendingPhoto ? (
-                uploadingPhoto ? (
-                  <Loader2 size={16} className="animate-spin text-black" />
-                ) : (
-                  <>
-                    <Coins size={16} className="text-black" />
-                    <span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span>
-                  </>
+                uploadingPhoto ? <Loader2 size={16} className="animate-spin text-black" /> : (
+                  <><Coins size={16} className="text-black" /><span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span></>
                 )
               ) : (
                 <Send size={16} className="text-black" />
@@ -845,7 +845,6 @@ export default function ChatPage() {
             </button>
           </div>
         </form>
-
       </div>
 
       {deleteConfirm && (
@@ -874,32 +873,19 @@ export default function ChatPage() {
 
       {/* Photo modal */}
       {photoModalUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={closePhotoModal}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={closePhotoModal}>
           <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
             {photoModalCaption && (
               <p className="mb-3 text-center text-sm font-medium text-white">{photoModalCaption}</p>
             )}
-            <img
-              src={photoModalUrl}
-              alt="View-once photo"
-              className="max-h-[80vh] max-w-full rounded-2xl object-contain"
-            />
-            <p className="mt-3 text-center text-xs text-gray-400">
-              This photo won&apos;t be available again after you close this view.
-            </p>
-            <button
-              onClick={closePhotoModal}
-              className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg"
-            >
+            <img src={photoModalUrl} alt="View-once photo" className="max-h-[80vh] max-w-full rounded-2xl object-contain" />
+            <p className="mt-3 text-center text-xs text-gray-400">This photo won&apos;t be available again after you close this view.</p>
+            <button onClick={closePhotoModal} className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
               <X size={18} />
             </button>
           </div>
         </div>
       )}
-
     </main>
   );
 }

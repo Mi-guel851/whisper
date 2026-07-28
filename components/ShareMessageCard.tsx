@@ -80,11 +80,14 @@ export default function ShareMessageCard({
   async function getImageBlob(): Promise<Blob | null> {
     if (!cardRef.current) return null;
     const canvas = await html2canvas(cardRef.current, {
-      backgroundColor: null,
-      scale: 2,
+      backgroundColor: "#000000",
+      scale: 3,
       useCORS: true,
+      logging: false,
+      width: cardRef.current.offsetWidth,
+      height: cardRef.current.offsetHeight,
     });
-    return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+    return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png", 1.0));
   }
 
   function downloadBlob(blob: Blob) {
@@ -107,23 +110,20 @@ export default function ShareMessageCard({
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
         const { Share } = await import("@capacitor/share");
 
-        // Convert blob to base64
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
-          const base64Data = (reader.result as string).split(",")[1]; // Strip "data:image/png;base64,"
+          const base64Data = (reader.result as string).split(",")[1];
           const fileName = `whisper-${Date.now()}.png`;
 
           try {
-            // Save to the public Pictures directory so it shows up in Gallery
             const savedFile = await Filesystem.writeFile({
               path: fileName,
               data: base64Data,
-              directory: Directory.Documents, // On Android this is usually easier to access
+              directory: Directory.Documents,
               recursive: true
             });
 
-            // Also trigger Share so they can choose "Save Image" or send to a friend
             await Share.share({
               title: "Save Whisper",
               text: "Anonymous Whisper",
@@ -236,21 +236,14 @@ export default function ShareMessageCard({
       }
     }
 
-    // Try native web share first — this is what lets WhatsApp, Instagram, etc.
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: "Whisper", text: shareText });
         return;
       } catch {
-        // user cancelled the native share sheet — fall through to the
-        // platform-specific fallback below instead of doing nothing
       }
     }
 
-    // Fallbacks for browsers/platforms that can't share files directly
-    // (mostly desktop). These can't attach the image automatically, so we
-    // download it and open the platform with prefilled text, and the user
-    // attaches the already-downloaded image manually.
     downloadBlob(blob);
     flashToast("Image saved — attach it when sharing! 👻");
 
@@ -295,35 +288,32 @@ export default function ShareMessageCard({
           <X size={28} />
         </button>
 
-        {/* Scrolls on-screen only if the card is taller than the viewport —
-            purely a preview convenience. The captured/downloaded image below
-            always uses the card's full natural height, so nothing is ever
-            cropped in the saved output. */}
-        <div className="max-h-[85vh] overflow-y-auto rounded-[2rem]">
+        <div className="max-h-[85vh] overflow-y-auto rounded-[2rem] bg-black">
           <div
             ref={cardRef}
-            className="relative flex w-full flex-col overflow-hidden rounded-[2rem] border border-white/10 theme-bg-gradient p-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+            className="relative flex w-full flex-col overflow-hidden bg-black p-10 pt-16 pb-20"
           >
-            <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />
-            <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-purple-600/20 blur-[60px]" />
+            {/* The actual card part */}
+            <div className="relative flex flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+              {/* Header with Gradient */}
+              <div className="bg-gradient-to-r from-cyan-400 to-purple-600 px-6 py-8 text-center">
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                  send me anonymous messages!
+                </h3>
+              </div>
 
-            <div className="relative flex flex-col items-center text-center">
-              <Image src="/ghost.png" alt="Whisper" width={44} height={44} />
-              <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-gray-400">
-                Whisper
-              </p>
-
-              <div className="mt-8 flex w-full flex-col items-center gap-5">
-                {message && (
+              {/* Message Content */}
+              <div className="flex min-h-[160px] flex-col items-center justify-center bg-white p-8 text-center">
+                {message ? (
                   <p
-                    className={`font-extrabold leading-snug text-white break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${messageFontSize(
+                    className={`font-extrabold leading-tight text-[#1a1a1a] [overflow-wrap:anywhere] ${messageFontSize(
                       message.length
                     )}`}
                   >
-                    <span className="text-purple-500">&ldquo;</span>
                     {message}
-                    <span className="text-purple-500">&rdquo;</span>
                   </p>
+                ) : (
+                  <p className="text-lg font-bold text-gray-400 italic">No message text</p>
                 )}
 
                 {imageUrl && (
@@ -331,14 +321,22 @@ export default function ShareMessageCard({
                     src={imageUrl}
                     crossOrigin="anonymous"
                     alt="Anonymous attachment"
-                    className="max-h-[280px] w-auto max-w-full rounded-2xl object-contain"
+                    className="mt-6 max-h-[320px] w-auto max-w-full rounded-2xl object-contain shadow-md"
                   />
                 )}
               </div>
+            </div>
 
-              <div className="mt-6 h-px w-16 bg-white/10" />
-              <p className="mt-4 text-xs font-semibold text-gray-500">
-                Anonymous message · whisper.app
+            {/* Branded Footer */}
+            <div className="absolute bottom-6 left-0 right-0 flex flex-col items-center justify-center gap-1 opacity-90">
+              <div className="flex items-center gap-1.5">
+                <Image src="/ghost.png" alt="Whisper" width={28} height={28} className="drop-shadow-sm grayscale invert" />
+                <span className="text-xl font-black tracking-tighter text-white">
+                  Whisper
+                </span>
+              </div>
+              <p className="text-[8px] font-bold uppercase tracking-[0.3em] text-gray-500">
+                anonymous q&a
               </p>
             </div>
           </div>
@@ -360,7 +358,7 @@ export default function ShareMessageCard({
         <button
           onClick={handleDownload}
           disabled={generating}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 p-4 font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 p-4 font-black text-white transition hover:bg-white/20 disabled:opacity-50"
         >
           <Download size={18} />
           {generating ? "Generating..." : "Save share card"}
@@ -370,7 +368,7 @@ export default function ShareMessageCard({
           <button
             onClick={handleSaveAttachment}
             disabled={generating}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-purple-600/30 bg-purple-600/10 p-4 font-semibold text-purple-300 transition hover:bg-purple-600/20 disabled:opacity-50"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4 font-black text-cyan-400 transition hover:bg-cyan-400/20 disabled:opacity-50"
           >
             <ImageIcon size={18} />
             {generating ? "Processing..." : "Save original photo"}

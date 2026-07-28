@@ -96,7 +96,7 @@ export default function SignupPage() {
         <button
           onClick={signupWithGoogle}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-3 rounded-2xl bg-white p-4 font-bold text-black hover:bg-gray-100 transition disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-3 rounded-2xl bg-white p-4 font-black text-black hover:bg-gray-100 transition disabled:opacity-50"
         >
           {loading ? (
             <Loader2 className="animate-spin" />

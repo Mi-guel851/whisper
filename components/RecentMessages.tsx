@@ -89,7 +89,7 @@ export default function RecentMessages() {
         <h2 className="text-lg font-bold text-white">Latest whispers</h2>
         <Link
           href="/notifications"
-          className="flex items-center gap-1 text-sm font-semibold text-purple-300 hover:text-purple-200"
+          className="flex items-center gap-1 text-sm font-semibold text-cyan-400 hover:text-cyan-300"
         >
           View all
           <ArrowUpRight size={14} />
