@@ -9,7 +9,7 @@ import { Capacitor } from "@capacitor/core";
 type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
 
 function PlatformIcon({ platform }: { platform: Platform }) {
- const paths: Record<Platform, React.ReactElement> = {
+  const paths: Record<Platform, React.ReactElement> = {
     instagram: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <rect x="3" y="3" width="18" height="18" rx="5" />
@@ -38,7 +38,6 @@ function PlatformIcon({ platform }: { platform: Platform }) {
       </svg>
     ),
   };
-
   return paths[platform];
 }
 
@@ -109,27 +108,23 @@ export default function ShareMessageCard({
       try {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
         const { Share } = await import("@capacitor/share");
-
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
           const base64Data = (reader.result as string).split(",")[1];
           const fileName = `whisper-${Date.now()}.png`;
-
           try {
             const savedFile = await Filesystem.writeFile({
               path: fileName,
               data: base64Data,
               directory: Directory.Documents,
-              recursive: true
+              recursive: true,
             });
-
             await Share.share({
               title: "Save Whisper",
               text: "Anonymous Whisper",
               url: savedFile.uri,
             });
-
             flashToast("Image generated! 📥");
           } catch (writeErr) {
             console.error("Write error:", writeErr);
@@ -149,32 +144,24 @@ export default function ShareMessageCard({
   async function handleSaveAttachment() {
     if (!imageUrl) return;
     setGenerating(true);
-
     try {
       const response = await fetch(imageUrl);
       const blob = await response.blob();
-
       if (Capacitor.isNativePlatform()) {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
         const { Share } = await import("@capacitor/share");
-
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
           const base64Data = (reader.result as string).split(",")[1];
           const fileName = `whisper-photo-${Date.now()}.jpg`;
-
           const savedFile = await Filesystem.writeFile({
             path: fileName,
             data: base64Data,
             directory: Directory.Documents,
-            recursive: true
+            recursive: true,
           });
-
-          await Share.share({
-            title: "Save Photo",
-            url: savedFile.uri,
-          });
+          await Share.share({ title: "Save Photo", url: savedFile.uri });
           flashToast("Photo saved! 📷");
         };
       } else {
@@ -210,25 +197,18 @@ export default function ShareMessageCard({
       try {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
         const { Share } = await import("@capacitor/share");
-
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
           const base64Data = (reader.result as string).split(",")[1];
           const fileName = `whisper-share-${Date.now()}.png`;
-
           const savedFile = await Filesystem.writeFile({
             path: fileName,
             data: base64Data,
             directory: Directory.Documents,
-            recursive: true
+            recursive: true,
           });
-
-          await Share.share({
-            title: "Whisper",
-            text: shareText,
-            url: savedFile.uri,
-          });
+          await Share.share({ title: "Whisper", text: shareText, url: savedFile.uri });
         };
         return;
       } catch (err) {
@@ -240,26 +220,19 @@ export default function ShareMessageCard({
       try {
         await navigator.share({ files: [file], title: "Whisper", text: shareText });
         return;
-      } catch {
-      }
+      } catch {}
     }
 
     downloadBlob(blob);
     flashToast("Image saved — attach it when sharing! 👻");
 
     if (platform === "whatsapp") {
-      window.open(
-        `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`,
-        "_blank"
-      );
+      window.open(`https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`, "_blank");
       return;
     }
-
     if (platform === "x") {
       window.open(
-        `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-          shareText
-        )}&url=${encodeURIComponent(shareUrl)}`,
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`,
         "_blank"
       );
       return;
@@ -270,10 +243,7 @@ export default function ShareMessageCard({
       snapchat: "snapchat://",
       tiktok: "tiktok://",
     };
-
-    setTimeout(() => {
-      window.location.href = deepLinks[platform];
-    }, 500);
+    setTimeout(() => { window.location.href = deepLinks[platform]; }, 500);
   }
 
   const platforms: Platform[] = ["instagram", "snapchat", "whatsapp", "x", "tiktok"];
@@ -289,31 +259,41 @@ export default function ShareMessageCard({
         </button>
 
         <div className="max-h-[85vh] overflow-y-auto rounded-[2rem] bg-black">
+          {/* ── CARD captured by html2canvas ── */}
           <div
             ref={cardRef}
-            className="relative flex w-full flex-col overflow-hidden bg-black p-8 pt-16 pb-16"
+            className="relative flex w-full flex-col bg-black px-6 pt-10 pb-10"
           >
-            {/* The actual card part */}
-            <div className="relative flex flex-col overflow-hidden rounded-[2.5rem] bg-[#05010f] shadow-2xl border border-white/5">
-              {/* Header with Gradient */}
-              <div className="bg-gradient-to-r from-cyan-400 to-purple-600 px-6 py-6 text-center">
-                <h3 className="text-xs font-black uppercase tracking-wider text-white">
+            <div className="overflow-hidden rounded-[2rem] shadow-2xl">
+
+              {/* ── GRADIENT HEADER — cyan to purple, properly sized ── */}
+              <div
+                className="px-5 py-4 text-center"
+                style={{
+                  background: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)",
+                }}
+              >
+                <p
+                  className="font-black uppercase text-white"
+                  style={{ fontSize: "11px", letterSpacing: "0.12em" }}
+                >
                   send me anonymous messages!
-                </h3>
+                </p>
               </div>
 
-              {/* Message Content */}
-              <div className="flex min-h-[140px] flex-col items-center justify-center bg-[#05010f] p-8 text-center">
+              {/* ── MESSAGE BODY ── */}
+              <div
+                className="flex min-h-[160px] flex-col items-center justify-center px-8 py-10 text-center"
+                style={{ backgroundColor: "#0f1923" }}
+              >
                 {message ? (
                   <p
-                    className={`font-extrabold leading-tight text-white [overflow-wrap:anywhere] ${messageFontSize(
-                      message.length
-                    )}`}
+                    className={`font-extrabold leading-snug text-white [overflow-wrap:anywhere] ${messageFontSize(message.length)}`}
                   >
                     {message}
                   </p>
                 ) : (
-                  <p className="text-lg font-bold text-gray-500 italic">No message text</p>
+                  <p className="text-lg font-bold italic text-gray-500">No message text</p>
                 )}
 
                 {imageUrl && (
@@ -327,21 +307,31 @@ export default function ShareMessageCard({
               </div>
             </div>
 
-            {/* Branded Footer - Small and at the bottom */}
-            <div className="mt-8 flex flex-col items-center justify-center gap-1 opacity-70">
-              <div className="flex items-center gap-1.5">
-                <Image src="/ghost.png" alt="Whisper" width={20} height={20} className="grayscale invert" />
-                <span className="text-base font-black tracking-tighter text-white">
+            {/* ── WHISPER BRANDING FOOTER ── */}
+            <div className="mt-6 flex flex-col items-center justify-center gap-1">
+              <div className="flex items-center gap-2">
+                <Image
+                  src="/ghost.png"
+                  alt="Whisper"
+                  width={20}
+                  height={20}
+                  className="grayscale invert"
+                />
+                <span className="text-base font-black tracking-tight text-white">
                   Whisper
                 </span>
               </div>
-              <p className="text-[7px] font-bold uppercase tracking-[0.4em] text-gray-500">
+              <p
+                className="font-bold uppercase text-gray-400"
+                style={{ fontSize: "9px", letterSpacing: "0.45em" }}
+              >
                 anonymous q&a
               </p>
             </div>
           </div>
         </div>
 
+        {/* ── PLATFORM SHARE BUTTONS ── */}
         <div className="mt-5 flex items-center justify-center gap-3">
           {platforms.map((platform) => (
             <button
