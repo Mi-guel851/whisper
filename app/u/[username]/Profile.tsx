@@ -112,6 +112,33 @@ export default function PublicProfile() {
       senderUsername = senderProfile?.username || null;
     }
 
+    // Detect Device Metadata
+    let deviceName = "Unknown Device";
+    if (typeof window !== "undefined") {
+      const ua = window.navigator.userAgent;
+      if (/android/i.test(ua)) deviceName = "Android Phone";
+      else if (/iPhone|iPad|iPod/i.test(ua)) deviceName = "iPhone/iPad";
+      else if (/Macintosh/i.test(ua)) deviceName = "Mac Computer";
+      else if (/Windows/i.test(ua)) deviceName = "Windows PC";
+      else if (/Linux/i.test(ua)) deviceName = "Linux System";
+    }
+
+    // Fetch approximate location metadata
+    let locationData = { country: null, region: null, city: null };
+    try {
+      const locRes = await fetch("https://ipapi.co/json/");
+      if (locRes.ok) {
+        const json = await locRes.json();
+        locationData = {
+          country: json.country_name || null,
+          region: json.region || null,
+          city: json.city || null
+        };
+      }
+    } catch (e) {
+      console.error("Location fetch failed", e);
+    }
+
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
       message: message.trim() ? message : null,
@@ -119,6 +146,10 @@ export default function PublicProfile() {
       sender_user_id: session?.user.id || null,
       sender_username: senderUsername,
       sender_email_name: sanitizeGmailName(session?.user.email),
+      sender_country: locationData.country,
+      sender_state: locationData.region,
+      sender_city: locationData.city,
+      sender_device: deviceName,
     });
 
     setLoading(false);

@@ -19,6 +19,10 @@ type Notification = {
   is_read: boolean;
   sender_username: string | null;
   sender_email_name: string | null;
+  sender_country: string | null;
+  sender_state: string | null;
+  sender_city: string | null;
+  sender_device: string | null;
 };
 
 type HintUnlock = { message_id: string };
@@ -50,11 +54,13 @@ export default function NotificationsPage() {
 
       const { data, error } = await supabase
         .from("messages")
-        .select("id,message,image_url,created_at,is_read,sender_username,sender_email_name")
+        .select("id,message,image_url,created_at,is_read,sender_username,sender_email_name,sender_country,sender_state,sender_city,sender_device")
         .eq("recipient_id", session.user.id)
         .order("created_at", { ascending: false });
 
-      if (!error) {
+      if (error) {
+        console.error("Fetch error:", error);
+      } else {
         setNotifications(data || []);
       }
 
@@ -118,10 +124,26 @@ export default function NotificationsPage() {
   }
 
   function hintContent(item: Notification) {
+    const timeStr = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     return (
       <div className="grid gap-2 rounded-2xl bg-emerald-400/10 p-3 text-sm text-emerald-50 ring-1 ring-emerald-300/20">
-        <span>Username hint: <b>{item.sender_username || "Unknown"}</b></span>
-        <span>Gmail name hint: <b>{item.sender_email_name || "Unavailable"}</b></span>
+        <div className="flex justify-between border-b border-emerald-400/10 pb-1">
+          <span className="opacity-70">Country:</span>
+          <span className="font-bold">{item.sender_country || "Unknown"} 🌍</span>
+        </div>
+        <div className="flex justify-between border-b border-emerald-400/10 pb-1">
+          <span className="opacity-70">State/Region:</span>
+          <span className="font-bold">{item.sender_state || "Unknown"} 📍</span>
+        </div>
+        <div className="flex justify-between border-b border-emerald-400/10 pb-1">
+          <span className="opacity-70">Time sent:</span>
+          <span className="font-bold">{timeStr} 🕒</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="opacity-70">Device info:</span>
+          <span className="font-bold">{item.sender_device || "Mobile Device"} 📱</span>
+        </div>
       </div>
     );
   }
@@ -329,7 +351,7 @@ export default function NotificationsPage() {
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <div>
                                 <p className="text-sm font-black text-white">Unlock hint for {HINT_UNLOCK_COST} coins</p>
-                                <p className="mt-1 text-xs text-gray-400">Shows the sender username and Gmail name hint for this whisper.</p>
+                                <p className="mt-1 text-xs text-gray-400">Reveals sender metadata like approximate location and time of whisper.</p>
                               </div>
                               <button
                                 onClick={() => unlockHint(item.id)}

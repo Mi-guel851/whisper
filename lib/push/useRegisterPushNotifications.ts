@@ -9,19 +9,43 @@ export function useRegisterPushNotifications(userId: string | null) {
   useEffect(() => {
     if (!userId || !Capacitor.isNativePlatform()) return;
 
+    let profileSubscription: any;
+
     async function setup() {
-      // Check if user has notifications enabled in their profile
-      const { data } = await supabase
+      // Check initial status
+      const { data: profile } = await supabase
         .from("profiles")
         .select("push_notifications")
         .eq("id", userId)
         .single();
 
-      if (!data?.push_notifications) {
-        console.log("[push] notifications disabled in profile");
-        return;
+      if (profile?.push_notifications) {
+        register();
       }
 
+      // Listen for changes to the push_notifications setting
+      profileSubscription = supabase
+        .channel(`profile-push-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "profiles",
+            filter: `id=eq.${userId}`,
+          },
+          (payload) => {
+            if (payload.new.push_notifications) {
+              register();
+            } else {
+              PushNotifications.removeAllListeners();
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    async function register() {
       console.log("[push] requesting permissions...");
       const permission = await PushNotifications.requestPermissions();
       if (permission.receive !== "granted") return;
@@ -41,8 +65,10 @@ export function useRegisterPushNotifications(userId: string | null) {
           { onConflict: "fcm_token" }
         );
 
-        if (error) {
-          console.error("[push] failed to save device token:", error.message);
+        if (!error) {
+           console.log("[push] Token saved successfully");
+        } else {
+           console.error("[push] Token save error:", error.message);
         }
       });
 
@@ -65,6 +91,7 @@ export function useRegisterPushNotifications(userId: string | null) {
 
     return () => {
       PushNotifications.removeAllListeners();
+      if (profileSubscription) supabase.removeChannel(profileSubscription);
     };
   }, [userId]);
 }

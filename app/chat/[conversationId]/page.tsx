@@ -91,7 +91,7 @@ function MessageBubble({
     <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
       <div className="relative max-w-[75%]">
         <motion.div
-          className="absolute left-2 top-1/2 -translate-y-1/2 text-purple-500 pointer-events-none"
+          className="absolute left-2 top-1/2 -translate-y-1/2 text-cyan-400 pointer-events-none"
           style={{ opacity: replyIconOpacity }}
         >
           <CornerUpLeft size={18} />
@@ -128,7 +128,7 @@ function MessageBubble({
               </div>
             )}
             {repliedMsg && (
-              <div className="mb-2 border-l-2 border-purple-500 pl-2 text-xs text-gray-400 truncate">
+              <div className="mb-2 border-l-2 border-cyan-400 pl-2 text-xs truncate rounded-sm bg-cyan-400/20 text-cyan-200 py-1 pr-2">
                 {repliedMsg.content || "📷 Photo"}
               </div>
             )}
@@ -147,7 +147,7 @@ function MessageBubble({
                   <button
                     onClick={() => onViewPhoto(msg)}
                     disabled={viewingPhotoId === msg.id}
-                    className="flex items-center gap-2 text-sm font-bold text-purple-300 hover:text-cyan-100 disabled:opacity-60"
+                    className="flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-cyan-100 disabled:opacity-60"
                   >
                     {viewingPhotoId === msg.id ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -158,11 +158,11 @@ function MessageBubble({
                   </button>
                 )}
                 {msg.content && (
-                  <p className="mt-1 text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+                  <p className="mt-1 text-sm text-gray-100 break-words">{msg.content}</p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+              <p className="text-sm text-gray-100 break-words">{msg.content}</p>
             )}
           </GlassPanel>
         </motion.div>
@@ -195,7 +195,6 @@ function MessageBubble({
                   {emoji}
                 </button>
               ))}
-              {/* Reply */}
               <button
                 onClick={() => {
                   setReplyingTo(msg);
@@ -206,7 +205,6 @@ function MessageBubble({
               >
                 <CornerUpLeft size={14} />
               </button>
-              {/* Pin / Unpin */}
               <button
                 onClick={() => {
                   onPin(msg);
@@ -217,7 +215,6 @@ function MessageBubble({
               >
                 {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
               </button>
-              {/* Delete — only for sender */}
               {isMe && (
                 <button
                   onClick={() => {
@@ -230,7 +227,6 @@ function MessageBubble({
                   <Trash2 size={14} className="text-rose-400" />
                 </button>
               )}
-              {/* Close */}
               <button
                 onClick={() => setActionMenuFor(null)}
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
@@ -273,18 +269,11 @@ export default function ChatPage() {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
-
-  useEffect(() => {
-    if (!inputRef.current) return;
-    inputRef.current.style.height = "auto";
-    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 144)}px`;
-  }, [input]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
 
   const markMessagesRead = useCallback(async (msgs: Message[], currentUserId: string) => {
@@ -351,7 +340,6 @@ export default function ChatPage() {
       setMessages(fetchedMsgs);
       messagesRef.current = fetchedMsgs;
 
-      // Load pinned messages
       const { data: pins } = await supabase
         .from("pinned_messages").select("message_id")
         .eq("conversation_id", conversationId);
@@ -479,23 +467,24 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function sendMessage() {
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault();
     if (pendingPhoto) { await sendPendingPhoto(); return; }
-    const hasMessage = input.trim().length > 0;
+    const trimmed = input.trim();
     if (!chatUnlocked) {
       showToast(isFriendConversation
         ? "You need 40 coins to unlock this conversation."
         : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
       return;
     }
-    if (!hasMessage || !myId) return;
+    if (!trimmed || !myId) return;
     setInput("");
     const replyId = replyingTo?.id || null;
     setReplyingTo(null);
     const { error } = await supabase.from("direct_messages").insert({
       conversation_id: conversationId,
       sender_id: myId,
-      content: input,
+      content: trimmed,
       reply_to_id: replyId,
     });
     if (error) { showToast(error.message); return; }
@@ -586,12 +575,12 @@ export default function ChatPage() {
         return;
       }
 
-      const hasCaption = input.trim().length > 0;
+      const caption = input.trim();
       const replyId = replyingTo?.id || null;
       const { error: insertError } = await supabase.from("direct_messages").insert({
         conversation_id: conversationId,
         sender_id: myId,
-        content: hasCaption ? input : null,
+        content: caption || null,
         reply_to_id: replyId,
         image_path: path,
         is_view_once: true,
@@ -706,11 +695,12 @@ export default function ChatPage() {
   return (
     <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
       <div className="relative z-10 flex h-full flex-col">
+
         {/* Header */}
         <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
           <BackButton />
           <div className="mt-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
               👻
             </div>
             <div>
@@ -734,17 +724,14 @@ export default function ChatPage() {
         )}
 
         {/* Messages */}
-        <div
-          ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto"
-        >
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto">
           <div className="relative min-h-full px-6 py-6 space-y-4">
             <ChatDoodleBackground />
 
             {!chatUnlocked && (
-              <GlassPanel className="rounded-3xl border border-purple-400/20 p-6 text-center shadow-2xl shadow-purple-600/10">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-400/25 to-purple-400/25">
-                  <LockKeyhole className="text-purple-300" />
+              <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
+                  <LockKeyhole className="text-cyan-200" />
                 </div>
                 <h2 className="text-2xl font-black">Chat locked</h2>
                 <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
@@ -755,7 +742,7 @@ export default function ChatPage() {
                 <button
                   onClick={unlockChat}
                   disabled={unlocking}
-                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-purple-400 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-purple-500/20 transition active:scale-95 disabled:opacity-60"
+                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
                 >
                   <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
                 </button>
@@ -793,7 +780,7 @@ export default function ChatPage() {
 
         {/* Pending photo preview */}
         {pendingPhoto && (
-          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-purple-400/30 bg-white/5 px-3 py-2">
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-300/30 bg-white/5 px-3 py-2">
             <img src={pendingPhoto.previewUrl} alt="Selected photo" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
             <p className="flex-1 truncate text-xs text-gray-300">Ready to send — costs {SEND_IMAGE_COST} coins</p>
             <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="disabled:opacity-60">
@@ -804,41 +791,53 @@ export default function ChatPage() {
 
         {/* Reply preview */}
         {replyingTo && (
-          <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-purple-500 bg-white/5 px-3 py-2">
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
             <p className="truncate text-xs text-gray-300">Replying to: {replyingTo.content || "📷 Photo"}</p>
             <button onClick={() => setReplyingTo(null)}><X size={14} className="text-gray-400" /></button>
           </div>
         )}
 
         {/* Input form */}
-        <form onSubmit={(e) => e.preventDefault()} className="flex-shrink-0 p-6 pt-0">
+        <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
           <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
             <button
-              type="button" onClick={triggerPhotoPicker} disabled={uploadingPhoto}
+              type="button"
+              onClick={triggerPhotoPicker}
+              disabled={uploadingPhoto}
               title={`Send an image (${SEND_IMAGE_COST} coins)`}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-purple-300 transition hover:bg-white/10 disabled:opacity-60"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
             >
               <ImagePlus size={18} />
             </button>
-            <textarea
-              ref={inputRef}
+            <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
+              placeholder={
+                pendingPhoto
+                  ? "Add a caption (optional)..."
+                  : chatUnlocked
+                  ? "Message anonymously..."
+                  : "Unlock chat to send messages"
+              }
               disabled={!chatUnlocked}
-              rows={1}
-              className="max-h-36 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2 leading-6 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
-              type="button"
-              onClick={sendMessage}
+              type="submit"
               disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
-              className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
+              className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+                pendingPhoto ? "gap-1.5 px-4" : "w-10"
+              }`}
             >
               {pendingPhoto ? (
-                uploadingPhoto ? <Loader2 size={16} className="animate-spin text-black" /> : (
-                  <><Coins size={16} className="text-black" /><span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span></>
+                uploadingPhoto ? (
+                  <Loader2 size={16} className="animate-spin text-black" />
+                ) : (
+                  <>
+                    <Coins size={16} className="text-black" />
+                    <span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span>
+                  </>
                 )
               ) : (
                 <Send size={16} className="text-black" />
@@ -846,9 +845,9 @@ export default function ChatPage() {
             </button>
           </div>
         </form>
+
       </div>
 
-      {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <GlassPanel strong className="w-full max-w-sm rounded-3xl p-6 text-center">
@@ -875,19 +874,32 @@ export default function ChatPage() {
 
       {/* Photo modal */}
       {photoModalUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={closePhotoModal}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={closePhotoModal}
+        >
           <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
             {photoModalCaption && (
               <p className="mb-3 text-center text-sm font-medium text-white">{photoModalCaption}</p>
             )}
-            <img src={photoModalUrl} alt="View-once photo" className="max-h-[80vh] max-w-full rounded-2xl object-contain" />
-            <p className="mt-3 text-center text-xs text-gray-400">This photo won&apos;t be available again after you close this view.</p>
-            <button onClick={closePhotoModal} className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
+            <img
+              src={photoModalUrl}
+              alt="View-once photo"
+              className="max-h-[80vh] max-w-full rounded-2xl object-contain"
+            />
+            <p className="mt-3 text-center text-xs text-gray-400">
+              This photo won&apos;t be available again after you close this view.
+            </p>
+            <button
+              onClick={closePhotoModal}
+              className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg"
+            >
               <X size={18} />
             </button>
           </div>
         </div>
       )}
+
     </main>
   );
 }

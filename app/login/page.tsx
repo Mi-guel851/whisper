@@ -12,6 +12,7 @@ import { Capacitor } from "@capacitor/core";
 export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const [loadingGoogle, setLoadingGoogle] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,16 +20,24 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   async function signInWithGoogle() {
+    setLoadingGoogle(true);
     const isNative = Capacitor.isNativePlatform();
 
     if (isNative) {
       try {
         const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+
+        await GoogleAuth.initialize({
+          clientId: "226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5.apps.googleusercontent.com",
+          scopes: ["profile", "email"],
+        });
+
         const googleUser = await GoogleAuth.signIn();
 
         const idToken = googleUser?.authentication?.idToken;
         if (!idToken) {
           showToast("Google sign-in failed. No token received.");
+          setLoadingGoogle(false);
           return;
         }
 
@@ -39,6 +48,7 @@ export default function LoginPage() {
 
         if (error) {
           showToast(error.message);
+          setLoadingGoogle(false);
           return;
         }
 
@@ -51,9 +61,12 @@ export default function LoginPage() {
         router.push(profile?.profile_completed ? "/dashboard" : "/complete-profile");
 
       } catch (err: unknown) {
+        setLoadingGoogle(false);
         const message = err instanceof Error ? err.message : "Google sign-in failed.";
         console.error("[Google Sign-In]", err);
-        showToast(message);
+        if (!message.toLowerCase().includes("cancel")) {
+          showToast(message);
+        }
       }
       return;
     }
@@ -66,6 +79,7 @@ export default function LoginPage() {
 
     if (error) {
       showToast(error.message);
+      setLoadingGoogle(false);
     }
   }
 
@@ -102,7 +116,7 @@ export default function LoginPage() {
           <input
             type="email"
             placeholder="Email Address"
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
+            className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 outline-none focus:border-cyan-400 text-white placeholder:text-gray-500"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -112,7 +126,7 @@ export default function LoginPage() {
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-purple-500"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-12 outline-none focus:border-cyan-400 text-white placeholder:text-gray-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -130,7 +144,7 @@ export default function LoginPage() {
           <div className="text-right -mt-2">
             <Link
               href="/forgot-password"
-              className="text-sm font-semibold text-purple-400 hover:text-purple-300"
+              className="text-sm font-semibold text-cyan-400 hover:text-cyan-300"
             >
               Forgot password?
             </Link>
@@ -139,7 +153,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 p-4 font-bold text-black hover:opacity-90 disabled:opacity-60 transition"
+            className="w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 p-4 font-black text-black shadow-lg shadow-cyan-500/20 transition hover:opacity-90 active:scale-95 disabled:opacity-60"
           >
             {loading ? "Logging In..." : "Login"}
           </button>
@@ -166,7 +180,7 @@ export default function LoginPage() {
 
         <p className="mt-8 text-center text-sm text-gray-400">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-bold text-purple-400 hover:underline">
+          <Link href="/signup" className="font-bold text-cyan-400 hover:underline">
             Sign Up
           </Link>
         </p>
