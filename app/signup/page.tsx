@@ -5,13 +5,46 @@ import { useToast } from "@/components/ToastProvider";
 import GlassPanel from "@/components/GlassPanel";
 import { Capacitor } from "@capacitor/core";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
 export default function SignupPage() {
   const { showToast } = useToast();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
+  async function registerFcmToken() {
+    const isNative = Capacitor.isNativePlatform();
+    if (!isNative) return;
+
+    try {
+      const { PushNotifications } = await import("@capacitor/push-notifications");
+
+      const permission = await PushNotifications.requestPermissions();
+      if (permission.receive !== "granted") return;
+
+      await PushNotifications.register();
+
+      PushNotifications.addListener("registration", async (token) => {
+        console.log("FCM Token:", token.value);
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from("profiles")
+            .update({ fcm_token: token.value })
+            .eq("id", user.id);
+        }
+      });
+
+      PushNotifications.addListener("registrationError", (err) => {
+        console.error("FCM registration error:", err);
+      });
+
+    } catch (err) {
+      console.error("Push notification setup failed:", err);
+    }
+  }
 
   async function signupWithGoogle() {
     setLoading(true);
@@ -52,11 +85,14 @@ export default function SignupPage() {
           .eq("id", data.user?.id)
           .maybeSingle();
 
+        await registerFcmToken();
+
         if (profile?.profile_completed) {
           router.push("/dashboard");
         } else {
           router.push("/complete-profile");
         }
+
       } catch (err: unknown) {
         setLoading(false);
         const message = err instanceof Error ? err.message : "Google sign-in was cancelled.";

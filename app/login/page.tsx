@@ -19,6 +19,39 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  async function registerFcmToken() {
+    const isNative = Capacitor.isNativePlatform();
+    if (!isNative) return;
+
+    try {
+      const { PushNotifications } = await import("@capacitor/push-notifications");
+
+      const permission = await PushNotifications.requestPermissions();
+      if (permission.receive !== "granted") return;
+
+      await PushNotifications.register();
+
+      PushNotifications.addListener("registration", async (token) => {
+        console.log("FCM Token:", token.value);
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from("profiles")
+            .update({ fcm_token: token.value })
+            .eq("id", user.id);
+        }
+      });
+
+      PushNotifications.addListener("registrationError", (err) => {
+        console.error("FCM registration error:", err);
+      });
+
+    } catch (err) {
+      console.error("Push notification setup failed:", err);
+    }
+  }
+
   async function signInWithGoogle() {
     setLoadingGoogle(true);
     const isNative = Capacitor.isNativePlatform();
@@ -57,6 +90,8 @@ export default function LoginPage() {
           .select("profile_completed")
           .eq("id", data.user?.id)
           .maybeSingle();
+
+        await registerFcmToken();
 
         router.push(profile?.profile_completed ? "/dashboard" : "/complete-profile");
 
@@ -97,6 +132,7 @@ export default function LoginPage() {
     }
 
     showToast("Welcome back! 👋");
+    await registerFcmToken();
     router.push("/dashboard");
   }
 

@@ -291,29 +291,29 @@ export default function ShareMessageCard({
         <div className="max-h-[85vh] overflow-y-auto rounded-[2rem] bg-black">
           <div
             ref={cardRef}
-            className="relative flex w-full flex-col overflow-hidden bg-black p-10 pt-16 pb-20"
+            className="relative flex w-full flex-col overflow-hidden bg-black p-8 pt-16 pb-16"
           >
             {/* The actual card part */}
-            <div className="relative flex flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+            <div className="relative flex flex-col overflow-hidden rounded-[2.5rem] bg-[#05010f] shadow-2xl border border-white/5">
               {/* Header with Gradient */}
-              <div className="bg-gradient-to-r from-cyan-400 to-purple-600 px-6 py-8 text-center">
-                <h3 className="text-sm font-black uppercase tracking-wider text-white">
+              <div className="bg-gradient-to-r from-cyan-400 to-purple-600 px-6 py-6 text-center">
+                <h3 className="text-xs font-black uppercase tracking-wider text-white">
                   send me anonymous messages!
                 </h3>
               </div>
 
               {/* Message Content */}
-              <div className="flex min-h-[160px] flex-col items-center justify-center bg-white p-8 text-center">
+              <div className="flex min-h-[140px] flex-col items-center justify-center bg-[#05010f] p-8 text-center">
                 {message ? (
                   <p
-                    className={`font-extrabold leading-tight text-[#1a1a1a] [overflow-wrap:anywhere] ${messageFontSize(
+                    className={`font-extrabold leading-tight text-white [overflow-wrap:anywhere] ${messageFontSize(
                       message.length
                     )}`}
                   >
                     {message}
                   </p>
                 ) : (
-                  <p className="text-lg font-bold text-gray-400 italic">No message text</p>
+                  <p className="text-lg font-bold text-gray-500 italic">No message text</p>
                 )}
 
                 {imageUrl && (
@@ -321,21 +321,21 @@ export default function ShareMessageCard({
                     src={imageUrl}
                     crossOrigin="anonymous"
                     alt="Anonymous attachment"
-                    className="mt-6 max-h-[320px] w-auto max-w-full rounded-2xl object-contain shadow-md"
+                    className="mt-6 max-h-[300px] w-auto max-w-full rounded-2xl object-contain shadow-md"
                   />
                 )}
               </div>
             </div>
 
-            {/* Branded Footer */}
-            <div className="absolute bottom-6 left-0 right-0 flex flex-col items-center justify-center gap-1 opacity-90">
+            {/* Branded Footer - Small and at the bottom */}
+            <div className="mt-8 flex flex-col items-center justify-center gap-1 opacity-70">
               <div className="flex items-center gap-1.5">
-                <Image src="/ghost.png" alt="Whisper" width={28} height={28} className="drop-shadow-sm grayscale invert" />
-                <span className="text-xl font-black tracking-tighter text-white">
+                <Image src="/ghost.png" alt="Whisper" width={20} height={20} className="grayscale invert" />
+                <span className="text-base font-black tracking-tighter text-white">
                   Whisper
                 </span>
               </div>
-              <p className="text-[8px] font-bold uppercase tracking-[0.3em] text-gray-500">
+              <p className="text-[7px] font-bold uppercase tracking-[0.4em] text-gray-500">
                 anonymous q&a
               </p>
             </div>
