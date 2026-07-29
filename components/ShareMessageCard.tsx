@@ -249,108 +249,129 @@ export default function ShareMessageCard({
   const platforms: Platform[] = ["instagram", "snapchat", "whatsapp", "x", "tiktok"];
 
   return (
-    /* ── BACKDROP with blur ── */
     <div
       className="fixed inset-0 z-[999] flex items-center justify-center p-4"
       style={{
-        background: "rgba(0,0,0,0.75)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        background: "rgba(0,0,0,0.85)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
       }}
     >
-      {/* ── GLOW ORBS behind modal ── */}
-      <div className="pointer-events-none absolute -top-20 -left-20 h-80 w-80 rounded-full bg-purple-600/20 blur-[100px]" />
-      <div className="pointer-events-none absolute -bottom-20 -right-20 h-80 w-80 rounded-full bg-cyan-500/15 blur-[100px]" />
+      {/* ── GLOW ORBS ── */}
+      <div className="pointer-events-none absolute top-0 left-0 h-96 w-96 rounded-full bg-purple-600/25 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 rounded-full bg-cyan-500/20 blur-[120px]" />
 
       <div className="relative w-full max-w-sm">
 
         {/* ── CLOSE BUTTON ── */}
         <button
           onClick={onClose}
-          className="absolute -top-12 right-0 flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition hover:text-white"
+          className="absolute -top-12 right-0 flex h-9 w-9 items-center justify-center rounded-full transition"
           style={{
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(255,255,255,0.12)",
+            border: "1px solid rgba(255,255,255,0.2)",
             backdropFilter: "blur(12px)",
+            color: "white",
           }}
         >
           <X size={18} />
         </button>
 
-        {/* ── GLASS CONTAINER ── */}
+        {/* ── OUTER GLASS CONTAINER — wraps everything ── */}
         <div
-          className="relative rounded-[2rem] p-5"
+          className="relative rounded-[2.5rem] p-5"
           style={{
-            background: "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)",
-            backdropFilter: "blur(32px) saturate(180%)",
-            WebkitBackdropFilter: "blur(32px) saturate(180%)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)",
+            background: "linear-gradient(145deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.05) 60%, rgba(168,85,247,0.08) 100%)",
+            backdropFilter: "blur(40px) saturate(200%)",
+            WebkitBackdropFilter: "blur(40px) saturate(200%)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            boxShadow: "0 25px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(255,255,255,0.05)",
           }}
         >
           {/* ── TOP SHINE ── */}
           <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[2rem]"
+            className="pointer-events-none absolute inset-x-4 top-0 h-px"
             style={{
-              background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
+              background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
             }}
           />
 
-          {/* ── SHAREABLE CARD (captured by html2canvas) ── */}
+          {/* ── SHAREABLE CARD (captured by html2canvas — must stay solid) ── */}
           <div
             ref={cardRef}
-            className="relative flex w-full flex-col bg-black px-4 pt-8 pb-8 rounded-[1.5rem] overflow-hidden"
+            className="relative flex w-full flex-col bg-black rounded-[2rem] overflow-hidden"
+            style={{ padding: "24px 16px" }}
           >
-            <div className="overflow-hidden rounded-[1.5rem] shadow-2xl">
-
-              {/* ── GRADIENT HEADER ── */}
-              <div
-                className="px-5 py-4 text-center"
+            {/* ── GRADIENT HEADER ── */}
+            <div
+              className="overflow-hidden rounded-[1.5rem]"
+              style={{
+                background: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)",
+                padding: "14px 20px",
+                textAlign: "center",
+              }}
+            >
+              <p
                 style={{
-                  background: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)",
+                  fontSize: "11px",
+                  letterSpacing: "0.12em",
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                  color: "#ffffff",
+                  margin: 0,
                 }}
               >
+                send me anonymous messages!
+              </p>
+            </div>
+
+            {/* ── MESSAGE BODY — glass prism effect ── */}
+            <div
+              className="mt-3 overflow-hidden rounded-[1.5rem]"
+              style={{
+                background: "linear-gradient(145deg, rgba(255,255,255,0.08) 0%, rgba(15,25,35,0.95) 30%, rgba(10,18,28,1) 100%)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.3)",
+                minHeight: "160px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "40px 32px",
+                textAlign: "center",
+              }}
+            >
+              {message ? (
                 <p
-                  className="font-black uppercase text-white"
-                  style={{ fontSize: "11px", letterSpacing: "0.12em" }}
+                  className={`font-extrabold leading-snug [overflow-wrap:anywhere] ${messageFontSize(message.length)}`}
+                  style={{ color: "#ffffff", margin: 0 }}
                 >
-                  send me anonymous messages!
+                  {message}
                 </p>
-              </div>
-
-              {/* ── MESSAGE BODY ── */}
-              <div
-                className="flex min-h-[160px] flex-col items-center justify-center px-8 py-10 text-center"
-                style={{ backgroundColor: "#0f1923" }}
-              >
-                {message ? (
-                  <p
-                    className={`font-extrabold leading-snug text-white [overflow-wrap:anywhere] ${messageFontSize(message.length)}`}
-                  >
-                    {message}
-                  </p>
-                ) : (
-                  <p className="text-lg font-bold italic text-gray-500">No message text</p>
-                )}
-
-                {imageUrl && (
-                  <img
-                    src={imageUrl}
-                    crossOrigin="anonymous"
-                    alt="Anonymous attachment"
-                    className="mt-6 max-h-[300px] w-auto max-w-full rounded-2xl object-contain shadow-md"
-                  />
-                )}
-              </div>
+              ) : (
+                <p style={{ fontSize: "18px", fontWeight: 700, fontStyle: "italic", color: "#6b7280", margin: 0 }}>
+                  No message text
+                </p>
+              )}
+              {imageUrl && (
+                <img
+                  src={imageUrl}
+                  crossOrigin="anonymous"
+                  alt="Anonymous attachment"
+                  className="mt-6 max-h-[300px] w-auto max-w-full rounded-2xl object-contain shadow-md"
+                />
+              )}
             </div>
 
             {/* ── WHISPER BRANDING FOOTER ── */}
-            <div className="mt-6 flex flex-col items-center justify-center gap-1">
+            <div className="mt-5 flex flex-col items-center justify-center gap-1">
               <div className="flex items-center gap-2">
                 <Image src="/ghost.png" alt="Whisper" width={20} height={20} className="grayscale invert" />
-                <span className="text-base font-black tracking-tight text-white">Whisper</span>
+                <span style={{ fontSize: "16px", fontWeight: 900, letterSpacing: "-0.02em", color: "#ffffff" }}>
+                  Whisper
+                </span>
               </div>
-              <p className="font-bold uppercase text-gray-400" style={{ fontSize: "9px", letterSpacing: "0.45em" }}>
+              <p style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.45em", color: "#6b7280", margin: 0 }}>
                 anonymous q&a
               </p>
             </div>
@@ -374,10 +395,11 @@ export default function ShareMessageCard({
           <button
             onClick={handleDownload}
             disabled={generating}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black text-white transition hover:opacity-90 disabled:opacity-50"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black transition hover:opacity-90 disabled:opacity-50"
             style={{
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              color: "#ffffff",
             }}
           >
             <Download size={18} />
@@ -389,32 +411,34 @@ export default function ShareMessageCard({
             <button
               onClick={handleSaveAttachment}
               disabled={generating}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black text-cyan-400 transition hover:opacity-90 disabled:opacity-50"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black transition hover:opacity-90 disabled:opacity-50"
               style={{
                 background: "rgba(34,211,238,0.08)",
-                border: "1px solid rgba(34,211,238,0.2)",
+                border: "1px solid rgba(34,211,238,0.25)",
+                color: "#22d3ee",
               }}
             >
               <ImageIcon size={18} />
               {generating ? "Processing..." : "Save original photo"}
             </button>
           )}
-        </div>
 
-        {/* ── TOAST ── */}
-        {toast && (
-          <div
-            className="absolute -bottom-14 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold text-white"
-            style={{
-              background: "rgba(255,255,255,0.10)",
-              backdropFilter: "blur(12px)",
-              border: "1px solid rgba(255,255,255,0.12)",
-            }}
-          >
-            {toast}
-          </div>
-        )}
+          {/* ── TOAST ── */}
+          {toast && (
+            <div
+              className="mt-3 flex w-full items-center justify-center rounded-full px-4 py-2 text-xs font-semibold"
+              style={{
+                background: "rgba(255,255,255,0.10)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: "#ffffff",
+              }}
+            >
+              {toast}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
-}
+}0
