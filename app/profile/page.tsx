@@ -5,7 +5,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Palette, ChevronRight } from "lucide-react";
+import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Palette, ChevronRight, Settings } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 import BottomNavigation from "@/components/BottomNavigation";
@@ -75,19 +75,27 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen theme-bg-gradient text-white pb-28">
-      <div className="mx-auto max-w-xl p-6">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
+    <main className="min-h-screen w-full overflow-x-clip theme-bg-gradient text-white pb-28">
+      <div className="mx-auto w-full max-w-xl px-4 py-6 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 transition hover:bg-white/10"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <div className="flex items-center gap-2">
+              <Image src="/ghost.png" alt="Whisper" width={24} height={24} />
+              <span className="text-sm font-black tracking-wide">WHISPER</span>
+            </div>
+          </div>
+          <Link
+            href="/settings"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 transition hover:bg-white/10"
           >
-            <ChevronLeft size={18} />
-          </button>
-          <div className="flex items-center gap-2">
-            <Image src="/ghost.png" alt="Whisper" width={24} height={24} />
-            <span className="text-sm font-black tracking-wide">WHISPER</span>
-          </div>
+            <Settings size={18} />
+          </Link>
         </div>
 
         <GlassPanel className="mt-6 rounded-3xl p-8 text-center">
@@ -123,15 +131,15 @@ export default function ProfilePage() {
               <AtSign size={12} />
               Username
             </label>
-            <div className="mt-2 flex items-center text-lg">
-              <span className="text-gray-400">whisper.app/u/</span>
+            <div className="mt-2 flex min-w-0 items-center text-lg">
+              <span className="shrink-0 text-gray-400">whisper.app/u/</span>
               <input
                 value={username}
                 onChange={(e) =>
                   setUsername(e.target.value.replace(/\s+/g, "").toLowerCase())
                 }
                 placeholder="username"
-                className="flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-500"
+                className="min-w-0 flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-500"
               />
             </div>
           </GlassPanel>
@@ -156,7 +164,7 @@ export default function ProfilePage() {
           <button
             onClick={saveProfile}
             disabled={loading || initialLoad}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-cyan-400 py-4 font-bold text-black transition hover:scale-[1.01] disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 py-4 font-bold text-black transition hover:scale-[1.01] disabled:opacity-60"
           >
             <Save size={18} />
             {loading ? "Saving..." : "Save changes"}
@@ -173,8 +181,8 @@ export default function ProfilePage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <ShieldCheck size={18} />
               </div>
-              <div className="flex-1">
-                <p className="font-semibold text-white">Privacy & safety</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Privacy & safety</p>
                 <p className="text-xs text-gray-400">Fully protected</p>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
@@ -184,9 +192,9 @@ export default function ProfilePage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <Palette size={18} />
               </div>
-              <div className="flex-1">
-                <p className="font-semibold text-white">Appearance</p>
-                <p className="text-xs text-gray-400">{theme.name}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Appearance</p>
+                <p className="truncate text-xs text-gray-400">{theme.name}</p>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
             </Link>
