@@ -28,7 +28,7 @@ export default function ClosingCTA() {
 
         <Link
           href="/signup"
-          className="mt-8 inline-block w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-purple-600 px-10 py-4 text-base font-bold text-white transition hover:scale-105 sm:mt-10 sm:w-auto sm:py-5 sm:text-lg"
+          className="mt-8 inline-block w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-600 px-10 py-4 text-base font-bold text-white transition hover:scale-105 sm:mt-10 sm:w-auto sm:py-5 sm:text-lg"
         >
           Create My Link — It&apos;s Free
         </Link>

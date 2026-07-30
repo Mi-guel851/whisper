@@ -7,7 +7,7 @@ export const metadata = {
 export default function PrivacyPage() {
   return (
     <main className="relative min-h-screen overflow-hidden theme-bg-gradient text-white px-4 py-16">
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
       <GlassPanel strong className="relative z-10 mx-auto max-w-3xl rounded-3xl p-8 md:p-12">
@@ -17,7 +17,7 @@ export default function PrivacyPage() {
         <div className="space-y-8 text-gray-200 leading-relaxed">
           <section>
             <p>
-              Whisper ("we," "our," or "us") lets users create a personal link to receive
+              Whisper (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) lets users create a personal link to receive
               anonymous messages from others. This policy explains what information we collect,
               how we use it, and the choices you have.
             </p>
@@ -35,7 +35,7 @@ export default function PrivacyPage() {
                 <span className="font-semibold text-white">Messages:</span> content sent to your
                 Whisper link is stored so you can view it. Senders of anonymous messages are not
                 required to create an account, and we do not knowingly collect identifying
-                information from anonymous senders beyond standard technical data (see below).
+                information from anonymous senders beyond standard technical data.
               </li>
               <li>
                 <span className="font-semibold text-white">Technical data:</span> IP address,
@@ -62,9 +62,9 @@ export default function PrivacyPage() {
               We use trusted third-party providers to operate Whisper, including:
             </p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
-              <li><span className="font-semibold text-white">Supabase</span> — authentication and database hosting</li>
+              <li><span className="font-semibold text-white">Cloudstorage</span> — authentication and database hosting</li>
               <li><span className="font-semibold text-white">Google</span> — optional sign-in (OAuth)</li>
-              <li><span className="font-semibold text-white">Vercel</span> — application hosting</li>
+              
             </ul>
             <p className="mt-2">
               These providers may process your data on our behalf under their own privacy and
@@ -103,7 +103,7 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-bold text-white mb-2">7. Contact Us</h2>
             <p>
               Questions about this policy or your data? Reach out at {"whisper.anonymous.app@gmail.com "}
-              <a href="mailto:@whisper.anonymous.app@gmail.com" className="text-cyan-300 hover:text-cyan-200">
+              <a href="mailto:@whisper.anonymous.app@gmail.com" className="text-purple-400 hover:text-purple-300">
                 
               </a>{" "}
             </p>

@@ -7,7 +7,7 @@ export const metadata = {
 export default function TermsPage() {
   return (
     <main className="relative min-h-screen overflow-hidden theme-bg-gradient text-white px-4 py-16">
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
       <GlassPanel strong className="relative z-10 mx-auto max-w-3xl rounded-3xl p-8 md:p-12">
@@ -26,7 +26,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-bold text-white mb-2">1. The Service</h2>
             <p>
               Whisper allows users to create a personal link where others can send anonymous
-              messages. We provide the service on an "as is" and "as available" basis.
+              messages. We provide the service on an &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis.
             </p>
           </section>
 
@@ -104,7 +104,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-bold text-white mb-2">9. Contact</h2>
             <p>
               Questions about these terms? Contact us at{" "}
-              <a href="mailto: whisper.anonymous.app@gmail.com" className="text-cyan-300 hover:text-cyan-200">
+              <a href="mailto: whisper.anonymous.app@gmail.com" className="text-purple-400 hover:text-purple-300">
                 support@whisper.anonymous.app@gmail.com
 
               </a>{" "}

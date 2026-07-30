@@ -39,7 +39,7 @@ export default function AnalyticsCard() {
 
       <h2 className="text-xl font-bold text-white">Your Analytics</h2>
       <div className="mt-4 text-gray-300">Total Messages Received:</div>
-      <div className="mt-2 text-4xl font-black text-cyan-400">{stats.messages}</div>
+      <div className="mt-2 text-4xl font-black text-purple-500">{stats.messages}</div>
     </GlassPanel>
   );
 }

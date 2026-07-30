@@ -1,22 +1,35 @@
-type ButtonProps = {
+import type { ButtonHTMLAttributes } from "react";
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   children: React.ReactNode;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "danger" | "success" | "ghost" | "outline";
+  loading?: boolean;
+};
+
+const variantClasses = {
+  primary: "premium-button-primary",
+  secondary: "premium-button-secondary",
+  danger: "premium-button-danger",
+  success: "premium-button-success",
+  ghost: "premium-button-ghost",
+  outline: "premium-button-outline",
 };
 
 export default function Button({
   children,
   variant = "primary",
+  loading = false,
+  disabled,
+  className = "",
+  ...props
 }: ButtonProps) {
-  const styles =
-    variant === "primary"
-      ? "bg-gradient-to-r from-purple-600 to-cyan-500 text-white"
-      : "bg-white/10 border border-white/20 text-white";
-
   return (
     <button
-      className={`rounded-xl px-6 py-3 font-semibold transition duration-300 hover:scale-105 ${styles}`}
+      {...props}
+      disabled={disabled || loading}
+      className={`premium-button ${variantClasses[variant]} px-6 py-3 ${className}`}
     >
-      {children}
+      {loading ? "Loading..." : children}
     </button>
   );
 }

@@ -12,33 +12,24 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export async function enablePushNotifications() {
-  console.log("[push] enablePushNotifications called");
-
   try {
     if (typeof window === "undefined") return { success: false, reason: "no-window" };
 
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      console.log("[push] unsupported browser");
       return { success: false, reason: "unsupported" };
     }
 
-    console.log("[push] requesting permission...");
     const permission = await Notification.requestPermission();
-    console.log("[push] permission result:", permission);
-
     if (permission !== "granted") {
       return { success: false, reason: "denied" };
     }
 
-    console.log("[push] registering service worker...");
     const registration = await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;
-    console.log("[push] service worker ready");
 
     const existing = await registration.pushManager.getSubscription();
 
     if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
-      console.error("[push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is missing!");
       return { success: false, reason: "missing-vapid-key" };
     }
 
@@ -50,8 +41,6 @@ export async function enablePushNotifications() {
           process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
         ),
       }));
-
-    console.log("[push] subscription obtained:", subscription.endpoint);
 
     const {
       data: { session },
@@ -72,14 +61,11 @@ export async function enablePushNotifications() {
     );
 
     if (error) {
-      console.error("[push] supabase upsert error:", error.message);
       return { success: false, reason: error.message };
     }
 
-    console.log("[push] success!");
     return { success: true };
   } catch (err) {
-    console.error("[push] threw an exception:", err);
     return { success: false, reason: "exception" };
   }
 }

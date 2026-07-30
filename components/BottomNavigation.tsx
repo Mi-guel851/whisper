@@ -34,6 +34,7 @@ export default function BottomNavigation() {
     const { data: convos } = await supabase
       .from("conversations")
       .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
+      .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
       .or(`user_a.eq.${uid},user_b.eq.${uid}`);
 
     if (!convos) {
@@ -42,6 +43,8 @@ export default function BottomNavigation() {
     }
 
     const unread = convos.filter((c) => {
+      if (!c.last_message_at) return false;
+      if (c.last_message_sender_id === uid) return false; // you sent it — not unread for you
       if (!c.last_message_at) return false;
       if (c.last_message_sender_id === uid) return false; // you sent it — not unread for you
       const lastRead = c.user_a === uid ? c.user_a_last_read_at : c.user_b_last_read_at;
@@ -64,6 +67,7 @@ export default function BottomNavigation() {
       if (!session || cancelled) return;
 
       setMyId(session.user.id);
+      await presenceManager.connect(session.user.id);
       await presenceManager.connect(session.user.id);
       await loadUnreadWhispers(session.user.id);
       if (cancelled) return;

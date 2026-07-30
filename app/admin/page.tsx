@@ -85,13 +85,13 @@ export default function AdminPage() {
 
       <div className="mx-auto max-w-4xl mt-4">
         <div className="mb-8 flex items-center gap-3">
-          <ShieldAlert className="text-cyan-400" size={32} />
+          <ShieldAlert className="text-purple-500" size={32} />
           <h1 className="text-4xl font-black">Admin Dashboard</h1>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3 mb-8">
           <GlassPanel className="rounded-3xl p-6">
-            <Users className="text-cyan-300 mb-3" size={24} />
+            <Users className="text-purple-400 mb-3" size={24} />
             <div className="text-3xl font-black">{stats?.total_users ?? "—"}</div>
             <div className="text-gray-400 mt-1">Total Users</div>
           </GlassPanel>
@@ -121,7 +121,7 @@ export default function AdminPage() {
                   key={i}
                   className="flex items-center justify-between rounded-xl bg-white/5 px-4 py-3"
                 >
-                  <span className="font-semibold text-cyan-300">@{u.username}</span>
+                  <span className="font-semibold text-purple-400">@{u.username}</span>
                   <span className="text-sm text-gray-500">
                     {new Date(u.created_at).toLocaleString()}
                   </span>

@@ -30,6 +30,9 @@ export default function RecentMessages() {
   const [sharing, setSharing] = useState<{ message: string; imageUrl: string | null } | null>(null);
 
   useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
     async function load() {
       const {
         data: { session },
@@ -47,11 +50,40 @@ export default function RecentMessages() {
         .order("created_at", { ascending: false })
         .limit(3);
 
-      setMessages(data || []);
-      setLoading(false);
+      if (!cancelled) {
+        setMessages(data || []);
+        setLoading(false);
+      }
+
+      channel = supabase
+        .channel(`recent-messages-${session.user.id}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `recipient_id=eq.${session.user.id}`,
+          },
+          (payload) => {
+            const incoming = payload.new as RecentMessage;
+            setMessages((prev) => {
+              // 👇 Deduplicate by id before updating state
+              const alreadyExists = prev.some((m) => m.id === incoming.id);
+              if (alreadyExists) return prev;
+              return [incoming, ...prev].slice(0, 3);
+            });
+          }
+        )
+        .subscribe();
     }
 
     load();
+
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
@@ -62,7 +94,7 @@ export default function RecentMessages() {
         <h2 className="text-lg font-bold text-white">Latest whispers</h2>
         <Link
           href="/notifications"
-          className="flex items-center gap-1 text-sm font-semibold text-purple-300 hover:text-purple-200"
+          className="flex items-center gap-1 text-sm font-semibold text-cyan-400 hover:text-cyan-300"
         >
           View all
           <ArrowUpRight size={14} />
@@ -84,10 +116,14 @@ export default function RecentMessages() {
               className="w-full rounded-2xl bg-white/5 p-4 text-left transition hover:bg-white/10"
             >
               {msg.message && (
-                <p className="text-sm text-gray-100">&ldquo;{msg.message}&rdquo;</p>
+                <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                  &ldquo;{msg.message}&rdquo;
+                </p>
               )}
               {!msg.message && msg.image_url && (
-                <p className="text-sm text-gray-100">📷 Image</p>
+                <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                  📷 Image
+                </p>
               )}
               <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
                 <span className="flex items-center gap-1.5">

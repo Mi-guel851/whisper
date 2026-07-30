@@ -133,12 +133,15 @@ export default function ProfilePage() {
             </label>
             <div className="mt-2 flex min-w-0 items-center text-lg">
               <span className="shrink-0 text-gray-400">whisper.app/u/</span>
+            <div className="mt-2 flex min-w-0 items-center text-lg">
+              <span className="shrink-0 text-gray-400">whisper.app/u/</span>
               <input
                 value={username}
                 onChange={(e) =>
                   setUsername(e.target.value.replace(/\s+/g, "").toLowerCase())
                 }
                 placeholder="username"
+                className="min-w-0 flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-500"
                 className="min-w-0 flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-gray-500"
               />
             </div>
@@ -165,6 +168,7 @@ export default function ProfilePage() {
             onClick={saveProfile}
             disabled={loading || initialLoad}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 py-4 font-bold text-black transition hover:scale-[1.01] disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 py-4 font-bold text-black transition hover:scale-[1.01] disabled:opacity-60"
           >
             <Save size={18} />
             {loading ? "Saving..." : "Save changes"}
@@ -183,6 +187,8 @@ export default function ProfilePage() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-white">Privacy & safety</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Privacy & safety</p>
                 <p className="text-xs text-gray-400">Fully protected</p>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
@@ -192,6 +198,9 @@ export default function ProfilePage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <Palette size={18} />
               </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Appearance</p>
+                <p className="truncate text-xs text-gray-400">{theme.name}</p>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-white">Appearance</p>
                 <p className="truncate text-xs text-gray-400">{theme.name}</p>

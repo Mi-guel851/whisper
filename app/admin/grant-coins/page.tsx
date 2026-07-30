@@ -107,7 +107,7 @@ export default function GrantCoinsPage() {
   if (checking) {
     return (
       <main className="min-h-screen theme-bg-gradient flex items-center justify-center text-white">
-        <Loader2 className="animate-spin text-cyan-300" />
+        <Loader2 className="animate-spin text-purple-400" />
       </main>
     );
   }
@@ -119,8 +119,8 @@ export default function GrantCoinsPage() {
 
         {!pinVerified ? (
           <GlassPanel strong className="mt-6 rounded-3xl p-8">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-500/15">
-              <ShieldCheck size={26} className="text-cyan-300" />
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-purple-600/15">
+              <ShieldCheck size={26} className="text-purple-400" />
             </div>
             <h1 className="text-center text-3xl font-black">Admin PIN Required</h1>
             <p className="mt-2 mb-6 text-center text-sm text-gray-400">
@@ -134,12 +134,12 @@ export default function GrantCoinsPage() {
                 onChange={(e) => setPin(e.target.value)}
                 placeholder="Enter PIN"
                 autoFocus
-                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-center tracking-widest outline-none focus:border-cyan-400"
+                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 text-center tracking-widest outline-none focus:border-purple-500"
               />
               <button
                 type="submit"
                 disabled={verifyingPin}
-                className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black disabled:opacity-60"
+                className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
               >
                 {verifyingPin ? "Verifying..." : "Unlock"}
               </button>
@@ -162,7 +162,7 @@ export default function GrantCoinsPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="e.g. frozenfox7057"
-                  className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
+                  className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
                 />
               </div>
 
@@ -174,7 +174,7 @@ export default function GrantCoinsPage() {
                   value={coinAmount}
                   onChange={(e) => setCoinAmount(e.target.value)}
                   placeholder="e.g. 500"
-                  className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
+                  className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
                 />
               </div>
 
@@ -184,14 +184,14 @@ export default function GrantCoinsPage() {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="Premium Grant"
-                  className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
+                  className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black disabled:opacity-60"
+                className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
               >
                 {busy ? "Granting..." : "Grant Coins"}
               </button>

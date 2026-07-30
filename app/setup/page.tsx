@@ -85,7 +85,7 @@ export default function SetupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-2xl bg-cyan-400 p-4 font-bold text-black"
+            className="w-full rounded-2xl bg-purple-500 p-4 font-bold text-black"
           >
             {loading ? "Saving..." : "Continue"}
           </button>

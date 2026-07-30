@@ -208,7 +208,7 @@ export default function CompleteProfilePage() {
   return (
     <main className="relative min-h-screen overflow-hidden theme-bg-gradient flex items-center justify-center text-white px-4">
 
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-[150px]" />
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
       {step === "form" ? (
@@ -225,7 +225,7 @@ export default function CompleteProfilePage() {
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Username"
               required
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
+              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
             />
 
             <div className="relative">
@@ -235,7 +235,7 @@ export default function CompleteProfilePage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create a password"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-cyan-400"
+                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-purple-500"
               />
               <button
                 type="button"
@@ -254,7 +254,7 @@ export default function CompleteProfilePage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm password"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-cyan-400"
+                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-purple-500"
               />
               <button
                 type="button"
@@ -273,7 +273,7 @@ export default function CompleteProfilePage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black disabled:opacity-60"
+              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
             >
               {loading ? "Saving..." : "Continue"}
             </button>
@@ -299,7 +299,7 @@ export default function CompleteProfilePage() {
               value={recoveryPhrase}
               onChange={(e) => setRecoveryPhrase(e.target.value)}
               placeholder="e.g. purple-ghost-echoes-42"
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-cyan-400"
+              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
             />
 
             <label className="flex items-start gap-3 text-sm text-gray-300">
@@ -316,7 +316,7 @@ export default function CompleteProfilePage() {
             <button
               onClick={handleSaveRecoveryPhrase}
               disabled={savingPhrase}
-              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-400 p-4 font-bold text-black disabled:opacity-60"
+              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
             >
               {savingPhrase ? "Saving..." : "Finish Setup"}
             </button>

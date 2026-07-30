@@ -1,4 +1,4 @@
-export const REVEAL_SENDER_COST = 40;
+export const HINT_UNLOCK_COST = 5;
 export const UNLOCK_CHAT_COST = 40;
 export const SEND_IMAGE_COST = 20;
 

@@ -20,7 +20,7 @@ export default function Logo() {
           Whisper
         </h1>
 
-        <p className="text-cyan-300 text-sm">
+        <p className="text-purple-400 text-sm">
           Anonymous Messaging
         </p>
       </div>

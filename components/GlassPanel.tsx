@@ -14,7 +14,6 @@ export default function GlassPanel({
   className = "",
   strong = false,
   as = "div",
-  style,
   ...props
 }: GlassPanelProps) {
   const Tag = as;
@@ -22,21 +21,7 @@ export default function GlassPanel({
   return (
     <Tag
       {...props}
-      className={`border border-white/10 ${className}`}
-      style={{
-        background: strong
-          ? "rgba(255,255,255,0.08)"
-          : "rgba(255,255,255,0.06)",
-        backdropFilter: strong
-          ? "blur(60px) saturate(180%)"
-          : "blur(40px) saturate(180%)",
-        WebkitBackdropFilter: strong
-          ? "blur(60px) saturate(180%)"
-          : "blur(40px) saturate(180%)",
-        boxShadow:
-          "0 8px 32px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.15), inset 0 -1px 1px rgba(0,0,0,0.2)",
-        ...style,
-      }}
+      className={`${strong ? "premium-card-strong" : "premium-card"} ${className}`}
     >
       {children}
     </Tag>

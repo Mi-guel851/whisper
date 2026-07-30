@@ -43,8 +43,8 @@ function TiltCard({ icon: Icon, title, desc }: { icon: LucideIcon; title: string
       className="transition-transform duration-200 ease-out"
     >
       <GlassPanel className="rounded-3xl p-8 h-full transition-colors hover:bg-white/[0.08]">
-        <div className="mb-5 inline-flex rounded-2xl bg-cyan-500/10 p-3">
-          <Icon className="text-cyan-300" size={26} />
+        <div className="mb-5 inline-flex rounded-2xl bg-purple-600/10 p-3">
+          <Icon className="text-purple-400" size={26} />
         </div>
         <h3 className="mb-2 text-xl font-bold text-white">{title}</h3>
         <p className="text-gray-400 leading-7">{desc}</p>
@@ -59,7 +59,7 @@ export default function Features() {
       <div className="mb-10 text-center sm:mb-16">
         <h2 className="text-3xl font-black text-white sm:text-5xl">
           Everything you need,
-          <span className="block bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+          <span className="block bg-gradient-to-r from-purple-500 via-purple-400 to-pink-400 bg-clip-text text-transparent">
             nothing you don&apos;t.
           </span>
         </h2>

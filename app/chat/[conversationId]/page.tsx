@@ -3,7 +3,7 @@
 import ChatDoodleBackground from "@/components/ChatDoodleBackground";
 import MessageTicks from "@/components/MessageTicks";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import BackButton from "@/components/BackButton";
@@ -11,7 +11,15 @@ import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST } from "@/lib/coins";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { useToast } from "@/components/ToastProvider";
-import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2 } from "lucide-react";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff } from "lucide-react";
+
+interface SecureScreenPlugin {
+  enable(): Promise<void>;
+  disable(): Promise<void>;
+}
+
+const SecureScreen = registerPlugin<SecureScreenPlugin>("SecureScreen");
 
 type Message = {
   id: string;
@@ -54,6 +62,9 @@ function MessageBubble({
   onSwipeReply,
   onViewPhoto,
   viewingPhotoId,
+  onDelete,
+  onPin,
+  isPinned,
 }: {
   msg: Message;
   isMe: boolean;
@@ -68,6 +79,9 @@ function MessageBubble({
   onSwipeReply: (msg: Message) => void;
   onViewPhoto: (msg: Message) => void;
   viewingPhotoId: string | null;
+  onDelete: (msg: Message) => void;
+  onPin: (msg: Message) => void;
+  isPinned: boolean;
 }) {
   const x = useMotionValue(0);
   const replyIconOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
@@ -106,10 +120,15 @@ function MessageBubble({
           <GlassPanel
             className={`rounded-2xl px-4 py-3 select-none ${
               isMe ? "rounded-br-sm" : "rounded-bl-sm"
-            }`}
+            } ${isPinned ? "border border-yellow-400/40" : ""}`}
           >
+            {isPinned && (
+              <div className="mb-1 flex items-center gap-1 text-[10px] text-yellow-400">
+                <Pin size={10} /> Pinned
+              </div>
+            )}
             {repliedMsg && (
-              <div className="mb-2 border-l-2 border-cyan-400 pl-2 text-xs text-gray-400 truncate">
+              <div className="mb-2 border-l-2 border-cyan-400 pl-2 text-xs truncate rounded-sm bg-cyan-400/20 text-cyan-200 py-1 pr-2">
                 {repliedMsg.content || "📷 Photo"}
               </div>
             )}
@@ -139,11 +158,11 @@ function MessageBubble({
                   </button>
                 )}
                 {msg.content && (
-                  <p className="mt-1 text-sm text-gray-100 break-words">{msg.content}</p>
+                  <p className="mt-1 text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-100 break-words">{msg.content}</p>
+              <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
             )}
           </GlassPanel>
         </motion.div>
@@ -165,7 +184,7 @@ function MessageBubble({
         )}
 
         {!isPhotoMessage && actionMenuFor === msg.id && (
-          <div className={`absolute z-20 -top-14 ${isMe ? "right-0" : "left-0"}`}>
+          <div className={`absolute z-20 -top-16 ${isMe ? "right-0" : "left-0"}`}>
             <GlassPanel strong className="flex items-center gap-1 rounded-full px-2 py-2">
               {EMOJIS.map((emoji) => (
                 <button
@@ -182,9 +201,32 @@ function MessageBubble({
                   setActionMenuFor(null);
                 }}
                 className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+                title="Reply"
               >
                 <CornerUpLeft size={14} />
               </button>
+              <button
+                onClick={() => {
+                  onPin(msg);
+                  setActionMenuFor(null);
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+                title={isPinned ? "Unpin" : "Pin"}
+              >
+                {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
+              </button>
+              {isMe && (
+                <button
+                  onClick={() => {
+                    onDelete(msg);
+                    setActionMenuFor(null);
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-rose-500/20 hover:bg-rose-500/40"
+                  title="Delete"
+                >
+                  <Trash2 size={14} className="text-rose-400" />
+                </button>
+              )}
               <button
                 onClick={() => setActionMenuFor(null)}
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
@@ -207,6 +249,7 @@ export default function ChatPage() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
   const [otherLabel, setOtherLabel] = useState("");
   const [input, setInput] = useState("");
   const [myId, setMyId] = useState("");
@@ -221,26 +264,54 @@ export default function ChatPage() {
   const [viewingPhotoId, setViewingPhotoId] = useState<string | null>(null);
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const [photoModalCaption, setPhotoModalCaption] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const messagesRef = useRef<Message[]>([]);
+  const myIdRef = useRef<string>("");
+
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { myIdRef.current = myId; }, [myId]);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    }
+  }, [input]);
+
+  const markMessagesRead = useCallback(async (msgs: Message[], currentUserId: string) => {
+    if (document.visibilityState !== "visible") return;
+    const unreadIds = msgs
+      .filter((m) => m.sender_id !== currentUserId && !m.read_at)
+      .map((m) => m.id);
+    if (unreadIds.length === 0) return;
+    const readNow = new Date().toISOString();
+    const { error } = await supabase
+      .from("direct_messages")
+      .update({ read_at: readNow })
+      .in("id", unreadIds);
+    if (!error) {
+      setMessages((prev) =>
+        prev.map((m) => (unreadIds.includes(m.id) ? { ...m, read_at: readNow } : m))
+      );
+    }
+  }, []);
 
   useEffect(() => {
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
     let reactionChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function init() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push("/login");
-        return;
-      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push("/login"); return; }
 
       setMyId(session.user.id);
+      myIdRef.current = session.user.id;
 
       const { data: convo } = await supabase
         .from("conversations")
@@ -248,21 +319,10 @@ export default function ChatPage() {
         .eq("id", conversationId)
         .single();
 
-      if (!convo) {
-        router.push("/active");
-        return;
-      }
+      if (!convo) { router.push("/active"); return; }
 
-      const readColumn =
-        convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
-      const { error: readError } = await supabase
-        .from("conversations")
-        .update({ [readColumn]: new Date().toISOString() })
-        .eq("id", conversationId);
-
-      if (readError) {
-        console.error("[chat] failed to mark conversation as read:", readError.message);
-      }
+      const readColumn = convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
+      await supabase.from("conversations").update({ [readColumn]: new Date().toISOString() }).eq("id", conversationId);
 
       const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
       setOtherLabel(anonymousDisplayName(otherUserId));
@@ -270,170 +330,137 @@ export default function ChatPage() {
       await supabase.rpc("ensure_coin_wallet", { target_user: session.user.id });
 
       const otherFriendship = await supabase
-        .from("friends")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .eq("friend_id", otherUserId)
-        .maybeSingle();
-      const friendConversation = Boolean(otherFriendship.data);
-      setIsFriendConversation(friendConversation);
+        .from("friends").select("id")
+        .eq("user_id", session.user.id).eq("friend_id", otherUserId).maybeSingle();
+      setIsFriendConversation(Boolean(otherFriendship.data));
 
       const { data: unlock } = await supabase
-        .from("chat_unlocks")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .eq("conversation_id", conversationId)
-        .maybeSingle();
+        .from("chat_unlocks").select("id")
+        .eq("user_id", session.user.id).eq("conversation_id", conversationId).maybeSingle();
       setChatUnlocked(Boolean(unlock));
 
       const { data: msgs } = await supabase
-        .from("direct_messages")
-        .select("*")
+        .from("direct_messages").select("*")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true });
 
-      setMessages(msgs || []);
+      const fetchedMsgs = msgs || [];
+      setMessages(fetchedMsgs);
+      messagesRef.current = fetchedMsgs;
+
+      const { data: pins } = await supabase
+        .from("pinned_messages").select("message_id")
+        .eq("conversation_id", conversationId);
+      setPinnedMessageIds(new Set((pins || []).map((p) => p.message_id)));
 
       const { data: reacts } = await supabase
-        .from("message_reactions")
-        .select("message_id, user_id, emoji")
-        .in("message_id", (msgs || []).map((m) => m.id));
-
+        .from("message_reactions").select("message_id, user_id, emoji")
+        .in("message_id", fetchedMsgs.map((m) => m.id));
       setReactions(reacts || []);
       setLoading(false);
 
-      // Mark any incoming messages as delivered now that this client has loaded them.
-      const incomingIds = (msgs || [])
+      const now = new Date().toISOString();
+      const undeliveredIds = fetchedMsgs
         .filter((m) => m.sender_id !== session.user.id && !m.delivered_at)
         .map((m) => m.id);
 
-      if (incomingIds.length > 0) {
+      if (undeliveredIds.length > 0) {
         const { error: deliverError } = await supabase
-          .from("direct_messages")
-          .update({ delivered_at: new Date().toISOString() })
-          .in("id", incomingIds);
-        if (deliverError) {
-          console.error("[chat] failed to mark delivered:", deliverError.message);
+          .from("direct_messages").update({ delivered_at: now }).in("id", undeliveredIds);
+        if (!deliverError) {
+          setMessages((prev) =>
+            prev.map((m) => undeliveredIds.includes(m.id) ? { ...m, delivered_at: now } : m)
+          );
         }
       }
 
-      // Mark as read shortly after, only if the tab is actually visible/focused.
-      setTimeout(async () => {
-        if (document.visibilityState !== "visible") return;
-        const unreadIds = (msgs || [])
-          .filter((m) => m.sender_id !== session.user.id && !m.read_at)
-          .map((m) => m.id);
-        if (unreadIds.length === 0) return;
-        const { error: readMsgError } = await supabase
-          .from("direct_messages")
-          .update({ read_at: new Date().toISOString() })
-          .in("id", unreadIds);
-        if (readMsgError) {
-          console.error("[chat] failed to mark read:", readMsgError.message);
-        }
-      }, 1200);
+      setTimeout(() => { markMessagesRead(messagesRef.current, session.user.id); }, 1200);
 
       msgChannel = supabase
         .channel(`chat-msgs-${conversationId}-${Date.now()}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "direct_messages",
-            filter: `conversation_id=eq.${conversationId}`,
-          },
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages", filter: `conversation_id=eq.${conversationId}` },
           (payload) => {
             const incoming = payload.new as Message;
-            setMessages((prev) =>
-              prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
-            );
-
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === incoming.id)) return prev;
+              return [...prev, incoming];
+            });
             if (incoming.sender_id !== session.user.id) {
-              supabase
-                .from("direct_messages")
-                .update({
-                  delivered_at: new Date().toISOString(),
-                  read_at:
-                    document.visibilityState === "visible" ? new Date().toISOString() : null,
-                })
-                .eq("id", incoming.id)
+              const msgNow = new Date().toISOString();
+              const readAt = document.visibilityState === "visible" ? msgNow : null;
+              supabase.from("direct_messages").update({ delivered_at: msgNow, read_at: readAt }).eq("id", incoming.id)
                 .then(({ error }) => {
-                  if (error) console.error("[chat] failed to mark live message:", error.message);
+                  if (!error) {
+                    setMessages((prev) =>
+                      prev.map((m) => m.id === incoming.id ? { ...m, delivered_at: msgNow, read_at: readAt } : m)
+                    );
+                  }
                 });
             }
           }
         )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "direct_messages",
-            filter: `conversation_id=eq.${conversationId}`,
-          },
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "direct_messages", filter: `conversation_id=eq.${conversationId}` },
           (payload) => {
             const updated = payload.new as Message;
-            setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+            setMessages((prev) => prev.map((m) => m.id === updated.id ? updated : m));
+          }
+        )
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "direct_messages", filter: `conversation_id=eq.${conversationId}` },
+          (payload) => {
+            const deleted = payload.old as { id: string };
+            setMessages((prev) => prev.filter((m) => m.id !== deleted.id));
           }
         )
         .subscribe();
 
       reactionChannel = supabase
         .channel(`chat-reactions-${conversationId}-${Date.now()}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "message_reactions",
-          },
+        .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" },
           (payload) => {
             if (payload.eventType === "INSERT") {
               const incoming = payload.new as Reaction;
               setReactions((prev) =>
-                prev.some(
-                  (r) => r.message_id === incoming.message_id && r.user_id === incoming.user_id
-                )
-                  ? prev
-                  : [...prev, incoming]
+                prev.some((r) => r.message_id === incoming.message_id && r.user_id === incoming.user_id)
+                  ? prev : [...prev, incoming]
               );
             }
-
             if (payload.eventType === "UPDATE") {
               setReactions((prev) =>
                 prev.map((r) =>
-                  r.message_id === (payload.new as Reaction).message_id &&
-                  r.user_id === (payload.new as Reaction).user_id
-                    ? (payload.new as Reaction)
-                    : r
+                  r.message_id === (payload.new as Reaction).message_id && r.user_id === (payload.new as Reaction).user_id
+                    ? (payload.new as Reaction) : r
                 )
               );
             }
-
             if (payload.eventType === "DELETE") {
               setReactions((prev) =>
-                prev.filter(
-                  (r) =>
-                    !(
-                      r.message_id === (payload.old as Partial<Reaction>).message_id &&
-                      r.user_id === (payload.old as Partial<Reaction>).user_id
-                    )
+                prev.filter((r) =>
+                  !(r.message_id === (payload.old as Partial<Reaction>).message_id &&
+                    r.user_id === (payload.old as Partial<Reaction>).user_id)
                 )
               );
             }
           }
         )
         .subscribe();
+
+      function handleVisibilityChange() {
+        if (document.visibilityState !== "visible") return;
+        markMessagesRead(messagesRef.current, myIdRef.current);
+      }
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      return () => { document.removeEventListener("visibilitychange", handleVisibilityChange); };
     }
 
-    init();
+    let cleanupVisibility: (() => void) | undefined;
+    init().then((cleanup) => { cleanupVisibility = cleanup; });
 
     return () => {
+      cleanupVisibility?.();
       if (msgChannel) supabase.removeChannel(msgChannel);
       if (reactionChannel) supabase.removeChannel(reactionChannel);
     };
-  }, [conversationId, router]);
+  }, [conversationId, router, markMessagesRead]);
 
   useEffect(() => {
     if (loading) return;
@@ -443,54 +470,69 @@ export default function ChatPage() {
     return () => clearTimeout(timer);
   }, [messages, loading]);
 
-  // Clean up any pending photo preview URL if the component unmounts with one staged.
   useEffect(() => {
-    return () => {
-      if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
+  }, [pendingPhoto]);
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (pendingPhoto) {
-      await sendPendingPhoto();
-      return;
-    }
-
-    const trimmed = input.trim();
+  async function sendMessage() {
+    if (pendingPhoto) { await sendPendingPhoto(); return; }
+    const hasMessage = input.trim().length > 0;
     if (!chatUnlocked) {
-      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
+      showToast(isFriendConversation
+        ? "You need 40 coins to unlock this conversation."
+        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
       return;
     }
-    if (!trimmed || !myId) return;
-
+    if (!hasMessage || !myId) return;
+    const content = input.trim();
     setInput("");
     const replyId = replyingTo?.id || null;
     setReplyingTo(null);
-
     const { error } = await supabase.from("direct_messages").insert({
       conversation_id: conversationId,
       sender_id: myId,
-      content: trimmed,
+      content: content,
       reply_to_id: replyId,
     });
+    if (error) { showToast(error.message); return; }
+    await supabase.from("conversations").update({
+      last_message_at: new Date().toISOString(),
+      last_message_sender_id: myId,
+    }).eq("id", conversationId);
+  }
 
-    if (error) {
-      showToast(error.message);
-      return;
+  async function deleteMessage(msg: Message) {
+    setDeleteConfirm(null);
+    const { error } = await supabase.from("direct_messages").delete().eq("id", msg.id).eq("sender_id", myId);
+    if (error) showToast("Couldn't delete message.");
+    else setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+  }
+
+  async function togglePin(msg: Message) {
+    const alreadyPinned = pinnedMessageIds.has(msg.id);
+    if (alreadyPinned) {
+      await supabase.from("pinned_messages").delete()
+        .eq("conversation_id", conversationId).eq("message_id", msg.id);
+      setPinnedMessageIds((prev) => { const s = new Set(prev); s.delete(msg.id); return s; });
+      showToast("Message unpinned.");
+    } else {
+      const { error } = await supabase.from("pinned_messages").insert({
+        conversation_id: conversationId,
+        message_id: msg.id,
+        pinned_by: myId,
+      });
+      if (!error) {
+        setPinnedMessageIds((prev) => new Set([...prev, msg.id]));
+        showToast("Message pinned.");
+      }
     }
-
-    await supabase
-      .from("conversations")
-      .update({ last_message_at: new Date().toISOString() })
-      .eq("id", conversationId);
   }
 
   function triggerPhotoPicker() {
     if (!chatUnlocked) {
-      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      showToast(isFriendConversation
+        ? "You need 40 coins to unlock this conversation."
+        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
       return;
     }
     fileInputRef.current?.click();
@@ -500,17 +542,8 @@ export default function ChatPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      showToast("Please select an image file.");
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      showToast("Image too large — max 8MB.");
-      return;
-    }
-
-    // Stage it only — nothing is uploaded and no coins are touched until Send is tapped.
+    if (!file.type.startsWith("image/")) { showToast("Please select an image file."); return; }
+    if (file.size > 8 * 1024 * 1024) { showToast("Image too large — max 8MB."); return; }
     if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
     setPendingPhoto({ file, previewUrl: URL.createObjectURL(file) });
   }
@@ -522,52 +555,28 @@ export default function ChatPage() {
 
   async function sendPendingPhoto() {
     if (!pendingPhoto || !myId) return;
-
     if (!chatUnlocked) {
-      showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      showToast(isFriendConversation
+        ? "You need 40 coins to unlock this conversation."
+        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
       return;
     }
-
     setUploadingPhoto(true);
     try {
-      // Check the sender's coin balance before touching storage at all.
       const { data: wallet, error: walletError } = await supabase
-        .from("coins")
-        .select("balance")
-        .eq("user_id", myId)
-        .maybeSingle();
-
-      if (walletError) {
-        showToast(walletError.message);
-        return;
-      }
-
-      if ((wallet?.balance ?? 0) < SEND_IMAGE_COST) {
-        showToast(`You need ${SEND_IMAGE_COST} coins to send an image.`);
-        return;
-      }
+        .from("coins").select("balance").eq("user_id", myId).maybeSingle();
+      if (walletError) { showToast(walletError.message); return; }
+      if ((wallet?.balance ?? 0) < SEND_IMAGE_COST) { showToast(`You need ${SEND_IMAGE_COST} coins to send an image.`); return; }
 
       const file = pendingPhoto.file;
       const ext = file.name.split(".").pop() || "jpg";
       const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("view-once-photos")
-        .upload(path, file, { contentType: file.type });
+      const { error: uploadError } = await supabase.storage.from("view-once-photos").upload(path, file, { contentType: file.type });
+      if (uploadError) { showToast(uploadError.message); return; }
 
-      if (uploadError) {
-        showToast(uploadError.message);
-        return;
-      }
-
-      // Only spend coins once the upload itself has actually succeeded.
-      const { error: spendError } = await supabase.rpc("spend_coins_for_image", {
-        target_conversation_id: conversationId,
-      });
-
+      const { error: spendError } = await supabase.rpc("spend_coins_for_image", { target_conversation_id: conversationId });
       if (spendError) {
-        // Upload succeeded but payment didn't go through (e.g. a race with
-        // another spend) — remove the orphaned file and don't send it.
         await supabase.storage.from("view-once-photos").remove([path]);
         showToast(spendError.message);
         return;
@@ -575,7 +584,6 @@ export default function ChatPage() {
 
       const caption = input.trim();
       const replyId = replyingTo?.id || null;
-
       const { error: insertError } = await supabase.from("direct_messages").insert({
         conversation_id: conversationId,
         sender_id: myId,
@@ -584,16 +592,12 @@ export default function ChatPage() {
         image_path: path,
         is_view_once: true,
       });
+      if (insertError) { showToast(insertError.message); return; }
 
-      if (insertError) {
-        showToast(insertError.message);
-        return;
-      }
-
-      await supabase
-        .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conversationId);
+      await supabase.from("conversations").update({
+        last_message_at: new Date().toISOString(),
+        last_message_sender_id: myId,
+      }).eq("id", conversationId);
 
       URL.revokeObjectURL(pendingPhoto.previewUrl);
       setPendingPhoto(null);
@@ -607,26 +611,21 @@ export default function ChatPage() {
   async function handleViewPhoto(msg: Message) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
-
     setViewingPhotoId(msg.id);
     try {
       const res = await fetch("/api/photos/view", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ messageId: msg.id }),
       });
-
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         showToast(data.error || "Couldn't load photo.");
         return;
       }
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
+      if (Capacitor.isNativePlatform()) { try { await SecureScreen.enable(); } catch (e) {} }
       setPhotoModalUrl(url);
       setPhotoModalCaption(msg.content);
     } catch {
@@ -637,6 +636,7 @@ export default function ChatPage() {
   }
 
   function closePhotoModal() {
+    if (Capacitor.isNativePlatform()) { try { SecureScreen.disable(); } catch (e) {} }
     if (photoModalUrl) URL.revokeObjectURL(photoModalUrl);
     setPhotoModalUrl(null);
     setPhotoModalCaption(null);
@@ -644,20 +644,10 @@ export default function ChatPage() {
 
   async function toggleReaction(messageId: string, emoji: string) {
     setActionMenuFor(null);
-
-    const existing = reactions.find(
-      (r) => r.message_id === messageId && r.user_id === myId
-    );
-
+    const existing = reactions.find((r) => r.message_id === messageId && r.user_id === myId);
     if (existing && existing.emoji === emoji) {
-      await supabase
-        .from("message_reactions")
-        .delete()
-        .eq("message_id", messageId)
-        .eq("user_id", myId);
-      setReactions((prev) =>
-        prev.filter((r) => !(r.message_id === messageId && r.user_id === myId))
-      );
+      await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", myId);
+      setReactions((prev) => prev.filter((r) => !(r.message_id === messageId && r.user_id === myId)));
     } else {
       await supabase.from("message_reactions").upsert(
         { message_id: messageId, user_id: myId, emoji },
@@ -673,22 +663,16 @@ export default function ChatPage() {
   async function unlockChat() {
     setUnlocking(true);
     const { error } = await supabase.rpc("unlock_chat_with_coins", { target_conversation_id: conversationId });
-    if (error) {
-      showToast(error.message);
-    } else {
-      setChatUnlocked(true);
-      showToast("Chat unlocked permanently.");
-    }
+    if (error) showToast(error.message);
+    else { setChatUnlocked(true); showToast("Chat unlocked permanently."); }
     setUnlocking(false);
   }
 
   function getReactionsFor(messageId: string) {
     const grouped: Record<string, number> = {};
-    reactions
-      .filter((r) => r.message_id === messageId)
-      .forEach((r) => {
-        grouped[r.emoji] = (grouped[r.emoji] || 0) + 1;
-      });
+    reactions.filter((r) => r.message_id === messageId).forEach((r) => {
+      grouped[r.emoji] = (grouped[r.emoji] || 0) + 1;
+    });
     return grouped;
   }
 
@@ -698,14 +682,14 @@ export default function ChatPage() {
   }
 
   function startPress(messageId: string) {
-    pressTimer.current = setTimeout(() => {
-      setActionMenuFor(messageId);
-    }, 450);
+    pressTimer.current = setTimeout(() => { setActionMenuFor(messageId); }, 450);
   }
 
   function cancelPress() {
     if (pressTimer.current) clearTimeout(pressTimer.current);
   }
+
+  const pinnedMessages = messages.filter((m) => pinnedMessageIds.has(m.id));
 
   if (loading) {
     return (
@@ -716,196 +700,187 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
-      <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
-        <BackButton />
-        <div className="mt-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-purple-600">
-            👻
-          </div>
-          <div>
-            <p className="font-bold text-white">{otherLabel}</p>
-            <p className="text-xs text-gray-400">Anonymous chat</p>
+    <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
+      <div className="relative z-10 flex h-full flex-col">
+
+        {/* Header */}
+        <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
+          <BackButton />
+          <div className="mt-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-lg shadow-cyan-500/20">
+              👻
+            </div>
+            <div>
+              <p className="font-bold text-white">{otherLabel}</p>
+              <p className="text-xs text-gray-400">Anonymous chat</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-        {!chatUnlocked && (
-          <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
-              <LockKeyhole className="text-cyan-200" />
+        {/* Pinned messages bar */}
+        {pinnedMessages.length > 0 && (
+          <div className="flex-shrink-0 border-b border-yellow-400/20 bg-yellow-400/5 px-4 py-2">
+            <div className="flex items-center gap-2 text-xs text-yellow-400">
+              <Pin size={12} />
+              <span className="truncate">
+                {pinnedMessages[pinnedMessages.length - 1].content || "📷 Photo"}
+              </span>
+              <span className="ml-auto shrink-0 text-yellow-400/60">{pinnedMessages.length} pinned</span>
             </div>
-            <h2 className="text-2xl font-black">Chat locked</h2>
-            <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
-              {isFriendConversation ? "Unlock this friend conversation once for 40 Coins to send messages. If you accepted the request, it is already unlocked." : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
-            </p>
-            <button
-              onClick={unlockChat}
-              disabled={unlocking}
-              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
-            >
-              <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
-            </button>
-          </GlassPanel>
+          </div>
         )}
 
-        <div className="relative z-10 space-y-4">
-          {!chatUnlocked && !isFriendConversation && (
-            <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
-                <LockKeyhole className="text-cyan-200" />
-              </div>
-              <h2 className="text-2xl font-black">Chat locked</h2>
-              <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
-                {isFriendConversation ? "Accepted friends can message here for free." : "Unlock this anonymous conversation once to send messages normally. No per-message coin charges."}
-              </p>
-              <button
-                onClick={unlockChat}
-                disabled={unlocking}
-                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
-              >
-                <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
-              </button>
-            </GlassPanel>
-          )}
+        {/* Messages */}
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto">
+          <div className="relative min-h-full px-6 py-6 space-y-4">
+            <ChatDoodleBackground />
 
-          {messages.length === 0 ? (
-            <p className="mt-10 text-center text-gray-500">
-              Say hi 👻 — they won&apos;t know who you are.
-            </p>
-          ) : (
-            messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                isMe={msg.sender_id === myId}
-                repliedMsg={getRepliedMessage(msg.reply_to_id)}
-                msgReactions={getReactionsFor(msg.id)}
-                actionMenuFor={actionMenuFor}
-                setActionMenuFor={setActionMenuFor}
-                toggleReaction={toggleReaction}
-                setReplyingTo={setReplyingTo}
-                startPress={startPress}
-                cancelPress={cancelPress}
-                onSwipeReply={setReplyingTo}
-                onViewPhoto={handleViewPhoto}
-                viewingPhotoId={viewingPhotoId}
-              />
-            ))
-          )}
-          <div ref={bottomRef} />
+            {!chatUnlocked && (
+              <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
+                  <LockKeyhole className="text-cyan-200" />
+                </div>
+                <h2 className="text-2xl font-black">Chat locked</h2>
+                <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
+                  {isFriendConversation
+                    ? "Unlock this friend conversation once for 40 Coins to send messages."
+                    : "Unlock this anonymous conversation once to send messages normally."}
+                </p>
+                <button
+                  onClick={unlockChat}
+                  disabled={unlocking}
+                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-600 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+                >
+                  <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
+                </button>
+              </GlassPanel>
+            )}
+
+            {messages.length === 0 ? (
+              <p className="mt-10 text-center text-gray-500">Say hi 👻 — they won&apos;t know who you are.</p>
+            ) : (
+              messages.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  isMe={msg.sender_id === myId}
+                  repliedMsg={getRepliedMessage(msg.reply_to_id)}
+                  msgReactions={getReactionsFor(msg.id)}
+                  actionMenuFor={actionMenuFor}
+                  setActionMenuFor={setActionMenuFor}
+                  toggleReaction={toggleReaction}
+                  setReplyingTo={setReplyingTo}
+                  startPress={startPress}
+                  cancelPress={cancelPress}
+                  onSwipeReply={setReplyingTo}
+                  onViewPhoto={handleViewPhoto}
+                  viewingPhotoId={viewingPhotoId}
+                  onDelete={(msg) => setDeleteConfirm(msg)}
+                  onPin={togglePin}
+                  isPinned={pinnedMessageIds.has(msg.id)}
+                />
+              ))
+            )}
+            <div ref={bottomRef} />
+          </div>
         </div>
+
+        {/* Pending photo preview */}
+        {pendingPhoto && (
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-400/30 bg-white/5 px-3 py-2">
+            <img src={pendingPhoto.previewUrl} alt="Selected photo" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+            <p className="flex-1 truncate text-xs text-gray-300">Ready to send — costs {SEND_IMAGE_COST} coins</p>
+            <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="disabled:opacity-60">
+              <X size={14} className="text-gray-400" />
+            </button>
+          </div>
+        )}
+
+        {/* Reply preview */}
+        {replyingTo && (
+          <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
+            <p className="truncate text-xs text-gray-300">Replying to: {replyingTo.content || "📷 Photo"}</p>
+            <button onClick={() => setReplyingTo(null)}><X size={14} className="text-gray-400" /></button>
+          </div>
+        )}
+
+        {/* Input form */}
+        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-6 pt-0">
+          <div className="flex items-end gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
+            <button
+              type="button" onClick={triggerPhotoPicker} disabled={uploadingPhoto}
+              title={`Send an image (${SEND_IMAGE_COST} coins)`}
+              className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-400 transition hover:bg-white/10 disabled:opacity-60"
+            >
+              <ImagePlus size={18} />
+            </button>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  // Allow default behavior (new line)
+                  // Form won't submit on Enter in a textarea
+                }
+              }}
+              placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
+              disabled={!chatUnlocked}
+              rows={1}
+              className="max-h-40 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2.5 leading-6 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 text-white"
+            />
+            <button
+              type="submit"
+              disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : (input.trim().length === 0))}
+              className={`mb-1 flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-600 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-cyan-500/20 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
+            >
+              {pendingPhoto ? (
+                uploadingPhoto ? <Loader2 size={16} className="animate-spin text-black" /> : (
+                  <><Coins size={16} className="text-black" /><span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span></>
+                )
+              ) : (
+                <Send size={16} className="text-black" />
+              )}
+            </button>
+          </div>
+        </form>
       </div>
 
-      {pendingPhoto && (
-        <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-300/30 bg-white/5 px-3 py-2">
-          <img
-            src={pendingPhoto.previewUrl}
-            alt="Selected photo"
-            className="h-12 w-12 shrink-0 rounded-lg object-cover"
-          />
-          <p className="flex-1 truncate text-xs text-gray-300">
-            Ready to send — costs {SEND_IMAGE_COST} coins
-          </p>
-          <button
-            type="button"
-            onClick={cancelPendingPhoto}
-            disabled={uploadingPhoto}
-            className="disabled:opacity-60"
-            aria-label="Remove photo"
-          >
-            <X size={14} className="text-gray-400" />
-          </button>
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <GlassPanel strong className="w-full max-w-sm rounded-3xl p-6 text-center">
+            <Trash2 size={32} className="mx-auto mb-3 text-rose-400" />
+            <h2 className="text-lg font-black">Delete message?</h2>
+            <p className="mt-1 text-sm text-gray-400">This will be removed for everyone.</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 rounded-2xl border border-white/10 py-2 text-sm font-bold text-gray-300 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMessage(deleteConfirm)}
+                className="flex-1 rounded-2xl bg-rose-500 py-2 text-sm font-black text-white hover:bg-rose-600"
+              >
+                Delete
+              </button>
+            </div>
+          </GlassPanel>
         </div>
       )}
 
-      {replyingTo && (
-        <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
-          <p className="truncate text-xs text-gray-300">
-            Replying to: {replyingTo.content || "📷 Photo"}
-          </p>
-          <button onClick={() => setReplyingTo(null)}>
-            <X size={14} className="text-gray-400" />
-          </button>
-        </div>
-      )}
-
-      <form onSubmit={sendMessage} className="flex-shrink-0 p-6 pt-0">
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handlePhotoSelected}
-          />
-          <button
-            type="button"
-            onClick={triggerPhotoPicker}
-            disabled={uploadingPhoto}
-            title={`Send an image (${SEND_IMAGE_COST} coins)`}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-200 transition hover:bg-white/10 disabled:opacity-60"
-          >
-            <ImagePlus size={18} />
-          </button>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              pendingPhoto
-                ? "Add a caption (optional)..."
-                : chatUnlocked
-                ? "Message anonymously..."
-                : "Unlock chat to send messages"
-            }
-            disabled={!chatUnlocked}
-            className="flex-1 bg-transparent px-3 py-2 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
-            className={`flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${
-              pendingPhoto ? "gap-1.5 px-4" : "w-10"
-            }`}
-          >
-            {pendingPhoto ? (
-              uploadingPhoto ? (
-                <Loader2 size={16} className="animate-spin text-black" />
-              ) : (
-                <>
-                  <Coins size={16} className="text-black" />
-                  <span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span>
-                </>
-              )
-            ) : (
-              <Send size={16} className="text-black" />
-            )}
-          </button>
-        </div>
-      </form>
-
+      {/* Photo modal */}
       {photoModalUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={closePhotoModal}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={closePhotoModal}>
           <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
             {photoModalCaption && (
               <p className="mb-3 text-center text-sm font-medium text-white">{photoModalCaption}</p>
             )}
-            <img
-              src={photoModalUrl}
-              alt="View-once photo"
-              className="max-h-[80vh] max-w-full rounded-2xl object-contain"
-            />
-            <p className="mt-3 text-center text-xs text-gray-400">
-              This photo won&apos;t be available again after you close this view.
-            </p>
-            <button
-              onClick={closePhotoModal}
-              className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg"
-            >
+            <img src={photoModalUrl} alt="View-once photo" className="max-h-[80vh] max-w-full rounded-2xl object-contain" />
+            <p className="mt-3 text-center text-xs text-gray-400">This photo won&apos;t be available again after you close this view.</p>
+            <button onClick={closePhotoModal} className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
               <X size={18} />
             </button>
           </div>

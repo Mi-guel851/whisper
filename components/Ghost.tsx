@@ -6,7 +6,7 @@ export default function Ghost() {
   return (
     <div className="relative flex items-center justify-center">
 
-      <div className="absolute h-96 w-96 rounded-full bg-cyan-500/20 blur-[140px] animate-pulse" />
+      <div className="absolute h-96 w-96 rounded-full bg-purple-600/20 blur-[140px] animate-pulse" />
 
       <Image
         src="/ghost.png"
