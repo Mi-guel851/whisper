@@ -126,6 +126,12 @@ export default function NotificationsPage() {
   function hintContent(item: Notification) {
     const timeStr = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const location = [item.sender_city, item.sender_state, item.sender_country].filter(Boolean).join(", ");
+    const senderParts = (item.sender_device || "Unknown Device • Unknown Browser")
+      .split("•")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const deviceType = senderParts[0] || "Unknown Device";
+    const browserName = senderParts[1] || "Unknown Browser";
 
     return (
       <div className="grid gap-2 rounded-2xl bg-emerald-400/10 p-3 text-sm text-emerald-50 ring-1 ring-emerald-300/20">
@@ -138,14 +144,12 @@ export default function NotificationsPage() {
           <span className="font-bold">{timeStr}</span>
         </div>
         <div className="flex justify-between border-b border-emerald-400/10 pb-1">
-          <span className="opacity-70">Device info:</span>
-          <span className="font-bold">{item.sender_device || "Mobile Device"}</span>
+          <span className="opacity-70">Device:</span>
+          <span className="font-bold">{deviceType}</span>
         </div>
         <div className="flex justify-between">
-          <span className="opacity-70">Hint:</span>
-          <span className="font-bold text-[10px] mt-0.5">
-            
-          </span>
+          <span className="opacity-70">Browser:</span>
+          <span className="font-bold">{browserName}</span>
         </div>
       </div>
     );

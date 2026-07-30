@@ -112,16 +112,26 @@ export default function PublicProfile() {
       senderUsername = senderProfile?.username || null;
     }
 
-    // Detect Device Metadata
+    // Detect device and browser metadata
     let deviceName = "Unknown Device";
+    let browserName = "Unknown Browser";
     if (typeof window !== "undefined") {
       const ua = window.navigator.userAgent;
-      if (/android/i.test(ua)) deviceName = "Android Phone";
-      else if (/iPhone|iPad|iPod/i.test(ua)) deviceName = "iPhone/iPad";
-      else if (/Macintosh/i.test(ua)) deviceName = "Mac Computer";
+      if (/android/i.test(ua)) deviceName = "Android phone";
+      else if (/iPhone/i.test(ua)) deviceName = "iPhone";
+      else if (/iPad/i.test(ua)) deviceName = "iPad";
+      else if (/Macintosh/i.test(ua)) deviceName = "Mac computer";
       else if (/Windows/i.test(ua)) deviceName = "Windows PC";
-      else if (/Linux/i.test(ua)) deviceName = "Linux System";
+      else if (/Linux/i.test(ua)) deviceName = "Linux device";
+
+      if (/Edg\//i.test(ua)) browserName = "Edge";
+      else if (/Chrome|CriOS/i.test(ua)) browserName = "Chrome";
+      else if (/Firefox/i.test(ua)) browserName = "Firefox";
+      else if (/Safari/i.test(ua)) browserName = "Safari";
+      else if (/SamsungBrowser/i.test(ua)) browserName = "Samsung Internet";
     }
+
+    const senderDeviceInfo = [deviceName, browserName].filter(Boolean).join(" • ");
 
     // Fetch approximate location metadata
     let locationData = { country: null, region: null, city: null };
@@ -149,7 +159,7 @@ export default function PublicProfile() {
       sender_country: locationData.country,
       sender_state: locationData.region,
       sender_city: locationData.city,
-      sender_device: deviceName,
+      sender_device: senderDeviceInfo,
     });
 
     setLoading(false);
