@@ -71,6 +71,23 @@ export default function DashboardPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden theme-bg-gradient pb-36">
+      <style>{`
+        @keyframes bgColorShift {
+          0%, 100% {
+            background: radial-gradient(circle at top left, var(--theme-accent-purple), transparent 34rem),
+                        radial-gradient(circle at bottom right, var(--theme-accent-pink), transparent 32rem),
+                        linear-gradient(180deg, var(--theme-bg), var(--theme-surface));
+          }
+          50% {
+            background: radial-gradient(circle at top right, var(--theme-accent-pink), transparent 34rem),
+                        radial-gradient(circle at bottom left, var(--theme-accent-purple), transparent 32rem),
+                        linear-gradient(180deg, var(--theme-surface), var(--theme-bg));
+          }
+        }
+        main.theme-bg-gradient {
+          animation: bgColorShift 15s ease-in-out infinite;
+        }
+      `}</style>
       <div className="pointer-events-none absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-purple-600/10 blur-[180px]" />
       <div className="pointer-events-none absolute top-1/3 right-[-150px] h-[420px] w-[420px] rounded-full bg-purple-600/10 blur-[180px]" />
 

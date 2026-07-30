@@ -7,6 +7,34 @@ import { useToast } from "@/components/ToastProvider";
 import SectionLoadingBar from "./SectionLoadingBar";
 import GlassPanel from "./GlassPanel";
 
+function TypingText({ text, speed = 500 }) {
+  const [displayedText, setDisplayedText] = useState("");
+
+  useEffect(() => {
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index <= text.length) {
+        setDisplayedText(text.slice(0, index));
+        index++;
+      } else {
+        index = 0;
+        setDisplayedText("");
+      }
+    }, speed);
+
+    return () => clearInterval(interval);
+  }, [text, speed]);
+
+  return (
+    <>
+      {displayedText}
+      {displayedText.length < text.length && (
+        <span className="inline-block w-1 h-5 ml-0.5 bg-gradient-to-r from-cyan-400 to-purple-400 animate-pulse" />
+      )}
+    </>
+  );
+}
+
 export default function LinkCard() {
   const [link, setLink] = useState("");
   const [displayPath, setDisplayPath] = useState("");
@@ -69,15 +97,15 @@ export default function LinkCard() {
 
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-cyan-400">
         <Link2 size={14} />
-        Your Whisper Link
+        <TypingText text="Your Whisper Link" speed={50} />
       </div>
 
       <h2 className="mt-2 text-2xl font-black leading-snug text-white">
-        Share it. Wait for the{" "}
+        <TypingText text="Share it. Wait for the " speed={50} />
         <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-          honest ones
+          <TypingText text="honest ones" speed={50} />
         </span>
-        .
+        <TypingText text="." speed={50} />
       </h2>
 
       <div className="mt-5 flex items-center gap-2 rounded-2xl bg-black/30 px-4 py-3">
