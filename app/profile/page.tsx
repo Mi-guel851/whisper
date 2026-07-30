@@ -90,12 +90,6 @@ export default function ProfilePage() {
               <span className="text-sm font-black tracking-wide">WHISPER</span>
             </div>
           </div>
-          <Link
-            href="/settings"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 transition hover:bg-white/10"
-          >
-            <Settings size={18} />
-          </Link>
         </div>
 
         <GlassPanel className="mt-6 rounded-3xl p-8 text-center">
@@ -195,6 +189,17 @@ export default function ProfilePage() {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-white">Appearance</p>
                 <p className="truncate text-xs text-gray-400">{theme.name}</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
+
+            <Link href="/settings" className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <Settings size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Settings</p>
+                <p className="truncate text-xs text-gray-400">Adjust account preferences</p>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
             </Link>
