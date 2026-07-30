@@ -7,7 +7,7 @@ import { useToast } from "@/components/ToastProvider";
 import SectionLoadingBar from "./SectionLoadingBar";
 import GlassPanel from "./GlassPanel";
 
-function TypingText({ text, speed = 500 }: { text: string; speed?: number }) {
+function TypingText({ text, speed = 150 }: { text: string; speed?: number }) {
   const [displayedText, setDisplayedText] = useState("");
 
   useEffect(() => {
@@ -26,12 +26,12 @@ function TypingText({ text, speed = 500 }: { text: string; speed?: number }) {
   }, [text, speed]);
 
   return (
-    <>
+    <span className="inline-block min-h-[1em]">
       {displayedText}
       {displayedText.length < text.length && (
         <span className="inline-block w-1 h-5 ml-0.5 bg-gradient-to-r from-cyan-400 to-purple-400 animate-pulse" />
       )}
-    </>
+    </span>
   );
 }
 
@@ -97,15 +97,15 @@ export default function LinkCard() {
 
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-cyan-400">
         <Link2 size={14} />
-        <TypingText text="Your Whisper Link" speed={50} />
+        <TypingText text="Your Whisper Link" />
       </div>
 
       <h2 className="mt-2 text-2xl font-black leading-snug text-white">
-        <TypingText text="Share it. Wait for the " speed={50} />
+        <TypingText text="Share it. Wait for the " />
         <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-          <TypingText text="honest ones" speed={50} />
+          <TypingText text="honest ones" />
         </span>
-        <TypingText text="." speed={50} />
+        <TypingText text="." />
       </h2>
 
       <div className="mt-5 flex items-center gap-2 rounded-2xl bg-black/30 px-4 py-3">
