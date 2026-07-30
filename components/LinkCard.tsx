@@ -7,7 +7,7 @@ import { useToast } from "@/components/ToastProvider";
 import SectionLoadingBar from "./SectionLoadingBar";
 import GlassPanel from "./GlassPanel";
 
-function TypingText({ text, speed = 500 }) {
+function TypingText({ text, speed = 500 }: { text: string; speed?: number }) {
   const [displayedText, setDisplayedText] = useState("");
 
   useEffect(() => {
