@@ -14,11 +14,6 @@ import {
   Ban,
   Filter,
   History,
-  LifeBuoy,
-  Lightbulb,
-  ScrollText,
-  Shield,
-  FileText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -31,18 +26,6 @@ const MORE_LINKS = [
   { href: "/blocked-keywords", label: "Blocked Keywords", icon: Filter },
   { href: "/activity-log", label: "Activity Log", icon: History },
   { href: "/analytics", label: "Analytics", icon: History },
-];
-
-const SUPPORT_LINKS = [
-  { href: "/feedback", label: "Feedback", icon: Lightbulb },
-  { href: "/contact-support", label: "Contact Support", icon: LifeBuoy },
-  { href: "/community-guidelines", label: "Community Guidelines", icon: ScrollText },
-  { href: "/help-center", label: "Help Center", icon: Shield },
-];
-
-const LEGAL_LINKS = [
-  { href: "/privacy", label: "Privacy Policy", icon: Shield },
-  { href: "/terms", label: "Terms of Service", icon: FileText },
 ];
 
 function LinkRow({ href, label, icon: Icon }: { href: string; label: string; icon: LucideIcon }) {
@@ -95,24 +78,6 @@ export default function SettingsPage() {
             Your Content
           </h2>
           {MORE_LINKS.map((link) => (
-            <LinkRow key={link.href} {...link} />
-          ))}
-        </GlassPanel>
-
-        <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1 px-1">
-            Support
-          </h2>
-          {SUPPORT_LINKS.map((link) => (
-            <LinkRow key={link.href} {...link} />
-          ))}
-        </GlassPanel>
-
-        <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1 px-1">
-            Legal
-          </h2>
-          {LEGAL_LINKS.map((link) => (
             <LinkRow key={link.href} {...link} />
           ))}
         </GlassPanel>

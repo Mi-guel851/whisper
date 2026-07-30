@@ -5,7 +5,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Palette, ChevronRight, Settings } from "lucide-react";
+import { ChevronLeft, User, AtSign, Sparkles, Save, ShieldCheck, Palette, ChevronRight, Settings, Lightbulb, LifeBuoy, ScrollText, FileText } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 import BottomNavigation from "@/components/BottomNavigation";
@@ -171,17 +171,6 @@ export default function ProfilePage() {
           </p>
 
           <GlassPanel className="divide-y divide-white/5 rounded-2xl">
-            <Link href="/privacy" className="flex items-center gap-4 p-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
-                <ShieldCheck size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-white">Privacy & safety</p>
-                <p className="text-xs text-gray-400">Fully protected</p>
-              </div>
-              <ChevronRight size={16} className="text-gray-400" />
-            </Link>
-
             <Link href="/appearance" className="flex items-center gap-4 p-4">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
                 <Palette size={18} />
@@ -200,6 +189,61 @@ export default function ProfilePage() {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-white">Settings</p>
                 <p className="truncate text-xs text-gray-400">Adjust account preferences</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
+
+            <Link href="/feedback" className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <Lightbulb size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Feedback</p>
+                <p className="truncate text-xs text-gray-400">Share your thoughts</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
+
+            <Link href="/contact-support" className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <LifeBuoy size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Contact Support</p>
+                <p className="truncate text-xs text-gray-400">Get help with your account</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
+
+            <Link href="/community-guidelines" className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <ScrollText size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Community Guidelines</p>
+                <p className="truncate text-xs text-gray-400">Read the rules</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
+
+            <Link href="/privacy" className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <ShieldCheck size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Privacy Policy</p>
+                <p className="truncate text-xs text-gray-400">How your data is handled</p>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </Link>
+
+            <Link href="/terms" className="flex items-center gap-4 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-500/15 text-purple-300">
+                <FileText size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-white">Terms of Service</p>
+                <p className="truncate text-xs text-gray-400">Read the app terms</p>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
             </Link>
