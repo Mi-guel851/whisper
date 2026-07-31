@@ -49,7 +49,11 @@ export default function DashboardPage() {
         return;
       }
 
-      setShowTerms(true);
+      const termsShownThisSession = sessionStorage.getItem("whisper-terms-shown") === "true";
+      if (!termsShownThisSession) {
+        sessionStorage.setItem("whisper-terms-shown", "true");
+        setShowTerms(true);
+      }
 
       setChecking(false);
     }

@@ -206,7 +206,7 @@ export default function BottomNavigation() {
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 px-3 pb-3 sm:px-4 sm:pb-4">
       <nav
         aria-label="Primary navigation"
-        className="pointer-events-auto mx-auto max-w-xl rounded-[2rem] border px-2.5 py-2 shadow-2xl backdrop-blur-2xl transition-[background,border-color,box-shadow] duration-300 ease-out sm:px-3"
+        className="glass-control pointer-events-auto mx-auto max-w-xl rounded-[2rem] border px-2.5 py-2 shadow-2xl backdrop-blur-2xl transition-[background,border-color,box-shadow] duration-300 ease-out sm:px-3"
         style={{
           background: "var(--theme-nav-bg)",
           borderColor: "var(--theme-nav-border)",
