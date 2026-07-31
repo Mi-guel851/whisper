@@ -7,7 +7,7 @@ import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 type FriendHeaderProps = {
   friendIds: string[];
   onlineUserIds: string[];
-  onSelect?: (friendId: string) => void;
+  onSelect?: (friendId: string) => void | Promise<void>;
 };
 
 function FriendsHeader({ friendIds, onlineUserIds, onSelect }: FriendHeaderProps) {

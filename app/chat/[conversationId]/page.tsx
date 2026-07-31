@@ -11,7 +11,9 @@ import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST } from "@/lib/coins";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { typingManager } from "@/lib/realtime/typing";
+import { presenceManager } from "@/lib/realtime/presence";
 import { useToast } from "@/components/ToastProvider";
+import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff } from "lucide-react";
 
@@ -253,6 +255,8 @@ export default function ChatPage() {
   const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
   const [otherLabel, setOtherLabel] = useState("");
   const [otherTyping, setOtherTyping] = useState(false);
+  const [otherUserId, setOtherUserId] = useState("");
+  const [otherUserOnline, setOtherUserOnline] = useState(false);
   const [input, setInput] = useState("");
   const [myId, setMyId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -328,6 +332,7 @@ export default function ChatPage() {
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
     let reactionChannel: ReturnType<typeof supabase.channel> | null = null;
     let unsubscribeTyping: (() => void) | undefined;
+    let unsubscribePresence: (() => void) | undefined;
 
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -348,7 +353,12 @@ export default function ChatPage() {
       await supabase.from("conversations").update({ [readColumn]: new Date().toISOString() }).eq("id", conversationId);
 
       const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
+      setOtherUserId(otherUserId);
       setOtherLabel(anonymousDisplayName(otherUserId));
+      await presenceManager.connect(session.user.id);
+      unsubscribePresence = presenceManager.subscribe((users) => {
+        setOtherUserOnline(users.some((user) => user.id === otherUserId));
+      });
       unsubscribeTyping = typingManager.subscribe(conversationId, session.user.id, (typing) => {
         setOtherTyping(typing);
       });
@@ -483,6 +493,7 @@ export default function ChatPage() {
 
     return () => {
       cleanupVisibility?.();
+      unsubscribePresence?.();
       unsubscribeTyping?.();
       void typingManager.setTyping(conversationId, myIdRef.current, false);
       if (msgChannel) supabase.removeChannel(msgChannel);
@@ -497,6 +508,14 @@ export default function ChatPage() {
     }, 50);
     return () => clearTimeout(timer);
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!otherTyping) return;
+    const timer = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [otherTyping]);
 
   useEffect(() => {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
@@ -735,13 +754,15 @@ export default function ChatPage() {
         <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
           <BackButton />
           <div className="mt-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-lg shadow-cyan-500/20">
-              👻
-            </div>
+            <img
+              src={generatedAvatarUrl(otherUserId || "ghost")}
+              alt=""
+              className="h-10 w-10 rounded-full border border-white/20 bg-white/10 object-cover p-0.5 shadow-lg shadow-cyan-500/20"
+            />
             <div>
               <p className="font-bold text-white">{otherLabel}</p>
-              <p className={`text-xs ${otherTyping ? "text-emerald-400" : "text-gray-400"}`}>
-                {otherTyping ? "Typing..." : "Anonymous chat"}
+              <p className={`text-xs ${otherTyping || otherUserOnline ? "text-emerald-400" : "text-gray-400"}`}>
+                {otherTyping ? "Typing..." : otherUserOnline ? "Active now" : "Offline"}
               </p>
             </div>
           </div>
@@ -812,13 +833,14 @@ export default function ChatPage() {
               ))
             )}
             {otherTyping && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400">
-                <span className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-400 [animation-delay:-0.2s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-400 [animation-delay:-0.1s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-400" />
-                </span>
-                {otherLabel} is typing...
+              <div className="flex items-end gap-2">
+                <div className="rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.08] px-4 py-3 shadow-lg shadow-black/10">
+                  <span className="flex items-center gap-1.5" aria-label={`${otherLabel} is typing`}>
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:-0.2s]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:-0.1s]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-300" />
+                  </span>
+                </div>
               </div>
             )}
             <div ref={bottomRef} />

@@ -208,9 +208,60 @@ export default function InboxPage() {
     router.push(`/chat/${c.id}`);
   }
 
-  function openFriend(friendId: string) {
+  async function openFriend(friendId: string) {
     const conversation = conversations.find((row) => otherUserId(row) === friendId);
-    if (conversation) openConversation(conversation);
+    if (conversation) {
+      openConversation(conversation);
+      return;
+    }
+
+    const userA = myId < friendId ? myId : friendId;
+    const userB = myId < friendId ? friendId : myId;
+    const { data: existing, error: existingError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("user_a", userA)
+      .eq("user_b", userB)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error("Friend conversation lookup error:", existingError);
+      return;
+    }
+
+    if (existing) {
+      router.push(`/chat/${existing.id}`);
+      return;
+    }
+
+    const { data: created, error: createError } = await supabase
+      .from("conversations")
+      .insert({
+        user_a: userA,
+        user_b: userB,
+        user_a_label: "Anonymous Friend",
+        user_b_label: "Anonymous Friend",
+        last_message_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (createError) {
+      if (createError.code === "23505") {
+        const { data: raceConversation } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("user_a", userA)
+          .eq("user_b", userB)
+          .maybeSingle();
+        if (raceConversation) router.push(`/chat/${raceConversation.id}`);
+      } else {
+        console.error("Friend conversation creation error:", createError);
+      }
+      return;
+    }
+
+    if (created) router.push(`/chat/${created.id}`);
   }
 
   if (loading) {
@@ -250,8 +301,8 @@ export default function InboxPage() {
               const active = onlineUserIds.includes(otherUserId(c));
               const typing = typingConversationIds.includes(c.id);
               return (
-                <button key={c.id} onClick={() => openConversation(c)} className="w-full text-left">
-                  <GlassPanel className="relative flex items-center gap-4 rounded-2xl p-4 transition hover:bg-white/[0.09]">
+                <button key={c.id} onClick={() => openConversation(c)} className="w-full overflow-hidden rounded-3xl text-left">
+                  <GlassPanel className="relative flex items-center gap-4 rounded-3xl border-white/10 p-4 transition hover:-translate-y-0.5 hover:bg-white/[0.09]">
                     <div className="relative h-12 w-12 shrink-0">
                       <img
                         src={generatedAvatarUrl(otherUserId(c))}
