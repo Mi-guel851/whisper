@@ -25,28 +25,17 @@ import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
-import { hashUserId, anonymousDisplayName as anonymousName } from "@/lib/anonymousIdentity";
+import { anonymousDisplayName as anonymousName } from "@/lib/anonymousIdentity";
+import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 
 const PAGE_SIZE = 5;
 
 type ProfileSummary = { id: string };
 
 function AnonymousAvatar({ userId, online = false }: { userId?: string | null; online?: boolean }) {
-  const hash = hashUserId(userId || "ghost");
-  const gradients = [
-    "from-purple-600 to-purple-600",
-    "from-fuchsia-500 to-indigo-600",
-    "from-emerald-400 to-purple-700",
-    "from-amber-300 to-rose-500",
-    "from-slate-400 to-violet-700",
-  ];
   return (
     <div className="relative shrink-0">
-      <div
-        className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ${gradients[hash % gradients.length]} text-lg font-black text-white`}
-      >
-        👻
-      </div>
+      <img src={generatedAvatarUrl(userId || "ghost")} alt="" className="h-12 w-12 rounded-full border border-white/15 bg-white/10 object-cover p-0.5 shadow-lg shadow-black/20" loading="lazy" />
       {online && (
         <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#05010F] bg-green-500 shadow-[0_0_0_2px_rgba(0,0,0,0.15)]" />
       )}

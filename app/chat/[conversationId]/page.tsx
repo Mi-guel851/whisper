@@ -10,6 +10,7 @@ import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST } from "@/lib/coins";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
+import { typingManager } from "@/lib/realtime/typing";
 import { useToast } from "@/components/ToastProvider";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff } from "lucide-react";
@@ -251,6 +252,7 @@ export default function ChatPage() {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
   const [otherLabel, setOtherLabel] = useState("");
+  const [otherTyping, setOtherTyping] = useState(false);
   const [input, setInput] = useState("");
   const [myId, setMyId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -270,6 +272,7 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
@@ -283,6 +286,25 @@ export default function ChatPage() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
     }
   }, [input]);
+
+  useEffect(() => {
+    if (!myId || !chatUnlocked) return;
+
+    if (!input.trim()) {
+      void typingManager.setTyping(conversationId, myId, false);
+      return;
+    }
+
+    void typingManager.setTyping(conversationId, myId, true);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      void typingManager.setTyping(conversationId, myId, false);
+    }, 1400);
+
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [conversationId, input, myId, chatUnlocked]);
 
   const markMessagesRead = useCallback(async (msgs: Message[], currentUserId: string) => {
     if (document.visibilityState !== "visible") return;
@@ -305,6 +327,7 @@ export default function ChatPage() {
   useEffect(() => {
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
     let reactionChannel: ReturnType<typeof supabase.channel> | null = null;
+    let unsubscribeTyping: (() => void) | undefined;
 
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -326,6 +349,9 @@ export default function ChatPage() {
 
       const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
       setOtherLabel(anonymousDisplayName(otherUserId));
+      unsubscribeTyping = typingManager.subscribe(conversationId, session.user.id, (typing) => {
+        setOtherTyping(typing);
+      });
 
       await supabase.rpc("ensure_coin_wallet", { target_user: session.user.id });
 
@@ -457,6 +483,8 @@ export default function ChatPage() {
 
     return () => {
       cleanupVisibility?.();
+      unsubscribeTyping?.();
+      void typingManager.setTyping(conversationId, myIdRef.current, false);
       if (msgChannel) supabase.removeChannel(msgChannel);
       if (reactionChannel) supabase.removeChannel(reactionChannel);
     };
@@ -712,7 +740,9 @@ export default function ChatPage() {
             </div>
             <div>
               <p className="font-bold text-white">{otherLabel}</p>
-              <p className="text-xs text-gray-400">Anonymous chat</p>
+              <p className={`text-xs ${otherTyping ? "text-emerald-400" : "text-gray-400"}`}>
+                {otherTyping ? "Typing..." : "Anonymous chat"}
+              </p>
             </div>
           </div>
         </div>
@@ -780,6 +810,16 @@ export default function ChatPage() {
                   isPinned={pinnedMessageIds.has(msg.id)}
                 />
               ))
+            )}
+            {otherTyping && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400">
+                <span className="flex gap-1">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-400 [animation-delay:-0.2s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-400 [animation-delay:-0.1s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-400" />
+                </span>
+                {otherLabel} is typing...
+              </div>
             )}
             <div ref={bottomRef} />
           </div>
