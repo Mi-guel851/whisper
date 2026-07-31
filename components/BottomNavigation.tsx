@@ -17,6 +17,7 @@ export default function BottomNavigation() {
   const pathname = usePathname();
   const [unreadWhispers, setUnreadWhispers] = useState(0);
   const [unreadChats, setUnreadChats] = useState(0);
+  const [unreadFeed, setUnreadFeed] = useState(0);
   const [myId, setMyId] = useState<string | null>(null);
   const [anyFriendOnline, setAnyFriendOnline] = useState(false);
 
@@ -55,6 +56,15 @@ export default function BottomNavigation() {
     setUnreadChats(unread.length);
   }, []);
 
+  const loadUnreadFeed = useCallback(async (uid: string) => {
+    const { count } = await supabase
+      .from("public_feed_notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", uid)
+      .eq("is_read", false);
+    setUnreadFeed(count || 0);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -70,6 +80,7 @@ export default function BottomNavigation() {
       await presenceManager.connect(session.user.id);
       await presenceManager.connect(session.user.id);
       await loadUnreadWhispers(session.user.id);
+      await loadUnreadFeed(session.user.id);
       if (cancelled) return;
 
       channel = supabase
@@ -87,6 +98,11 @@ export default function BottomNavigation() {
             playNotificationSound();
           }
         )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "public_feed_notifications", filter: `user_id=eq.${session.user.id}` },
+          () => loadUnreadFeed(session.user.id)
+        )
         .subscribe();
     }
 
@@ -96,7 +112,7 @@ export default function BottomNavigation() {
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [loadUnreadWhispers]);
+  }, [loadUnreadFeed, loadUnreadWhispers]);
 
   // Friends green dot — reuses the shared presence singleton and only counts accepted friends.
   useEffect(() => {
@@ -164,6 +180,7 @@ export default function BottomNavigation() {
       if (document.visibilityState !== "visible") return;
       loadUnreadWhispers(myId as string);
       loadUnreadChats(myId as string);
+      loadUnreadFeed(myId as string);
     }
 
     document.addEventListener("visibilitychange", refetchAll);
@@ -173,12 +190,12 @@ export default function BottomNavigation() {
       document.removeEventListener("visibilitychange", refetchAll);
       window.removeEventListener("focus", refetchAll);
     };
-  }, [myId, loadUnreadWhispers, loadUnreadChats]);
+  }, [myId, loadUnreadWhispers, loadUnreadChats, loadUnreadFeed]);
 
 
   const nav = [
     { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined, onClick: undefined },
-    { href: "/discover", icon: Compass, label: "Discover", showPresenceDot: true, badge: undefined, onClick: undefined },
+    { href: "/discover", icon: Compass, label: "Discover", showPresenceDot: true, badge: unreadFeed, onClick: undefined },
     { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats, onClick: undefined },
     { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers, onClick: undefined },
     { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined, onClick: undefined },
