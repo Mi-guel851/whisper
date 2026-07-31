@@ -188,6 +188,60 @@ main.min-h-screen {
   }
 }
 
+@keyframes discoverIconFloat {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(1deg);
+  }
+}
+
+@keyframes discoverHandWave {
+  0%, 68%, 100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  74% {
+    transform: rotate(18deg) translateY(-2px);
+  }
+  80% {
+    transform: rotate(-14deg) translateY(-4px);
+  }
+  86% {
+    transform: rotate(16deg) translateY(-3px);
+  }
+  92% {
+    transform: rotate(-8deg) translateY(-1px);
+  }
+}
+
+.discover-anime-wave {
+  transform-box: fill-box;
+  transform-origin: 0% 100%;
+  animation: discoverHandWave 3s ease-in-out infinite;
+}
+
+.discover-icon-tile {
+  animation: discoverIconFloat 5s ease-in-out infinite;
+}
+
+.discover-icon-grid > a:nth-child(3n + 2) .discover-icon-tile {
+  animation-delay: -1.6s;
+}
+
+.discover-icon-grid > a:nth-child(3n) .discover-icon-tile {
+  animation-delay: -3.2s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discover-icon-tile {
+    animation: none;
+  }
+  .discover-anime-wave {
+    animation: none;
+  }
+}
+
 .theme-surface,
 .liquid-glass,
 .liquid-glass-strong,
