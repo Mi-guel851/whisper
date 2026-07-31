@@ -179,21 +179,67 @@ main.min-h-screen {
   color: transparent;
 }
 
+@keyframes frostShimmer {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 1.05;
+  }
+}
+
 .theme-surface,
 .liquid-glass,
 .liquid-glass-strong,
 .premium-card {
   background: var(--theme-glass);
-  border: 1px solid var(--theme-border);
-  box-shadow: var(--theme-shadow);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 2px rgba(255, 255, 255, 0.2),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.1),
+    0 0 1px rgba(255, 255, 255, 0.15) inset;
+  backdrop-filter: blur(32px) saturate(180%) contrast(120%) brightness(1.05);
+  -webkit-backdrop-filter: blur(32px) saturate(180%) contrast(120%) brightness(1.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-glass::before,
+.liquid-glass-strong::before,
+.premium-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.12), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.08), transparent 45%);
+  pointer-events: none;
+  border-radius: inherit;
+  animation: frostShimmer 6s ease-in-out infinite;
+}
+
+.liquid-glass::after,
+.liquid-glass-strong::after,
+.premium-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  pointer-events: none;
+  border-radius: inherit;
 }
 
 .liquid-glass-strong,
 .premium-card-strong {
   background: var(--theme-glass-strong);
 }
+
 
 .theme-text-muted { color: var(--theme-text-secondary); }
 .theme-text-subtle { color: var(--theme-text-muted); }
