@@ -68,10 +68,12 @@ const QUICK_LINKS: { href: string; label: string; icon: LucideIcon; desc: string
 export default function DiscoverPage() {
   const [friendIds, setFriendIds] = useState<string[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [unreadFeedCount, setUnreadFeedCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let unsubscribePresence: (() => void) | undefined;
+    let feedChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function loadFriendPresence() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -85,16 +87,45 @@ export default function DiscoverPage() {
       if (cancelled) return;
 
       setFriendIds((friends || []).map((friend) => friend.friend_id));
+      const { count: feedCount } = await supabase
+        .from("public_feed_notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", session.user.id)
+        .eq("is_read", false);
+      if (!cancelled) setUnreadFeedCount(feedCount || 0);
+
       await presenceManager.connect(session.user.id);
       unsubscribePresence = presenceManager.subscribe((users) => {
         if (!cancelled) setOnlineUserIds(users.map((user) => user.id));
       });
+
+      feedChannel = supabase
+        .channel(`discover-feed-badge-${session.user.id}-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "public_feed_notifications",
+            filter: `user_id=eq.${session.user.id}`,
+          },
+          async () => {
+            const { count } = await supabase
+              .from("public_feed_notifications")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", session.user.id)
+              .eq("is_read", false);
+            if (!cancelled) setUnreadFeedCount(count || 0);
+          }
+        )
+        .subscribe();
     }
 
     loadFriendPresence();
     return () => {
       cancelled = true;
       unsubscribePresence?.();
+      if (feedChannel) supabase.removeChannel(feedChannel);
     };
   }, []);
 
@@ -118,6 +149,7 @@ export default function DiscoverPage() {
           {QUICK_LINKS.map((link) => {
             const Icon = link.icon;
             const isFriendsLink = link.href.startsWith("/friends");
+            const isFeedLink = link.href === "/public-feed";
             return (
               <Link
                 key={link.href}
@@ -136,7 +168,14 @@ export default function DiscoverPage() {
                       )}
                     </>
                   ) : (
+                    <>
+                      {isFeedLink && unreadFeedCount > 0 && (
+                        <span className="absolute -right-2 -top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-[#100d18] bg-rose-500 px-1 text-[9px] font-black text-white shadow-[0_0_12px_rgba(244,63,94,0.65)]">
+                          {unreadFeedCount > 9 ? "9+" : unreadFeedCount}
+                        </span>
+                      )}
                     <Icon size={27} strokeWidth={1.8} className="relative drop-shadow-[0_3px_3px_rgba(0,0,0,0.45)]" />
+                    </>
                   )}
                 </div>
                 <p className="mt-3 line-clamp-2 text-xs font-semibold leading-tight text-gray-200 transition group-hover:text-cyan-200">{link.label}</p>
