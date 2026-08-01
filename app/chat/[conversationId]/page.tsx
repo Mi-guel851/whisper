@@ -510,14 +510,6 @@ export default function ChatPage() {
   }, [messages, loading]);
 
   useEffect(() => {
-    if (!otherTyping) return;
-    const timer = setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }, 40);
-    return () => clearTimeout(timer);
-  }, [otherTyping]);
-
-  useEffect(() => {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
   }, [pendingPhoto]);
 
