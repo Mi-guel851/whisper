@@ -20,10 +20,10 @@ function FriendsHeader({ friendIds, onlineUserIds, onSelect }: FriendHeaderProps
   );
 
   return (
-    <section className="sticky top-0 z-20 -mx-6 mb-8 bg-[#100d18]/90 px-6 pb-3 pt-2 backdrop-blur-xl" aria-labelledby="friends-heading">
-      <div className="mb-3 flex items-center justify-between px-1">
-        <h2 id="friends-heading" className="text-lg font-bold text-white">Friends</h2>
-        {friends.length > 0 && <span className="text-xs text-gray-500">{friends.length} friends</span>}
+    <section className="friends-strip sticky top-0 z-20 -mx-6 mb-8 rounded-3xl border px-5 pb-3 pt-3" aria-labelledby="friends-heading">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <h2 id="friends-heading" className="text-lg font-bold">Friends</h2>
+        {friends.length > 0 && <span className="text-xs opacity-70">{friends.length} friends</span>}
       </div>
 
       {friends.length === 0 ? (
@@ -31,7 +31,7 @@ function FriendsHeader({ friendIds, onlineUserIds, onSelect }: FriendHeaderProps
           No friends yet
         </div>
       ) : (
-        <div className="-mx-6 overflow-x-auto px-6 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex min-w-max gap-4">
             {friends.map(({ id, avatarUrl }) => {
               const isOnline = onlineIds.has(id);
@@ -41,17 +41,20 @@ function FriendsHeader({ friendIds, onlineUserIds, onSelect }: FriendHeaderProps
                     <img
                       src={avatarUrl}
                       alt=""
-                      className="h-16 w-16 rounded-full border border-white/15 bg-white/10 object-cover p-0.5 shadow-xl shadow-black/25"
+                      className="h-14 w-14 rounded-full border border-white/25 bg-white/10 object-cover p-0.5 shadow-lg shadow-indigo-950/20"
                       loading="lazy"
                     />
                     <span
-                      className={`absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-[#100d18] ${
+                        className={`absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-[var(--theme-card)] ${
                         isOnline ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" : "bg-gray-600"
                       }`}
                       aria-label={isOnline ? "Online" : "Offline"}
                     />
                   </div>
-                  <span className="mt-2 block max-w-20 truncate text-center text-xs font-medium text-gray-300">
+                  <span
+                    className="friends-name mt-2 block max-w-20 truncate text-center text-xs"
+                    style={{ color: "#ffffff", fontWeight: 800 }}
+                  >
                     {anonymousDisplayName(id)}
                   </span>
                 </>

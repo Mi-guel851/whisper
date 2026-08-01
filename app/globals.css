@@ -142,6 +142,7 @@ button, a {
 button {
   position: relative;
   isolation: isolate;
+  border-radius: 1rem;
   border-color: color-mix(in srgb, var(--theme-border) 70%, rgba(255, 255, 255, 0.25));
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.18),
@@ -457,9 +458,355 @@ main.min-h-screen {
   100% { opacity: 0.06; filter: blur(0px) drop-shadow(0 0 24px #a855f7); transform: scale(1); }
 }
 
+@keyframes statsLivePulse {
+  0% { opacity: 0.6; transform: translateY(4px) scale(0.96); }
+  55% { opacity: 1; transform: translateY(0) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.stats-live-value {
+  animation: statsLivePulse 900ms ease-out both;
+}
+
 .whisper-logo-glow {
   animation: whisper-glow 3.5s ease-in-out infinite;
   pointer-events: none;
   user-select: none;
+}
+
+.typing-text-layer {
+  display: inline-block;
+  z-index: 1;
+  opacity: 1 !important;
+  font-weight: 950;
+  letter-spacing: -0.01em;
+  -webkit-text-stroke: 0.25px currentColor;
+}
+
+:root[data-theme="light"] .typing-text-ink {
+  color: #21154f !important;
+  -webkit-text-fill-color: #21154f !important;
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.35), 0 4px 12px rgba(49, 46, 129, 0.24);
+}
+
+:root[data-theme="light"] .typing-text-gradient {
+  color: #7c3aed !important;
+  background-image: linear-gradient(110deg, #4338ca 0%, #7c3aed 48%, #db2777 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: 0 3px 12px rgba(109, 40, 217, 0.28);
+  -webkit-text-stroke: 0.35px rgba(49, 46, 129, 0.65);
+}
+
+:root[data-theme="light"] .friends-strip {
+  background: color-mix(in srgb, var(--theme-card) 92%, var(--theme-accent-purple) 8%);
+  border-color: color-mix(in srgb, var(--theme-border) 78%, var(--theme-accent-purple) 22%);
+  box-shadow: var(--theme-shadow-soft);
+}
+
+:root[data-theme="light"] .friends-strip {
+  background: linear-gradient(135deg, #4f46a5, #2563b8);
+  border-color: rgba(129, 140, 248, 0.55);
+  box-shadow: 0 12px 28px rgba(37, 63, 145, 0.28);
+}
+
+:root[data-theme="light"] .friends-strip h2,
+:root[data-theme="light"] .friends-strip > div > span,
+:root[data-theme="light"] .friends-strip button > span {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .friends-strip button {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .friends-strip button:hover:not(:disabled),
+:root[data-theme="light"] .friends-strip button:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Modern light theme foundation: structured canvas, elevated cards, and restrained glass. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --theme-bg: #f4f6ff;
+  --theme-surface: #eef1ff;
+  --theme-card: #ffffff;
+  --theme-border: #d9def7;
+  --theme-text: #20213a;
+  --theme-text-secondary: #596080;
+  --theme-text-muted: #7c84a3;
+  --theme-accent-purple: #6d4dd8;
+  --theme-accent-pink: #c04491;
+  --theme-glass: rgba(255, 255, 255, 0.88);
+  --theme-glass-strong: rgba(255, 255, 255, 0.96);
+  --theme-shadow: 0 18px 45px rgba(70, 78, 145, 0.14);
+  --theme-shadow-soft: 0 8px 22px rgba(70, 78, 145, 0.1);
+  --theme-nav-bg: rgba(255, 255, 255, 0.94);
+  --theme-nav-border: #d9def7;
+  --theme-nav-shadow: 0 -12px 34px rgba(70, 78, 145, 0.14);
+  --theme-nav-inactive: #687092;
+  --theme-nav-active-text: #31256f;
+  --theme-accent-from: #6d4dd8;
+  --theme-accent-to: #2563eb;
+  --theme-accent-contrast: #ffffff;
+}
+
+:root[data-theme="light"] body,
+:root[data-theme="light"] .theme-bg-gradient,
+:root[data-theme="light"] main.min-h-screen {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(109, 77, 216, 0.16), transparent 30rem),
+    radial-gradient(circle at 100% 12%, rgba(37, 99, 235, 0.12), transparent 28rem),
+    radial-gradient(circle at 50% 100%, rgba(192, 68, 145, 0.08), transparent 32rem),
+    linear-gradient(180deg, #f8f9ff 0%, #eef1ff 100%) !important;
+  color: var(--theme-text);
+}
+
+:root[data-theme="light"] .premium-card,
+:root[data-theme="light"] .premium-card-strong,
+:root[data-theme="light"] .liquid-glass,
+:root[data-theme="light"] .liquid-glass-strong {
+  background: var(--theme-glass);
+  border: 1px solid var(--theme-border);
+  box-shadow:
+    0 18px 45px rgba(70, 78, 145, 0.14),
+    inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+
+:root[data-theme="light"] .premium-card-strong,
+:root[data-theme="light"] .liquid-glass-strong {
+  background: var(--theme-glass-strong);
+}
+
+:root[data-theme="light"] .premium-card::before,
+:root[data-theme="light"] .premium-card-strong::before,
+:root[data-theme="light"] .liquid-glass::before,
+:root[data-theme="light"] .liquid-glass-strong::before {
+  background: linear-gradient(135deg, rgba(109, 77, 216, 0.08), transparent 52%, rgba(37, 99, 235, 0.06));
+  opacity: 1;
+  animation: none;
+}
+
+:root[data-theme="light"] button,
+:root[data-theme="light"] .glass-control {
+  color: #ffffff !important;
+  border-color: rgba(79, 70, 229, 0.28) !important;
+  background: linear-gradient(135deg, #6d4dd8, #2563eb) !important;
+  box-shadow: 0 8px 20px rgba(70, 78, 145, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="light"] button:hover:not(:disabled),
+:root[data-theme="light"] .glass-control:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5b3fc0, #1d4ed8) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="light"] svg:not([class*="text-"]) {
+  color: #4f46e5;
+}
+
+:root[data-theme="light"] .text-white,
+:root[data-theme="light"] .text-gray-100,
+:root[data-theme="light"] .text-gray-200 {
+  color: var(--theme-text) !important;
+}
+
+:root[data-theme="light"] .text-gray-300,
+:root[data-theme="light"] .text-gray-400,
+:root[data-theme="light"] .text-gray-500 {
+  color: var(--theme-text-secondary) !important;
+}
+
+:root[data-theme="light"] .text-cyan-200,
+:root[data-theme="light"] .text-cyan-300,
+:root[data-theme="light"] .text-cyan-400 {
+  color: #2563eb !important;
+}
+
+:root[data-theme="light"] .text-purple-300,
+:root[data-theme="light"] .text-purple-400,
+:root[data-theme="light"] .text-pink-300,
+:root[data-theme="light"] .text-pink-400,
+:root[data-theme="light"] .text-pink-500 {
+  color: #6d4dd8 !important;
+}
+
+/* Keep navigation readable; it is a surface, not an action button. */
+:root[data-theme="light"] nav.glass-control {
+  color: #20213a !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid #d9def7 !important;
+  box-shadow: 0 14px 34px rgba(70, 78, 145, 0.18) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-theme="light"] nav.glass-control a > div {
+  color: #4f46e5 !important;
+}
+
+:root[data-theme="light"] nav.glass-control a > span {
+  color: #4b4670 !important;
+}
+
+:root[data-theme="light"] nav.glass-control a[aria-current="page"] > span,
+:root[data-theme="light"] nav.glass-control a:hover > span {
+  color: #31256f !important;
+}
+
+:root[data-theme="light"] nav.glass-control a > div svg,
+:root[data-theme="light"] nav.glass-control a > div img {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+nav.glass-control a:hover > div:not(.scale-105) {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+nav.glass-control a:hover > div:not(.scale-105) svg {
+  color: var(--classic-purple, #6d4dd8) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="light"] button svg {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] button:disabled {
+  color: #e0e7ff !important;
+  opacity: 0.72;
+}
+
+/* Tailwind's button reset can remove the radius; restore it for every rectangular control. */
+button:not([class*="rounded-full"]),
+button:not([class*="rounded-full"]):hover,
+button:not([class*="rounded-full"]):focus-visible {
+  border-radius: 1rem !important;
+}
+
+/* Light-theme accent contrast: prevent colored components from becoming washed out. */
+:root[data-theme="light"] [class*="from-yellow-"] {
+  --tw-gradient-from: #f59e0b !important;
+  --tw-gradient-to: #f59e0b00 !important;
+}
+
+:root[data-theme="light"] [class*="via-pink-"] {
+  --tw-gradient-via: #ec4899 !important;
+}
+
+:root[data-theme="light"] [class*="to-purple-"] {
+  --tw-gradient-to: #6d28d9 !important;
+}
+
+:root[data-theme="light"] [class*="border-yellow-"] {
+  border-color: #d97706 !important;
+}
+
+:root[data-theme="light"] [class*="text-yellow-"] {
+  color: #92400e !important;
+}
+
+:root[data-theme="light"] [class*="bg-yellow-"] {
+  background-color: #fef3c7 !important;
+}
+
+:root[data-theme="light"] [class*="shadow-yellow-"] {
+  box-shadow: 0 16px 36px rgba(217, 119, 6, 0.28) !important;
+}
+
+:root[data-theme="light"] [class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.72) !important;
+}
+
+:root[data-theme="light"] [class*="border-white/"] {
+  border-color: rgba(79, 70, 229, 0.28) !important;
+}
+
+/* Friends strip final cascade: transparent avatar controls and high-contrast labels. */
+:root[data-theme="light"] .friends-strip {
+  border-radius: 1.5rem !important;
+  background: linear-gradient(135deg, #4f46a5, #2563b8) !important;
+  border: 1px solid rgba(129, 140, 248, 0.65) !important;
+  box-shadow: 0 12px 28px rgba(37, 63, 145, 0.3) !important;
+}
+
+:root[data-theme="light"] .friends-strip h2,
+:root[data-theme="light"] .friends-strip > div:first-child > span,
+:root[data-theme="light"] .friends-strip button > span {
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  text-shadow: 0 1px 3px rgba(15, 23, 42, 0.45);
+}
+
+:root[data-theme="light"] .friends-strip button,
+:root[data-theme="light"] .friends-strip button:hover,
+:root[data-theme="light"] .friends-strip button:active,
+:root[data-theme="light"] .friends-strip button:focus-visible {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .friends-strip button:hover,
+:root[data-theme="light"] .friends-strip button:active {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+:root[data-theme="light"] .friends-strip .friends-name,
+:root[data-theme="light"] .friends-strip button .friends-name,
+:root[data-theme="light"] .friends-strip button:hover .friends-name,
+:root[data-theme="light"] .friends-strip button:focus-visible .friends-name {
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  text-shadow: 0 1px 3px rgba(15, 23, 42, 0.55) !important;
+}
+
+:root[data-theme="dark"] .friends-strip {
+  background: rgba(16, 13, 24, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .friends-strip button {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .typing-text-ink {
+  color: currentColor !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none;
+}
+
+:root[data-theme="dark"] .typing-text-gradient {
+  color: #22d3ee !important;
+  background-image: linear-gradient(110deg, #22d3ee 0%, #38bdf8 45%, #8b5cf6 100%);
+  -webkit-text-fill-color: transparent !important;
+  -webkit-text-stroke: 0;
+}
+
+:root[data-theme="dark"] .typing-text-layer > span:last-child {
+  background-image: linear-gradient(180deg, #22d3ee, #8b5cf6) !important;
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.65);
 }
 

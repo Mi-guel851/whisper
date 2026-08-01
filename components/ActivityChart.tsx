@@ -45,6 +45,7 @@ export default function ActivityChart() {
   const [trend, setTrend] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const loadData = useCallback(async (uid: string) => {
     const buckets = last7Days();
@@ -79,6 +80,7 @@ export default function ActivityChart() {
 
     setData(buckets);
     setTrend(calcTrend(buckets));
+    setLastUpdated(new Date());
     setLoading(false);
   }, []);
 
@@ -130,6 +132,12 @@ export default function ActivityChart() {
     };
   }, [userId, loadData]);
 
+  useEffect(() => {
+    if (!userId) return;
+    const refreshTimer = setInterval(() => loadData(userId), 4_000);
+    return () => clearInterval(refreshTimer);
+  }, [userId, loadData]);
+
   return (
     <GlassPanel className="rounded-3xl p-6">
       <SectionLoadingBar loading={loading} />
@@ -139,9 +147,17 @@ export default function ActivityChart() {
           <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
             Last 7 Days
           </p>
-          <h2 className="mt-1 text-xl font-bold text-white">
-            Engagement is climbing
-          </h2>
+          <div className="mt-1 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-white">Engagement is climbing</h2>
+            <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live
+            </span>
+          </div>
+          {lastUpdated && (
+            <p className="mt-1 text-[10px] text-gray-500">
+              Updated {lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </p>
+          )}
         </div>
 
         {trend !== 0 && (
@@ -182,6 +198,9 @@ export default function ActivityChart() {
             stroke="#22d3ee"
             strokeWidth={3}
             fill="url(#totalGradient)"
+            isAnimationActive
+            animationDuration={1200}
+            animationEasing="ease-out"
           />
         </AreaChart>
       </ResponsiveContainer>

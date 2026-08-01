@@ -7,7 +7,7 @@ import { useToast } from "@/components/ToastProvider";
 import SectionLoadingBar from "./SectionLoadingBar";
 import GlassPanel from "./GlassPanel";
 
-function TypingText({ text, speed = 150 }: { text: string; speed?: number }) {
+function TypingText({ text, speed = 220, gradient = false }: { text: string; speed?: number; gradient?: boolean }) {
   const [displayedText, setDisplayedText] = useState("");
 
   useEffect(() => {
@@ -26,11 +26,14 @@ function TypingText({ text, speed = 150 }: { text: string; speed?: number }) {
   }, [text, speed]);
 
   return (
-    <span className="inline-block min-h-[1em]">
-      {displayedText}
-      {displayedText.length < text.length && (
-        <span className="inline-block w-1 h-5 ml-0.5 bg-gradient-to-r from-cyan-400 to-purple-400 animate-pulse" />
-      )}
+    <span className="relative inline-block align-baseline">
+      <span className="invisible">{text}</span>
+      <span className={`typing-text-layer absolute inset-0 whitespace-nowrap ${gradient ? "typing-text-gradient bg-clip-text text-transparent" : "typing-text-ink text-current"}`}>
+        {displayedText}
+        {displayedText.length < text.length && (
+          <span className="ml-0.5 inline-block h-5 w-1 bg-gradient-to-r from-cyan-400 to-purple-400 align-middle animate-pulse" />
+        )}
+      </span>
     </span>
   );
 }
@@ -100,11 +103,9 @@ export default function LinkCard() {
         <TypingText text="Your Whisper Link" />
       </div>
 
-      <h2 className="mt-2 text-2xl font-black leading-snug text-white">
+      <h2 className="mt-2 min-h-[4.5rem] text-2xl font-black leading-snug text-white sm:min-h-[2.25rem]">
         <TypingText text="Share it. Wait for the " />
-        <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-          <TypingText text="honest ones" />
-        </span>
+        <TypingText text="honest ones" gradient />
         <TypingText text="." />
       </h2>
 
