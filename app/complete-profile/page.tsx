@@ -212,7 +212,7 @@ export default function CompleteProfilePage() {
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
       {step === "form" ? (
-        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8">
+        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
           <h1 className="text-center text-3xl font-black">One last step</h1>
           <p className="mt-2 mb-8 text-center text-gray-300">
             Pick a username, set a password, and tell us where you&apos;re based so we can
@@ -225,7 +225,7 @@ export default function CompleteProfilePage() {
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Username"
               required
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
+              className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
             />
 
             <div className="relative">
@@ -235,7 +235,7 @@ export default function CompleteProfilePage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create a password"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-purple-500"
+                className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 pr-12 outline-none focus:border-purple-500"
               />
               <button
                 type="button"
@@ -254,7 +254,7 @@ export default function CompleteProfilePage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm password"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-purple-500"
+                className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 pr-12 outline-none focus:border-purple-500"
               />
               <button
                 type="button"
@@ -280,7 +280,7 @@ export default function CompleteProfilePage() {
           </form>
         </GlassPanel>
       ) : (
-        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8">
+        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-purple-500/15">
             <ShieldCheck size={26} className="text-purple-300" />
           </div>
@@ -299,7 +299,7 @@ export default function CompleteProfilePage() {
               value={recoveryPhrase}
               onChange={(e) => setRecoveryPhrase(e.target.value)}
               placeholder="e.g. purple-ghost-echoes-42"
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
+              className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
             />
 
             <label className="flex items-start gap-3 text-sm text-gray-300">
@@ -307,7 +307,7 @@ export default function CompleteProfilePage() {
                 type="checkbox"
                 checked={confirmedSaved}
                 onChange={(e) => setConfirmedSaved(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-white/20 bg-black/30"
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-white/10"
               />
               I&apos;ve saved this recovery phrase somewhere secure. I understand it cannot be
               recovered if I lose it.

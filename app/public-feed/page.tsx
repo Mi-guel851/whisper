@@ -11,8 +11,9 @@ import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { useToast } from "@/components/ToastProvider";
 
-type FeedPost = { id: string; author_id: string; body: string; whisper_link: string; created_at: string; expires_at: string };
+type FeedPost = { id: string; author_id: string; body: string; whisper_link: string; created_at: string; expires_at: string; parent_post_id?: string | null };
 type FeedLike = { post_id: string; user_id: string };
+type FeedPostNode = FeedPost & { children: FeedPostNode[] };
 
 const SUGGESTED_POST = "Hi everyone! I have a little time to talk. Send me an anonymous Whisper and let’s see where the conversation goes.";
 const AI_SUGGESTIONS = [
@@ -40,6 +41,35 @@ function timeAgo(value: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function buildPostTree(postList: FeedPost[]): FeedPostNode[] {
+  const sorted = [...postList].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const nodes = new Map<string, FeedPostNode>();
+
+  for (const post of sorted) {
+    nodes.set(post.id, { ...post, children: [] });
+  }
+
+  const roots: FeedPostNode[] = [];
+  for (const post of sorted) {
+    const node = nodes.get(post.id);
+    if (!node) continue;
+
+    if (post.parent_post_id && nodes.has(post.parent_post_id)) {
+      nodes.get(post.parent_post_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  return roots;
+}
+
+function upsertPost(current: FeedPost[], incoming: FeedPost) {
+  return current.some((item) => item.id === incoming.id)
+    ? current.map((item) => (item.id === incoming.id ? incoming : item))
+    : [incoming, ...current];
+}
+
 export default function PublicFeedPage() {
   const { showToast } = useToast();
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -50,6 +80,9 @@ export default function PublicFeedPage() {
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
   const [showAiSuggestions, setShowAiSuggestions] = useState(false);
+  const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({});
+  const [replyTextMap, setReplyTextMap] = useState<Record<string, string>>({});
+  const [replySendingMap, setReplySendingMap] = useState<Record<string, boolean>>({});
   const cleanBody = stripLinks(body);
   const ownLink = username ? `/u/${username}` : "";
 
@@ -63,7 +96,7 @@ export default function PublicFeedPage() {
       setMyId(uid);
       const [{ data: profile }, { data: postRows, error }] = await Promise.all([
         supabase.from("profiles").select("username").eq("id", uid).single(),
-        supabase.from("public_feed_posts").select("id,author_id,body,whisper_link,created_at,expires_at").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }),
+        supabase.from("public_feed_posts").select("id,author_id,body,whisper_link,created_at,expires_at,parent_post_id").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }),
       ]);
       if (error) console.error("Public feed fetch error:", error);
       if (cancelled) return;
@@ -79,7 +112,9 @@ export default function PublicFeedPage() {
       channel = supabase.channel(`public-feed-${uid}-${Date.now()}`)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "public_feed_posts" }, (payload) => {
           const post = payload.new as FeedPost;
-          if (new Date(post.expires_at) > new Date()) setPosts((current) => current.some((item) => item.id === post.id) ? current : [post, ...current]);
+          if (new Date(post.expires_at) > new Date()) {
+            setPosts((current) => upsertPost(current, post));
+          }
         })
         .on("postgres_changes", { event: "DELETE", schema: "public", table: "public_feed_posts" }, (payload) => setPosts((current) => current.filter((post) => post.id !== (payload.old as { id: string }).id)))
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "public_feed_likes" }, (payload) => {
@@ -96,14 +131,15 @@ export default function PublicFeedPage() {
   }, []);
 
   const likesByPost = useMemo(() => likes.reduce<Record<string, FeedLike[]>>((result, like) => { (result[like.post_id] ||= []).push(like); return result; }, {}), [likes]);
+  const postTree = useMemo(() => buildPostTree(posts), [posts]);
 
   async function createPost(event: React.FormEvent) {
     event.preventDefault();
     if (!myId || !ownLink || !cleanBody || posting) return;
     setPosting(true);
-    const { data, error } = await supabase.from("public_feed_posts").insert({ author_id: myId, body: cleanBody, whisper_link: ownLink }).select("id,author_id,body,whisper_link,created_at,expires_at").single();
+    const { data, error } = await supabase.from("public_feed_posts").insert({ author_id: myId, body: cleanBody, whisper_link: ownLink }).select("id,author_id,body,whisper_link,created_at,expires_at,parent_post_id").single();
     if (error) showToast(error.message);
-    else if (data) { setPosts((current) => [data as FeedPost, ...current]); setBody(""); showToast("Posted to Public Feed."); }
+    else if (data) { setPosts((current) => upsertPost(current, data as FeedPost)); setBody(""); showToast("Posted to Public Feed."); }
     setPosting(false);
   }
 
@@ -120,11 +156,95 @@ export default function PublicFeedPage() {
     if (error) showToast(error.message); else setPosts((current) => current.filter((post) => post.id !== postId));
   }
 
+  async function sendReply(postId: string) {
+    const text = (replyTextMap[postId] || "").trim();
+    if (!text) return showToast("Write a reply first");
+    if (typeof window !== "undefined" && !window.confirm("Replying will cost 2 coins. Continue?")) {
+      showToast("Reply cancelled.");
+      return;
+    }
+    setReplySendingMap((m) => ({ ...m, [postId]: true }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { showToast("Login required"); setReplySendingMap((m) => ({ ...m, [postId]: false })); return; }
+      const res = await fetch("/api/coins/reply", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ message: text, postId }) });
+      const json = await res.json();
+      if (!res.ok) {
+        showToast(json.error || "Failed to send reply");
+      } else {
+        showToast("Reply posted publicly — 2 coins charged");
+        if (json.post) setPosts((current) => upsertPost(current, json.post as FeedPost));
+        setReplyTextMap((m) => ({ ...m, [postId]: "" }));
+        setReplyOpen((m) => ({ ...m, [postId]: false }));
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Network error");
+    } finally {
+      setReplySendingMap((m) => ({ ...m, [postId]: false }));
+    }
+  }
+
   if (loading) return <main className="flex min-h-screen items-center justify-center theme-bg-gradient text-white"><p className="text-gray-400">Loading feed...</p></main>;
+
+  function renderPost(post: FeedPostNode, depth = 0) {
+    const postLikes = likesByPost[post.id] || [];
+    const liked = postLikes.some((like) => like.user_id === myId);
+    return (
+      <div key={post.id} className={depth > 0 ? "ml-3 border-l border-cyan-400/20 pl-3 md:ml-5 md:pl-4" : ""}>
+        <GlassPanel className="rounded-3xl p-5">
+          <div className="flex items-center gap-3">
+            <img src={generatedAvatarUrl(post.author_id)} alt="" className="h-11 w-11 rounded-full border border-white/15 bg-white/10 object-cover p-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-bold">{anonymousDisplayName(post.author_id)}</p>
+              <p className="text-xs text-gray-500">{timeAgo(post.created_at)} · expires in 30 days</p>
+            </div>
+            {post.author_id === myId && (
+              <button type="button" onClick={() => deletePost(post.id)} className="rounded-full p-2 text-gray-500 hover:bg-rose-500/10 hover:text-rose-400" aria-label="Delete post"><Trash2 size={16} /></button>
+            )}
+          </div>
+
+          <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-gray-200">{post.body}</p>
+
+          <Link href={post.whisper_link || "/"} className="mt-4 block truncate rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-200 hover:bg-cyan-300/20">Send me an anonymous Whisper</Link>
+
+          <div className="mt-4 flex items-center gap-3 border-t border-white/10 pt-3">
+            <button type="button" onClick={() => toggleLike(post.id)} className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ${liked ? "bg-rose-500/15 text-rose-300" : "text-gray-400 hover:bg-white/10 hover:text-rose-300"}`}><Heart size={16} fill={liked ? "currentColor" : "none"} />{postLikes.length}</button>
+            <button type="button" onClick={() => setReplyOpen((m) => ({ ...m, [post.id]: !m[post.id] }))} className="text-sm rounded-full px-3 py-1.5 text-gray-400 hover:bg-white/10">Reply</button>
+            <span className="text-xs text-gray-500">{depth > 0 ? "Reply" : "Thread"}</span>
+          </div>
+
+          {replyOpen[post.id] && (
+            <div className="mt-3">
+              <textarea value={replyTextMap[post.id] || ""} onChange={(e) => setReplyTextMap((m) => ({ ...m, [post.id]: e.target.value }))} placeholder="Write a reply (costs 2 coins)" className="w-full min-h-[80px] rounded-xl bg-white/5 p-3 text-white placeholder-gray-400" />
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => sendReply(post.id)} disabled={replySendingMap[post.id]} className="rounded-2xl bg-gradient-to-r from-cyan-400 via-purple-300 to-purple-600 px-4 py-2 font-black text-black">{replySendingMap[post.id] ? "Sending..." : "Reply (2 coins)"}</button>
+                <button onClick={() => setReplyOpen((m) => ({ ...m, [post.id]: false }))} className="rounded-2xl bg-white/5 px-4 py-2 font-bold text-white">Cancel</button>
+              </div>
+            </div>
+          )}
+        </GlassPanel>
+
+        {post.children.length > 0 && (
+          <div className="mt-3 space-y-3">
+            {post.children.map((child) => renderPost(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-screen theme-bg-gradient px-4 pb-28 pt-10 text-white"><div className="mx-auto max-w-xl"><BackButton /><div className="mb-7 mt-5"><h1 className="text-4xl font-black">Public Feed</h1><p className="mt-1 text-sm text-gray-400">Real thoughts from the Whisper community.</p></div>
-      <GlassPanel strong className="mb-7 rounded-3xl p-5"><form onSubmit={createPost}><textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={500} rows={3} placeholder="Share a thought with the Whisper community..." className="w-full resize-none bg-transparent text-sm text-white outline-none placeholder:text-gray-500" /><div className="mt-3 flex gap-2"><button type="button" onClick={() => setBody(SUGGESTED_POST)} className="glass-control min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs text-cyan-100 transition"><span className="font-bold text-cyan-300">Suggestion:</span> {SUGGESTED_POST}</button><button type="button" onClick={() => setShowAiSuggestions((visible) => !visible)} className="glass-control flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold text-fuchsia-200 transition" aria-expanded={showAiSuggestions}><Sparkles size={14} /> AI Write</button></div>{showAiSuggestions && <div className="glass-control mt-3 grid gap-2 rounded-2xl p-2">{AI_SUGGESTIONS.map((suggestion) => <button key={suggestion} type="button" onClick={() => { setBody(suggestion); setShowAiSuggestions(false); }} className="glass-control rounded-xl px-3 py-2 text-left text-xs leading-5 text-gray-200 transition hover:text-white">{suggestion}</button>)}</div>}<div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3"><div className="min-w-0 text-xs text-gray-400"><span className="block">Your Whisper link will be attached automatically.</span>{ownLink && <Link href={ownLink} className="truncate text-cyan-300">whisper.app{ownLink}</Link>}</div><button type="submit" disabled={!cleanBody || posting || !ownLink} className="glass-control flex shrink-0 items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-2.5 text-sm font-black text-black disabled:opacity-50"><Send size={15} />{posting ? "Posting" : "Post"}</button></div></form></GlassPanel>
-      <div className="space-y-4">{posts.length === 0 ? <GlassPanel className="rounded-3xl p-10 text-center text-gray-400">No posts yet. Start the conversation.</GlassPanel> : posts.map((post) => { const postLikes = likesByPost[post.id] || []; const liked = postLikes.some((like) => like.user_id === myId); return <GlassPanel key={post.id} className="rounded-3xl p-5"><div className="flex items-center gap-3"><img src={generatedAvatarUrl(post.author_id)} alt="" className="h-11 w-11 rounded-full border border-white/15 bg-white/10 object-cover p-0.5" /><div className="min-w-0 flex-1"><p className="truncate font-bold">{anonymousDisplayName(post.author_id)}</p><p className="text-xs text-gray-500">{timeAgo(post.created_at)} · expires in 30 days</p></div>{post.author_id === myId && <button type="button" onClick={() => deletePost(post.id)} className="rounded-full p-2 text-gray-500 hover:bg-rose-500/10 hover:text-rose-400" aria-label="Delete post"><Trash2 size={16} /></button>}</div><p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-gray-200">{post.body}</p><Link href={post.whisper_link} className="mt-4 block truncate rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-200 hover:bg-cyan-300/20">Send me an anonymous Whisper</Link><div className="mt-4 flex items-center gap-3 border-t border-white/10 pt-3"><button type="button" onClick={() => toggleLike(post.id)} className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ${liked ? "bg-rose-500/15 text-rose-300" : "text-gray-400 hover:bg-white/10 hover:text-rose-300"}`}><Heart size={16} fill={liked ? "currentColor" : "none"} />{postLikes.length}</button><span className="text-xs text-gray-500">Likes update live</span></div></GlassPanel>; })}</div>
+      <GlassPanel strong className="mb-7 rounded-3xl p-5"><form onSubmit={createPost}><textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={500} rows={3} placeholder="Share a thought with the Whisper community..." className="w-full resize-none bg-transparent text-sm text-white outline-none placeholder:text-gray-500" /><div className="mt-3 flex gap-2"><button type="button" onClick={() => setBody(SUGGESTED_POST)} className="glass-control min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs text-cyan-100 transition"><span className="font-bold text-cyan-300">Suggestion:</span> {SUGGESTED_POST}</button><button type="button" onClick={() => setShowAiSuggestions((visible) => !visible)} className="glass-control flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold text-fuchsia-200 transition" aria-expanded={showAiSuggestions}><Sparkles size={14} /> AI Write</button></div>{showAiSuggestions && <div className="glass-control mt-3 grid gap-2 rounded-2xl p-2">{AI_SUGGESTIONS.map((suggestion) => <button key={suggestion} type="button" onClick={() => { setBody(suggestion); setShowAiSuggestions(false); }} className="glass-control rounded-xl px-3 py-2 text-left text-xs leading-5 text-gray-200 transition hover:text-white">{suggestion}</button>)}</div>}<div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3"><div className="min-w-0 text-xs text-gray-400"><span className="block">Your Whisper link will be attached automatically.</span>{ownLink && <Link href={ownLink} className="truncate text-cyan-300">whisper.app{ownLink}</Link>}</div><button type="submit" disabled={!cleanBody || posting || !ownLink} className="glass-control flex shrink-0 items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50"><Send size={15} />{posting ? "Posting" : "Post"}</button></div></form></GlassPanel>
+
+      <div className="space-y-4">
+        {posts.length === 0 ? (
+          <GlassPanel className="rounded-3xl p-10 text-center text-gray-400">No posts yet. Start the conversation.</GlassPanel>
+        ) : (
+          postTree.map((post) => renderPost(post))
+        )}
+      </div>
     </div><BottomNavigation /></main>
   );
 }

@@ -214,22 +214,26 @@ export default function PremiumPage() {
       <div className="relative mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
         <BackButton />
 
-        <motion.section initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="mt-6 max-w-full overflow-hidden rounded-[2rem] border border-white/15 bg-white/[0.08] p-6 shadow-2xl shadow-purple-600/10 backdrop-blur-2xl">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.25em] text-purple-300"><Sparkles size={14} /> Premium Wallet</p>
-              <h1 className="flex items-center gap-3 text-5xl font-black tracking-tight">
+        <motion.section initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
+          <GlassPanel className="max-w-full overflow-hidden rounded-[2rem] p-6 shadow-2xl shadow-purple-600/10">
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.25em] text-purple-300"><Sparkles size={14} /> Premium Wallet</p>
+                <h1 className="flex items-center gap-3 text-5xl font-black tracking-tight">
   <WhisperCoinIcon size={44} />
   Whisper Coins
 </h1>
-              <p className="mt-3 max-w-xl text-sm text-gray-300">Buy coins for whisper hints, image sends, and one-time inbox chat access from one premium wallet.</p>
+                <p className="mt-3 max-w-xl text-sm text-gray-300">Buy coins for whisper hints, image sends, and one-time inbox chat access from one premium wallet.</p>
+              </div>
+              <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity }}>
+                <GlassPanel strong className="rounded-[2rem] p-6 text-center">
+                  <Coins className="mx-auto mb-3 h-14 w-14 text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,.65)]" />
+                  <div className="text-5xl font-black"><AnimatedBalance value={balance} /></div>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-yellow-100/80">Current balance</p>
+                </GlassPanel>
+              </motion.div>
             </div>
-            <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity }} className="rounded-[2rem] border border-yellow-200/30 bg-gradient-to-br from-yellow-200/25 via-pink-400/15 to-purple-500/20 p-6 text-center shadow-2xl shadow-yellow-300/10">
-              <Coins className="mx-auto mb-3 h-14 w-14 text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,.65)]" />
-              <div className="text-5xl font-black"><AnimatedBalance value={balance} /></div>
-              <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-yellow-100/80">Current balance</p>
-            </motion.div>
-          </div>
+          </GlassPanel>
         </motion.section>
 
         <section className="mt-8">
@@ -240,26 +244,28 @@ export default function PremiumPage() {
               <motion.div
                 key={pkg.coins}
                 whileHover={{ y: -6, scale: 1.01 }}
-                className="relative min-w-0 overflow-hidden rounded-3xl border border-white/15 bg-white/[0.07] p-6 text-center shadow-xl backdrop-blur-xl"
+                className="relative min-w-0"
               >
-                {pkg.popular && (
-                  <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-400 to-purple-400 px-3 py-1 text-[10px] font-black text-black">
-                    MOST POPULAR
-                  </span>
-                )}
-                <Coins className="mx-auto mb-4 h-10 w-10 text-yellow-200" />
-                <p className="text-3xl font-black">{pkg.coins.toLocaleString()}</p>
-                <p className="text-sm text-gray-300">Whisper Coins</p>
-                <p className="mt-3 text-lg font-black text-cyan-400">
-                  {ratesLoading ? <Loader2 size={16} className="mx-auto animate-spin" /> : localPriceFor(pkg)}
-                </p>
-                <button
-                  onClick={(event) => buyCoins(pkg, event.timeStamp)}
-                  disabled={busy === `buy-${pkg.coins}` || ratesLoading}
-                  className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-400 via-purple-300 to-purple-600 px-4 py-3 text-base font-black text-black shadow-lg shadow-cyan-500/20 transition active:scale-95 disabled:opacity-60"
-                >
-                  {busy === `buy-${pkg.coins}` ? "Processing..." : "Buy"}
-                </button>
+                <GlassPanel className="overflow-hidden rounded-3xl p-6 text-center">
+                  {pkg.popular && (
+                    <span className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-cyan-400 to-purple-400 px-3 py-1 text-[10px] font-black text-black">
+                      MOST POPULAR
+                    </span>
+                  )}
+                  <Coins className="mx-auto mb-4 h-10 w-10 text-yellow-200" />
+                  <p className="text-3xl font-black">{pkg.coins.toLocaleString()}</p>
+                  <p className="text-sm text-gray-300">Whisper Coins</p>
+                  <p className="mt-3 text-lg font-black text-cyan-400">
+                    {ratesLoading ? <Loader2 size={16} className="mx-auto animate-spin" /> : localPriceFor(pkg)}
+                  </p>
+                  <button
+                    onClick={(event) => buyCoins(pkg, event.timeStamp)}
+                    disabled={busy === `buy-${pkg.coins}` || ratesLoading}
+                    className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-400 via-purple-300 to-purple-600 px-4 py-3 text-base font-black text-black shadow-lg shadow-cyan-500/20 transition active:scale-95 disabled:opacity-60"
+                  >
+                    {busy === `buy-${pkg.coins}` ? "Processing..." : "Buy"}
+                  </button>
+                </GlassPanel>
               </motion.div>
             ))}
           </div>

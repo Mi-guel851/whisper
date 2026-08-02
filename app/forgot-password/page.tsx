@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
-      <GlassPanel strong className="relative z-10 w-full max-w-md rounded-3xl p-8 mx-4">
+      <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] mx-4">
         <Link
           href="/login"
           className="mb-6 flex items-center gap-1 text-sm font-semibold text-gray-400 hover:text-white"
@@ -80,7 +80,7 @@ export default function ForgotPasswordPage() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username"
             required
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
+            className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
           />
 
           <input
@@ -88,7 +88,7 @@ export default function ForgotPasswordPage() {
             onChange={(e) => setPhrase(e.target.value)}
             placeholder="Recovery phrase"
             required
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
+            className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
           />
 
           <div className="relative">
@@ -98,7 +98,7 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="New password"
               required
-              className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 pr-12 outline-none focus:border-purple-500"
+              className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 pr-12 outline-none focus:border-purple-500"
             />
             <button
               type="button"
@@ -116,7 +116,7 @@ export default function ForgotPasswordPage() {
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm new password"
             required
-            className="w-full rounded-2xl border border-white/10 bg-black/30 p-4 outline-none focus:border-purple-500"
+            className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
           />
 
           <button
