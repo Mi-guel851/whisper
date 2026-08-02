@@ -212,7 +212,7 @@ export default function CompleteProfilePage() {
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
       {step === "form" ? (
-        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-[32px]">
           <h1 className="text-center text-3xl font-black">One last step</h1>
           <p className="mt-2 mb-8 text-center text-gray-300">
             Pick a username, set a password, and tell us where you&apos;re based so we can
@@ -235,12 +235,12 @@ export default function CompleteProfilePage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create a password"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 pr-12 outline-none focus:border-purple-500"
+                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-12 outline-none focus:border-purple-500 min-h-[56px]"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-gray-400 hover:text-white"
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -254,12 +254,12 @@ export default function CompleteProfilePage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm password"
                 required
-                className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 pr-12 outline-none focus:border-purple-500"
+                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-12 outline-none focus:border-purple-500 min-h-[56px]"
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword((v) => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-gray-400 hover:text-white"
                 tabIndex={-1}
               >
                 {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -280,7 +280,7 @@ export default function CompleteProfilePage() {
           </form>
         </GlassPanel>
       ) : (
-        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-[32px]">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-purple-500/15">
             <ShieldCheck size={26} className="text-purple-300" />
           </div>

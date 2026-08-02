@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
-      <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] mx-4">
+      <GlassPanel className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-[32px] mx-4">
         <Link
           href="/login"
           className="mb-6 flex items-center gap-1 text-sm font-semibold text-gray-400 hover:text-white"
@@ -98,12 +98,12 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="New password"
               required
-              className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 pr-12 outline-none focus:border-purple-500"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-12 outline-none focus:border-purple-500 min-h-[56px]"
             />
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-gray-400 hover:text-white"
               tabIndex={-1}
             >
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}

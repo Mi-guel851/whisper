@@ -70,7 +70,7 @@ export default function LinkCard() {
   }
 
   return (
-    <GlassPanel className="rounded-3xl p-6">
+    <GlassPanel className="rounded-3xl p-6 bg-white/10 backdrop-blur-[32px]">
       <SectionLoadingBar loading={loading} />
 
       <div>
@@ -79,7 +79,7 @@ export default function LinkCard() {
           <span>Your Whisper Link</span>
         </div>
 
-        <h2 className="mt-2 min-h-[4.5rem] text-2xl font-black leading-snug text-white sm:min-h-[2.25rem]">Share it.</h2>
+        <h2 className="mt-2 min-h-[4.5rem] text-2xl font-black leading-snug text-white sm:min-h-[2.25rem]">Share it Wait For Honest Replies.</h2>
 
         <div className="mt-5 flex items-center gap-2 rounded-2xl bg-black/30 px-4 py-3">
           <Link2 size={16} className="shrink-0 text-gray-300" />

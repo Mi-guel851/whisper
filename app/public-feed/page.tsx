@@ -94,11 +94,33 @@ export default function PublicFeedPage() {
       if (!session) { setLoading(false); return; }
       const uid = session.user.id;
       setMyId(uid);
-      const [{ data: profile }, { data: postRows, error }] = await Promise.all([
-        supabase.from("profiles").select("username").eq("id", uid).single(),
-        supabase.from("public_feed_posts").select("id,author_id,body,whisper_link,created_at,expires_at,parent_post_id").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }),
-      ]);
-      if (error) console.error("Public feed fetch error:", error);
+      const { data: profile } = await supabase.from("profiles").select("username").eq("id", uid).single();
+
+      // Try fetching posts including parent_post_id. If the column doesn't exist yet, fall back to a selector without it.
+      let postRows: any[] | null = null;
+      try {
+        const { data: rows, error: fetchError } = await supabase
+          .from("public_feed_posts")
+          .select("id,author_id,body,whisper_link,created_at,expires_at,parent_post_id")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false });
+        if (fetchError) {
+          // likely missing column; try without parent_post_id
+          console.warn("Public feed fetch parent column error, falling back:", fetchError);
+          const { data: fallbackRows, error: fallbackError } = await supabase
+            .from("public_feed_posts")
+            .select("id,author_id,body,whisper_link,created_at,expires_at")
+            .gt("expires_at", new Date().toISOString())
+            .order("created_at", { ascending: false });
+          if (fallbackError) console.error("Public feed fetch fallback error:", fallbackError);
+          postRows = fallbackRows || [];
+        } else {
+          postRows = rows || [];
+        }
+      } catch (e) {
+        console.error("Public feed fetch unexpected error:", e);
+        postRows = [];
+      }
       if (cancelled) return;
       setUsername(profile?.username || "");
       setPosts((postRows || []) as FeedPost[]);

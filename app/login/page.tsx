@@ -143,7 +143,7 @@ export default function LoginPage() {
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
       <div className="absolute top-1/2 left-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-500/10 blur-[120px]" />
 
-      <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] mx-4">
+      <GlassPanel className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-[32px] mx-4">
 
         <h1 className="text-center text-4xl font-black">Welcome Back</h1>
         <p className="mt-2 mb-8 text-center text-gray-300">Login to your Whisper account</p>
@@ -158,24 +158,25 @@ export default function LoginPage() {
             required
           />
 
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Password"
-              className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 pr-12 outline-none focus:border-cyan-400 text-white placeholder:text-gray-500"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-            </button>
-          </div>
+          <div className="relative flex items-center">
+  <input
+    type={showPassword ? "text" : "password"}
+    placeholder="Password"
+    className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-14 outline-none focus:border-cyan-400 text-white placeholder:text-gray-500 min-h-[56px]"
+    value={password}
+    onChange={(e) => setPassword(e.target.value)}
+    required
+  />
+  <button
+    type="button"
+    onClick={() => setShowPassword((v) => !v)}
+    className="absolute right-4 text-gray-400 hover:text-white z-10"
+    tabIndex={-1}
+    aria-label="Toggle password visibility"
+  >
+    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+  </button>
+</div>
 
           <div className="text-right -mt-2">
             <Link
