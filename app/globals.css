@@ -832,16 +832,23 @@ button:not([class*="rounded-full"]):focus-visible {
   min-height: 100dvh;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
   padding: 1.5rem 1rem;
   background: #050208 !important;
   color: #f4f2ff;
+  /* Shared so the base rules and the light-theme overrides below can't drift. */
+  --auth-submit-bg: linear-gradient(100deg, #6d4bff 0%, #8b5cf6 46%, #d946ef 100%);
+  --auth-submit-shadow: 0 14px 34px rgba(109, 75, 255, 0.42), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  --auth-submit-shadow-hover: 0 18px 44px rgba(139, 92, 246, 0.55), 0 0 26px rgba(217, 70, 239, 0.32),
+    inset 0 1px 1px rgba(255, 255, 255, 0.34);
 }
 
+/* The aurora clips its own blobs, so .auth-shell can stay overflow-visible and
+   let absolutely-positioned popovers (the country picker) escape the card. */
 .auth-aurora {
   position: absolute;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -940,7 +947,8 @@ button:not([class*="rounded-full"]):focus-visible {
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   padding: 2.25rem 2rem;
-  overflow: hidden;
+  /* No overflow:hidden — backgrounds already clip to border-radius, and hiding
+     overflow here would cut off the country picker's dropdown. */
 }
 
 /* Specular highlight along the top inner edge. */
@@ -1088,11 +1096,9 @@ button:not([class*="rounded-full"]):focus-visible {
   font-size: 1rem;
   font-weight: 800;
   color: #ffffff !important;
-  background: linear-gradient(100deg, #6d4bff 0%, #8b5cf6 46%, #d946ef 100%) !important;
-  background-image: linear-gradient(100deg, #6d4bff 0%, #8b5cf6 46%, #d946ef 100%) !important;
-  box-shadow:
-    0 14px 34px rgba(109, 75, 255, 0.42),
-    inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  background: var(--auth-submit-bg) !important;
+  background-image: var(--auth-submit-bg) !important;
+  box-shadow: var(--auth-submit-shadow) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   transition: transform 200ms ease, box-shadow 200ms ease, opacity 200ms ease;
@@ -1100,10 +1106,7 @@ button:not([class*="rounded-full"]):focus-visible {
 
 .auth-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow:
-    0 18px 44px rgba(139, 92, 246, 0.55),
-    0 0 26px rgba(217, 70, 239, 0.32),
-    inset 0 1px 1px rgba(255, 255, 255, 0.34) !important;
+  box-shadow: var(--auth-submit-shadow-hover) !important;
 }
 
 .auth-submit:active:not(:disabled) {
@@ -1341,6 +1344,51 @@ button:not([class*="rounded-full"]):focus-visible {
 
 :root[data-theme="light"] .auth-phone button svg {
   color: rgba(190, 183, 214, 0.8) !important;
+}
+
+/* `:root[data-theme="light"] button` scores (0,2,1) and would otherwise repaint
+   every control in the card as an indigo pill. These selectors outrank it. */
+:root[data-theme="light"] .auth-shell button.auth-submit {
+  color: #ffffff !important;
+  background: var(--auth-submit-bg) !important;
+  background-image: var(--auth-submit-bg) !important;
+  box-shadow: var(--auth-submit-shadow) !important;
+}
+
+:root[data-theme="light"] .auth-shell button.auth-submit:hover:not(:disabled) {
+  background: var(--auth-submit-bg) !important;
+  background-image: var(--auth-submit-bg) !important;
+  box-shadow: var(--auth-submit-shadow-hover) !important;
+}
+
+:root[data-theme="light"] .auth-shell button.auth-google {
+  color: #16121f !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35) !important;
+}
+
+:root[data-theme="light"] .auth-shell button.auth-google:hover:not(:disabled) {
+  background: #f6f4ff !important;
+  background-image: none !important;
+}
+
+:root[data-theme="light"] .auth-shell button.auth-reveal,
+:root[data-theme="light"] .auth-shell button.auth-reveal:hover:not(:disabled) {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="light"] .auth-shell button.auth-reveal svg {
+  color: rgba(196, 188, 224, 0.85) !important;
+}
+
+/* The Google mark keeps its brand colours against the light-theme svg rule. */
+:root[data-theme="light"] .auth-shell button.auth-google svg path {
+  color: initial !important;
 }
 
 @media (max-width: 480px) {

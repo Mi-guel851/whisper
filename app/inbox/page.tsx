@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import FriendsHeader from "@/components/FriendsHeader";
+import MessageTicks from "@/components/MessageTicks";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { presenceManager } from "@/lib/realtime/presence";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { typingManager } from "@/lib/realtime/typing";
+import { Search, X } from "lucide-react";
 
 type ConversationRow = {
   id: string;
@@ -22,8 +24,33 @@ type ConversationRow = {
   last_message_sender_id: string | null;
 };
 
+type MessagePreview = {
+  conversation_id: string;
+  content: string | null;
+  sender_id: string;
+  is_view_once: boolean;
+  created_at: string;
+  delivered_at: string | null;
+  read_at: string | null;
+};
+
 function uniqueChannelName(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** WhatsApp's chat-list stamp: time today, "Yesterday", a weekday, then a date. */
+function chatListTime(value: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDiff = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+
+  if (dayDiff === 0) return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (dayDiff === 1) return "Yesterday";
+  if (dayDiff < 7) return date.toLocaleDateString(undefined, { weekday: "short" });
+  return date.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
 export default function InboxPage() {
@@ -32,6 +59,9 @@ export default function InboxPage() {
   const [friendIds, setFriendIds] = useState<string[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [typingConversationIds, setTypingConversationIds] = useState<string[]>([]);
+  const [previews, setPreviews] = useState<Record<string, MessagePreview>>({});
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [query, setQuery] = useState("");
   const [myId, setMyId] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -66,6 +96,50 @@ export default function InboxPage() {
 
       if (friendsError) console.error("Inbox friends fetch error:", friendsError);
       if (!cancelled) setFriendIds((friendRows || []).map((row) => row.friend_id));
+
+      // Last-message previews + unread counts, the two things a WhatsApp row shows.
+      async function loadPreviews(rows: ConversationRow[]) {
+        const ids = rows.map((row) => row.id);
+        if (!ids.length) {
+          setPreviews({});
+          setUnreadCounts({});
+          return;
+        }
+
+        // One windowed query instead of one per conversation. Newest first, so the
+        // first row seen for a conversation is its latest message.
+        const { data: recent, error: recentError } = await supabase
+          .from("direct_messages")
+          .select("conversation_id, content, sender_id, is_view_once, created_at, delivered_at, read_at")
+          .in("conversation_id", ids)
+          .order("created_at", { ascending: false })
+          .limit(600);
+
+        if (recentError) console.error("Inbox preview fetch error:", recentError);
+
+        const latest: Record<string, MessagePreview> = {};
+        for (const message of recent || []) {
+          if (!latest[message.conversation_id]) latest[message.conversation_id] = message as MessagePreview;
+        }
+
+        const { data: unread, error: unreadError } = await supabase
+          .from("direct_messages")
+          .select("conversation_id")
+          .in("conversation_id", ids)
+          .neq("sender_id", userId)
+          .is("read_at", null);
+
+        if (unreadError) console.error("Inbox unread fetch error:", unreadError);
+
+        const counts: Record<string, number> = {};
+        for (const message of unread || []) {
+          counts[message.conversation_id] = (counts[message.conversation_id] || 0) + 1;
+        }
+
+        if (cancelled) return;
+        setPreviews(latest);
+        setUnreadCounts(counts);
+      }
 
       function subscribeToTyping(rows: ConversationRow[]) {
         rows.forEach((row) => {
@@ -107,6 +181,7 @@ export default function InboxPage() {
           ]),
         ]);
         setLoading(false);
+        void loadPreviews(data || []);
       }
 
       async function refreshConversations() {
@@ -131,6 +206,7 @@ export default function InboxPage() {
               ...(fresh || []).map((row) => row.user_a === userId ? row.user_b : row.user_a),
             ]),
           ]);
+          void loadPreviews(fresh || []);
         }
       }
 
@@ -193,6 +269,25 @@ export default function InboxPage() {
     return new Date(c.last_message_at) > new Date(lastRead);
   }
 
+  function previewText(c: ConversationRow) {
+    const preview = previews[c.id];
+    if (!preview) return "Tap to open the conversation";
+    if (preview.is_view_once) return "📷 Photo";
+    return preview.content || "Message";
+  }
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return conversations;
+    return conversations.filter((c) => {
+      const other = c.user_a === myId ? c.user_b : c.user_a;
+      return (
+        anonymousDisplayName(other).toLowerCase().includes(needle) ||
+        (previews[c.id]?.content || "").toLowerCase().includes(needle)
+      );
+    });
+  }, [conversations, myId, previews, query]);
+
   function openConversation(c: ConversationRow) {
     setConversations((prev) =>
       prev.map((row) =>
@@ -205,6 +300,7 @@ export default function InboxPage() {
           : row
       )
     );
+    setUnreadCounts((prev) => ({ ...prev, [c.id]: 0 }));
     router.push(`/chat/${c.id}`);
   }
 
@@ -274,10 +370,31 @@ export default function InboxPage() {
 
   return (
     <main className="min-h-screen theme-bg-gradient text-white">
-      <div className="max-w-2xl mx-auto px-6 py-10 pb-28">
+      <div className="max-w-2xl mx-auto px-4 py-8 pb-28 sm:px-6">
         <BackButton />
-        <h1 className="text-5xl font-black mb-2 mt-4">💬 Inbox</h1>
-        <p className="text-gray-400 mb-8">Your anonymous conversations</p>
+        <h1 className="text-4xl font-black mb-1 mt-4">💬 Chats</h1>
+        <p className="text-sm text-gray-400 mb-5">Your anonymous conversations</p>
+
+        {/* Search — WhatsApp keeps it pinned above the list */}
+        <div className="mb-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2">
+          <Search size={16} className="shrink-0 text-gray-500" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search chats..."
+            className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="shrink-0 text-gray-500 hover:text-gray-300"
+              aria-label="Clear search"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
 
         <FriendsHeader
           friendIds={friendIds}
@@ -292,51 +409,77 @@ export default function InboxPage() {
               Go to Friends to find someone active and start chatting.
             </p>
           </GlassPanel>
+        ) : filtered.length === 0 ? (
+          <GlassPanel className="rounded-3xl p-8 text-center text-sm text-gray-400">
+            No chats match &ldquo;{query}&rdquo;.
+          </GlassPanel>
         ) : (
-          <div>
-            <h2 className="mb-3 px-1 text-lg font-bold text-white">Recent Chats</h2>
-            <div className="space-y-3">
-            {conversations.map((c) => {
-              const unread = isUnread(c);
-              const active = onlineUserIds.includes(otherUserId(c));
-              const typing = typingConversationIds.includes(c.id);
-              return (
-                <button key={c.id} onClick={() => openConversation(c)} className="w-full overflow-hidden rounded-3xl text-left">
-                  <GlassPanel className="relative flex items-center gap-4 rounded-3xl border-white/10 p-4 transition hover:-translate-y-0.5 hover:bg-white/[0.09]">
-                    <div className="relative h-12 w-12 shrink-0">
-                      <img
-                        src={generatedAvatarUrl(otherUserId(c))}
-                        alt=""
-                        className="h-12 w-12 rounded-full border border-white/15 bg-white/10 object-cover p-0.5 shadow-lg shadow-black/20"
-                        loading="lazy"
-                      />
-                      <span
-                        className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#100d18] ${
-                          active ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-gray-600"
-                        }`}
-                        aria-label={active ? "Active now" : "Offline"}
-                      />
-                      {unread && (
-                        <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black/40 bg-rose-500 shadow-lg shadow-rose-500/40" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className={`font-semibold ${unread ? "text-white" : "text-gray-300"}`}>
-                        {labelFor(c)}
-                      </p>
-                      <p className={`text-xs ${typing ? "font-semibold text-emerald-400" : unread ? "text-gray-300" : "text-gray-400"}`}>
-                        {typing ? "Typing..." : new Date(c.last_message_at).toLocaleString()}
-                      </p>
-                    </div>
-                    {unread && (
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500 shadow-lg shadow-rose-500/40" />
-                    )}
-                  </GlassPanel>
-                </button>
-              );
-            })}
-            </div>
-          </div>
+          <GlassPanel className="overflow-hidden rounded-3xl">
+            <ul className="divide-y divide-white/[0.06]">
+              {filtered.map((c) => {
+                const unread = isUnread(c);
+                const unreadCount = unreadCounts[c.id] || 0;
+                const active = onlineUserIds.includes(otherUserId(c));
+                const typing = typingConversationIds.includes(c.id);
+                const preview = previews[c.id];
+                const sentByMe = preview ? preview.sender_id === myId : false;
+
+                return (
+                  <li key={c.id}>
+                    <button
+                      onClick={() => openConversation(c)}
+                      className="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.05]"
+                    >
+                      <div className="relative h-12 w-12 shrink-0">
+                        <img
+                          src={generatedAvatarUrl(otherUserId(c))}
+                          alt=""
+                          className="h-12 w-12 rounded-full border border-white/15 bg-white/10 object-cover p-0.5"
+                          loading="lazy"
+                        />
+                        <span
+                          className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#100d18] ${
+                            active ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-gray-600"
+                          }`}
+                          aria-label={active ? "Active now" : "Offline"}
+                        />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <p className={`min-w-0 flex-1 truncate text-[15px] ${unread ? "font-bold text-white" : "font-semibold text-gray-200"}`}>
+                            {labelFor(c)}
+                          </p>
+                          <span className={`shrink-0 text-[11px] ${unread ? "font-bold text-emerald-400" : "text-gray-500"}`}>
+                            {chatListTime(c.last_message_at)}
+                          </span>
+                        </div>
+
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          {/* Your own last message carries its ticks, like WhatsApp. */}
+                          {!typing && sentByMe && preview && !preview.is_view_once && (
+                            <MessageTicks deliveredAt={preview.delivered_at} readAt={preview.read_at} />
+                          )}
+                          <p
+                            className={`min-w-0 flex-1 truncate text-[13px] ${
+                              typing ? "font-semibold text-emerald-400" : unread ? "text-gray-200" : "text-gray-500"
+                            }`}
+                          >
+                            {typing ? "typing..." : previewText(c)}
+                          </p>
+                          {unreadCount > 0 && (
+                            <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-black text-black">
+                              {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </GlassPanel>
         )}
       </div>
       <BottomNavigation />

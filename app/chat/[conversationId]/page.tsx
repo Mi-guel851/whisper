@@ -3,10 +3,9 @@
 import ChatDoodleBackground from "@/components/ChatDoodleBackground";
 import MessageTicks from "@/components/MessageTicks";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST } from "@/lib/coins";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
@@ -15,7 +14,10 @@ import { presenceManager } from "@/lib/realtime/presence";
 import { useToast } from "@/components/ToastProvider";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff } from "lucide-react";
+import {
+  Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
+  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera,
+} from "lucide-react";
 
 interface SecureScreenPlugin {
   enable(): Promise<void>;
@@ -51,6 +53,42 @@ type PendingPhoto = {
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const SWIPE_THRESHOLD = 80;
 
+/** WhatsApp's picker, trimmed to a single scrollable grid. */
+const EMOJI_PICKER = [
+  "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊",
+  "😍","🥰","😘","😗","😙","😚","😋","😛","😜","🤪","🤨","🧐",
+  "🤓","😎","🥳","😏","😒","😞","😔","😟","😕","🙁","😣","😖",
+  "😫","😩","🥺","😢","😭","😤","😠","😡","🤬","🤯","😳","🥵",
+  "😨","😰","😥","😓","🤗","🤔","🤭","🤫","🤥","😶","😐","😑",
+  "😬","🙄","😯","😦","😧","😮","😲","🥱","😴","🤤","😪","😵",
+  "👍","👎","👌","✌️","🤞","🤟","🤘","👊","✊","👏","🙌","🙏",
+  "💪","🔥","✨","🎉","💯","❤️","🧡","💛","💚","💙","💜","🖤",
+  "💔","💕","👻","💀","👀","🫶","🤝","💤","🌙","⭐","☀️","🌈",
+];
+
+/** Timestamp inside a bubble — WhatsApp shows local 24h-aware short time. */
+function bubbleTime(value: string) {
+  return new Date(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/** Label for the sticky date separator: Today / Yesterday / a full date. */
+function dayLabel(value: string) {
+  const date = new Date(value);
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDiff = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+  if (dayDiff < 7) return date.toLocaleDateString(undefined, { weekday: "long" });
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function sameDay(a: string, b: string) {
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
 function MessageBubble({
   msg,
   isMe,
@@ -68,6 +106,11 @@ function MessageBubble({
   onDelete,
   onPin,
   isPinned,
+  isGroupStart,
+  isGroupEnd,
+  isSearchHit,
+  isActiveHit,
+  registerRef,
 }: {
   msg: Message;
   isMe: boolean;
@@ -85,14 +128,26 @@ function MessageBubble({
   onDelete: (msg: Message) => void;
   onPin: (msg: Message) => void;
   isPinned: boolean;
+  isGroupStart: boolean;
+  isGroupEnd: boolean;
+  isSearchHit: boolean;
+  isActiveHit: boolean;
+  registerRef: (id: string, node: HTMLDivElement | null) => void;
 }) {
   const x = useMotionValue(0);
   const replyIconOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
   const isPhotoMessage = msg.is_view_once;
 
+  // WhatsApp squares off the corner only on the last bubble of a run, so a group
+  // reads as one block with a single tail.
+  const tailCorner = isGroupEnd ? (isMe ? "rounded-br-sm" : "rounded-bl-sm") : "";
+
   return (
-    <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-      <div className="relative max-w-[75%]">
+    <div
+      ref={(node) => registerRef(msg.id, node)}
+      className={`flex ${isMe ? "justify-end" : "justify-start"} ${isGroupStart ? "mt-3" : "mt-0.5"}`}
+    >
+      <div className="relative max-w-[80%]">
         <motion.div
           className="absolute left-2 top-1/2 -translate-y-1/2 text-cyan-400 pointer-events-none"
           style={{ opacity: replyIconOpacity }}
@@ -121,9 +176,9 @@ function MessageBubble({
           onTouchEnd={cancelPress}
         >
           <GlassPanel
-            className={`rounded-2xl px-4 py-3 select-none ${
-              isMe ? "rounded-br-sm" : "rounded-bl-sm"
-            } ${isPinned ? "border border-yellow-400/40" : ""}`}
+            className={`rounded-2xl px-3 py-2 select-none ${tailCorner} ${
+              isPinned ? "border border-yellow-400/40" : ""
+            } ${isActiveHit ? "ring-2 ring-cyan-300" : isSearchHit ? "ring-1 ring-cyan-400/40" : ""}`}
           >
             {isPinned && (
               <div className="mb-1 flex items-center gap-1 text-[10px] text-yellow-400">
@@ -163,9 +218,21 @@ function MessageBubble({
                 {msg.content && (
                   <p className="mt-1 text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
                 )}
+                <div className="mt-1 flex items-center justify-end gap-1 text-[10px] leading-none text-gray-400">
+                  {bubbleTime(msg.created_at)}
+                  {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+              <div className="text-sm text-gray-100">
+                {/* Floated so short messages keep the timestamp on the same line and
+                    long ones wrap around it — the WhatsApp bubble layout. */}
+                <span className="float-right ml-2 mt-1.5 flex items-center gap-1 text-[10px] leading-none text-gray-400">
+                  {bubbleTime(msg.created_at)}
+                  {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+                </span>
+                <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+              </div>
             )}
           </GlassPanel>
         </motion.div>
@@ -177,12 +244,6 @@ function MessageBubble({
                 {emoji} {count > 1 ? count : ""}
               </span>
             ))}
-          </div>
-        )}
-
-        {isMe && !isPhotoMessage && (
-          <div className="mt-1 flex justify-end">
-            <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />
           </div>
         )}
 
@@ -271,12 +332,22 @@ export default function ChatPage() {
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const [photoModalCaption, setPhotoModalCaption] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Message | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeHit, setActiveHit] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showAttachSheet, setShowAttachSheet] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [unseenCount, setUnseenCount] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messageNodes = useRef<Map<string, HTMLDivElement>>(new Map());
+  const atBottomRef = useRef(true);
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
@@ -501,19 +572,99 @@ export default function ChatPage() {
     };
   }, [conversationId, router, markMessagesRead]);
 
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+    setUnseenCount(0);
+  }, []);
+
+  // Track how close to the bottom the user is, so new messages don't yank them
+  // away from older history they're reading.
   useEffect(() => {
-    if (loading) return;
-    const timer = setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [messages, loading]);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    function handleScroll() {
+      if (!container) return;
+      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+      const near = distance < 120;
+      atBottomRef.current = near;
+      setAtBottom(near);
+      if (near) setUnseenCount(0);
+    }
+
+    handleScroll();
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [loading]);
+
+  const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
+  const previousLastId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (loading || !lastMessageId) return;
+
+    const isNew = previousLastId.current !== null && previousLastId.current !== lastMessageId;
+    const firstPaint = previousLastId.current === null;
+    previousLastId.current = lastMessageId;
+
+    // Jump on first paint; afterwards only follow along if the user was already down there.
+    if (firstPaint || atBottomRef.current) {
+      const timer = setTimeout(() => scrollToBottom(firstPaint ? "auto" : "smooth"), 50);
+      return () => clearTimeout(timer);
+    }
+
+    if (isNew) {
+      const incoming = messages[messages.length - 1];
+      if (incoming.sender_id !== myId) setUnseenCount((count) => count + 1);
+    }
+  }, [lastMessageId, loading, messages, myId, scrollToBottom]);
+
+  const registerMessageRef = useCallback((id: string, node: HTMLDivElement | null) => {
+    if (node) messageNodes.current.set(id, node);
+    else messageNodes.current.delete(id);
+  }, []);
+
+  // Newest-first, the order WhatsApp steps through search results.
+  const searchHits = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return [] as string[];
+    return messages
+      .filter((message) => (message.content || "").toLowerCase().includes(query))
+      .map((message) => message.id)
+      .reverse();
+  }, [messages, searchQuery]);
+
+  useEffect(() => { setActiveHit(0); }, [searchQuery]);
+
+  useEffect(() => {
+    const target = searchHits[activeHit];
+    if (!target) return;
+    messageNodes.current.get(target)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeHit, searchHits]);
+
+  function stepSearch(direction: 1 | -1) {
+    if (!searchHits.length) return;
+    setActiveHit((current) => (current + direction + searchHits.length) % searchHits.length);
+  }
+
+  function closeSearch() {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setActiveHit(0);
+  }
+
+  function insertEmoji(emoji: string) {
+    setInput((current) => current + emoji);
+    textareaRef.current?.focus();
+  }
 
   useEffect(() => {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
   }, [pendingPhoto]);
 
   async function sendMessage() {
+    setShowEmojiPicker(false);
+    setShowAttachSheet(false);
     if (pendingPhoto) { await sendPendingPhoto(); return; }
     const hasMessage = input.trim().length > 0;
     if (!chatUnlocked) {
@@ -577,6 +728,16 @@ export default function ChatPage() {
     fileInputRef.current?.click();
   }
 
+  function triggerCameraPicker() {
+    if (!chatUnlocked) {
+      showToast(isFriendConversation
+        ? "You need 40 coins to unlock this conversation."
+        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      return;
+    }
+    cameraInputRef.current?.click();
+  }
+
   function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -585,6 +746,7 @@ export default function ChatPage() {
     if (file.size > 8 * 1024 * 1024) { showToast("Image too large — max 8MB."); return; }
     if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
     setPendingPhoto({ file, previewUrl: URL.createObjectURL(file) });
+    setShowAttachSheet(false);
   }
 
   function cancelPendingPhoto() {
@@ -742,22 +904,78 @@ export default function ChatPage() {
     <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
       <div className="relative z-10 flex h-full flex-col">
 
-        {/* Header */}
-        <div className="flex-shrink-0 border-b border-white/10 p-6 pb-4">
-          <BackButton />
-          <div className="mt-4 flex items-center gap-3">
-            <img
-              src={generatedAvatarUrl(otherUserId || "ghost")}
-              alt=""
-              className="h-10 w-10 rounded-full border border-white/20 bg-white/10 object-cover p-0.5 shadow-lg shadow-cyan-500/20"
-            />
-            <div>
-              <p className="font-bold text-white">{otherLabel}</p>
-              <p className={`text-xs ${otherTyping || otherUserOnline ? "text-emerald-400" : "text-gray-400"}`}>
-                {otherTyping ? "Typing..." : otherUserOnline ? "Active now" : "Offline"}
-              </p>
+        {/* Header — single compact row, WhatsApp style */}
+        <div className="flex-shrink-0 border-b border-white/10 bg-black/20 px-2 py-2 backdrop-blur-xl">
+          {searchOpen ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={closeSearch}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10"
+                aria-label="Close search"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search messages..."
+                className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-gray-500"
+              />
+              <span className="shrink-0 px-1 text-xs text-gray-400">
+                {searchHits.length ? `${activeHit + 1}/${searchHits.length}` : searchQuery.trim() ? "0/0" : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => stepSearch(1)}
+                disabled={!searchHits.length}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 disabled:opacity-40"
+                aria-label="Older match"
+              >
+                <ChevronUp size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => stepSearch(-1)}
+                disabled={!searchHits.length}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 disabled:opacity-40"
+                aria-label="Newer match"
+              >
+                <ChevronDown size={18} />
+              </button>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10"
+                aria-label="Back"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <img
+                src={generatedAvatarUrl(otherUserId || "ghost")}
+                alt=""
+                className="h-9 w-9 shrink-0 rounded-full border border-white/20 bg-white/10 object-cover p-0.5"
+              />
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="truncate text-[15px] font-bold text-white">{otherLabel}</p>
+                <p className={`truncate text-[11px] ${otherTyping || otherUserOnline ? "text-emerald-400" : "text-gray-400"}`}>
+                  {otherTyping ? "typing..." : otherUserOnline ? "online" : "offline"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10"
+                aria-label="Search messages"
+              >
+                <Search size={19} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Pinned messages bar */}
@@ -774,8 +992,8 @@ export default function ChatPage() {
         )}
 
         {/* Messages */}
-        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto">
-          <div className="relative min-h-full px-6 py-6 space-y-4">
+        <div ref={messagesContainerRef} className="relative flex-1 overflow-y-auto">
+          <div className="relative min-h-full px-3 py-4 md:px-6">
             <ChatDoodleBackground />
 
             {!chatUnlocked && (
@@ -802,30 +1020,59 @@ export default function ChatPage() {
             {messages.length === 0 ? (
               <p className="mt-10 text-center text-gray-500">Say hi 👻 — they won&apos;t know who you are.</p>
             ) : (
-              messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  msg={msg}
-                  isMe={msg.sender_id === myId}
-                  repliedMsg={getRepliedMessage(msg.reply_to_id)}
-                  msgReactions={getReactionsFor(msg.id)}
-                  actionMenuFor={actionMenuFor}
-                  setActionMenuFor={setActionMenuFor}
-                  toggleReaction={toggleReaction}
-                  setReplyingTo={setReplyingTo}
-                  startPress={startPress}
-                  cancelPress={cancelPress}
-                  onSwipeReply={setReplyingTo}
-                  onViewPhoto={handleViewPhoto}
-                  viewingPhotoId={viewingPhotoId}
-                  onDelete={(msg) => setDeleteConfirm(msg)}
-                  onPin={togglePin}
-                  isPinned={pinnedMessageIds.has(msg.id)}
-                />
-              ))
+              messages.map((msg, index) => {
+                const previous = index > 0 ? messages[index - 1] : null;
+                const next = index < messages.length - 1 ? messages[index + 1] : null;
+                const startsDay = !previous || !sameDay(previous.created_at, msg.created_at);
+
+                // A run is the same sender, same day, within five minutes — WhatsApp's
+                // rule for collapsing consecutive messages into one visual block.
+                const withinRun = (a: Message, b: Message) =>
+                  a.sender_id === b.sender_id &&
+                  sameDay(a.created_at, b.created_at) &&
+                  Math.abs(new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) < 5 * 60_000;
+
+                const isGroupStart = startsDay || !previous || !withinRun(previous, msg);
+                const isGroupEnd = !next || !withinRun(msg, next);
+
+                return (
+                  <div key={msg.id}>
+                    {startsDay && (
+                      <div className="sticky top-2 z-10 my-4 flex justify-center">
+                        <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[11px] font-semibold text-gray-300 backdrop-blur-md">
+                          {dayLabel(msg.created_at)}
+                        </span>
+                      </div>
+                    )}
+                    <MessageBubble
+                      msg={msg}
+                      isMe={msg.sender_id === myId}
+                      repliedMsg={getRepliedMessage(msg.reply_to_id)}
+                      msgReactions={getReactionsFor(msg.id)}
+                      actionMenuFor={actionMenuFor}
+                      setActionMenuFor={setActionMenuFor}
+                      toggleReaction={toggleReaction}
+                      setReplyingTo={setReplyingTo}
+                      startPress={startPress}
+                      cancelPress={cancelPress}
+                      onSwipeReply={setReplyingTo}
+                      onViewPhoto={handleViewPhoto}
+                      viewingPhotoId={viewingPhotoId}
+                      onDelete={(target) => setDeleteConfirm(target)}
+                      onPin={togglePin}
+                      isPinned={pinnedMessageIds.has(msg.id)}
+                      isGroupStart={isGroupStart}
+                      isGroupEnd={isGroupEnd}
+                      isSearchHit={searchHits.includes(msg.id)}
+                      isActiveHit={searchHits[activeHit] === msg.id}
+                      registerRef={registerMessageRef}
+                    />
+                  </div>
+                );
+              })
             )}
             {otherTyping && (
-              <div className="flex items-end gap-2">
+              <div className="mt-3 flex items-end gap-2">
                 <div className="rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.08] px-4 py-3 shadow-lg shadow-black/10">
                   <span className="flex items-center gap-1.5" aria-label={`${otherLabel} is typing`}>
                     <span className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:-0.2s]" />
@@ -839,9 +1086,28 @@ export default function ChatPage() {
           </div>
         </div>
 
+        {/* Scroll to latest */}
+        {!atBottom && (
+          <div className="pointer-events-none relative z-20">
+            <button
+              type="button"
+              onClick={() => scrollToBottom()}
+              className="pointer-events-auto absolute bottom-3 right-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/70 text-gray-200 shadow-lg backdrop-blur-md hover:bg-black/90"
+              aria-label={unseenCount ? `${unseenCount} new messages, scroll to latest` : "Scroll to latest"}
+            >
+              <ChevronDown size={20} />
+              {unseenCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-cyan-400 px-1 text-[11px] font-black text-black">
+                  {unseenCount > 99 ? "99+" : unseenCount}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Pending photo preview */}
         {pendingPhoto && (
-          <div className="flex-shrink-0 mx-6 mb-2 flex items-center gap-3 rounded-xl border border-cyan-400/30 bg-white/5 px-3 py-2">
+          <div className="flex-shrink-0 mx-3 mb-2 flex items-center gap-3 rounded-xl border border-cyan-400/30 bg-white/5 px-3 py-2 md:mx-6">
             <img src={pendingPhoto.previewUrl} alt="Selected photo" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
             <p className="flex-1 truncate text-xs text-gray-300">Ready to send — costs {SEND_IMAGE_COST} coins</p>
             <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="disabled:opacity-60">
@@ -852,33 +1118,100 @@ export default function ChatPage() {
 
         {/* Reply preview */}
         {replyingTo && (
-          <div className="flex-shrink-0 mx-6 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2">
+          <div className="flex-shrink-0 mx-3 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2 md:mx-6">
             <p className="truncate text-xs text-gray-300">Replying to: {replyingTo.content || "📷 Photo"}</p>
             <button onClick={() => setReplyingTo(null)}><X size={14} className="text-gray-400" /></button>
           </div>
         )}
 
+        {/* Emoji picker */}
+        {showEmojiPicker && (
+          <div className="flex-shrink-0 border-t border-white/10 bg-black/40 px-3 py-2 backdrop-blur-xl">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Emoji</span>
+              <button
+                type="button"
+                onClick={() => setShowEmojiPicker(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 hover:bg-white/10"
+                aria-label="Close emoji picker"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="grid max-h-40 grid-cols-9 gap-1 overflow-y-auto">
+              {EMOJI_PICKER.map((emoji, index) => (
+                <button
+                  key={`${emoji}-${index}`}
+                  type="button"
+                  onClick={() => insertEmoji(emoji)}
+                  className="flex h-9 items-center justify-center rounded-lg text-xl transition hover:bg-white/10"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Attachment sheet */}
+        {showAttachSheet && (
+          <div className="flex-shrink-0 border-t border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl">
+            <div className="flex items-start gap-6">
+              <button
+                type="button"
+                onClick={() => { setShowAttachSheet(false); triggerPhotoPicker(); }}
+                className="flex flex-col items-center gap-2 text-[11px] font-semibold text-gray-300"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500/80 to-purple-600/80 text-white">
+                  <ImagePlus size={20} />
+                </span>
+                Gallery
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowAttachSheet(false); triggerCameraPicker(); }}
+                className="flex flex-col items-center gap-2 text-[11px] font-semibold text-gray-300"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400/80 to-blue-600/80 text-white">
+                  <Camera size={20} />
+                </span>
+                Camera
+              </button>
+              <p className="ml-auto max-w-[46%] text-[11px] leading-4 text-gray-500">
+                Photos send as view-once and cost {SEND_IMAGE_COST} coins. Your identity stays hidden either way.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Input form */}
-        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-6 pt-0">
-          <div className="flex items-end gap-3 rounded-2xl border border-white/10 bg-black/30 p-2">
+        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-3 pt-2 md:px-6">
+          <div className="flex items-end gap-1.5 rounded-2xl border border-white/10 bg-black/30 p-1.5">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected} />
             <button
-              type="button" onClick={triggerPhotoPicker} disabled={uploadingPhoto}
-              title={`Send an image (${SEND_IMAGE_COST} coins)`}
-              className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-cyan-400 transition hover:bg-white/10 disabled:opacity-60"
+              type="button"
+              onClick={() => { setShowEmojiPicker((open) => !open); setShowAttachSheet(false); }}
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-white/10"
+              aria-label="Emoji"
+              aria-expanded={showEmojiPicker}
             >
-              <ImagePlus size={18} />
+              <Smile size={20} />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowAttachSheet((open) => !open); setShowEmojiPicker(false); }}
+              disabled={uploadingPhoto}
+              title={`Attach an image (${SEND_IMAGE_COST} coins)`}
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-white/10 disabled:opacity-60"
+              aria-expanded={showAttachSheet}
+            >
+              <Paperclip size={19} />
             </button>
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  // Allow default behavior (new line)
-                  // Form won't submit on Enter in a textarea
-                }
-              }}
               placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
               disabled={!chatUnlocked}
               rows={1}
