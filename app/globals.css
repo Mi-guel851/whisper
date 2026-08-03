@@ -810,3 +810,554 @@ button:not([class*="rounded-full"]):focus-visible {
   box-shadow: 0 0 10px rgba(34, 211, 238, 0.65);
 }
 
+/* ==========================================================================
+   Auth surfaces — edge-lit glass.
+   These screens keep their own dark palette in every theme so the rim light
+   stays legible; the light-theme cascade is neutralised at the bottom.
+   ========================================================================== */
+
+/* Registered so the angle can be animated. `inherits: true` lets .auth-card::before
+   read the parent's animated value and keep the bloom in sync with the rim. */
+@property --auth-edge-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
+}
+
+.auth-shell {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 1.5rem 1rem;
+  background: #050208 !important;
+  color: #f4f2ff;
+}
+
+.auth-aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.auth-aurora span {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(120px);
+}
+
+.auth-aurora .aurora-1 {
+  top: -14rem;
+  left: -12rem;
+  height: 34rem;
+  width: 34rem;
+  background: rgba(124, 58, 237, 0.5);
+}
+
+.auth-aurora .aurora-2 {
+  bottom: -18rem;
+  right: -10rem;
+  height: 38rem;
+  width: 38rem;
+  background: rgba(168, 85, 247, 0.34);
+}
+
+.auth-aurora .aurora-3 {
+  top: 42%;
+  left: 50%;
+  height: 26rem;
+  width: 26rem;
+  transform: translate(-50%, -50%);
+  background: rgba(236, 72, 153, 0.16);
+}
+
+.auth-aurora .aurora-4 {
+  top: 30%;
+  right: 4%;
+  height: 18rem;
+  width: 18rem;
+  background: rgba(99, 75, 255, 0.28);
+}
+
+/* The card: a 1px conic-gradient rim that rotates, masked to the border only. */
+.auth-card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  border-radius: 2rem;
+  padding: 1px; /* the rim's thickness */
+  /* Static fallback for engines without @property: the rim renders, it just won't spin. */
+  --auth-edge-angle: 0deg;
+  background:
+    conic-gradient(
+      from var(--auth-edge-angle) at 50% 50%,
+      rgba(255, 255, 255, 0.06) 0deg,
+      rgba(167, 139, 250, 0.95) 62deg,
+      rgba(255, 255, 255, 0.98) 88deg,
+      rgba(232, 121, 249, 0.9) 118deg,
+      rgba(255, 255, 255, 0.06) 190deg,
+      rgba(255, 255, 255, 0.06) 250deg,
+      rgba(129, 140, 248, 0.75) 300deg,
+      rgba(255, 255, 255, 0.06) 360deg
+    );
+  box-shadow:
+    0 40px 120px rgba(0, 0, 0, 0.7),
+    0 0 60px rgba(124, 58, 237, 0.22);
+  animation: authEdgeSpin 8s linear infinite;
+}
+
+@keyframes authEdgeSpin {
+  to {
+    --auth-edge-angle: 360deg;
+  }
+}
+
+/* Soft bloom cast by the rim onto the backdrop. */
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  z-index: -1;
+  border-radius: inherit;
+  background: inherit;
+  filter: blur(16px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.auth-card-inner {
+  position: relative;
+  border-radius: calc(2rem - 1px);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.16), transparent 60%),
+    linear-gradient(165deg, rgba(30, 22, 48, 0.92), rgba(10, 6, 18, 0.96));
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  padding: 2.25rem 2rem;
+  overflow: hidden;
+}
+
+/* Specular highlight along the top inner edge. */
+.auth-card-inner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  pointer-events: none;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.auth-brand span {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #efeaff;
+}
+
+.auth-title {
+  text-align: center;
+  font-size: 2.25rem;
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.auth-subtitle {
+  margin-top: 0.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: rgba(214, 208, 235, 0.75);
+}
+
+.auth-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(223, 218, 241, 0.82);
+}
+
+.auth-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.09);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.auth-input-wrap:focus-within {
+  border-color: rgba(167, 139, 250, 0.75);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.1),
+    0 0 0 3px rgba(139, 92, 246, 0.18),
+    0 0 22px rgba(167, 139, 250, 0.28);
+}
+
+.auth-input-icon {
+  display: flex;
+  flex: none;
+  padding-left: 0.95rem;
+  color: rgba(190, 182, 219, 0.7);
+}
+
+.auth-input-wrap input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.95rem 1rem;
+  font-size: 0.95rem;
+  color: #ffffff;
+  outline: none;
+}
+
+.auth-input-wrap input::placeholder {
+  color: rgba(168, 160, 196, 0.55);
+}
+
+/* Kill Chrome's yellow autofill wash without losing the typed value. */
+.auth-input-wrap input:-webkit-autofill,
+.auth-input-wrap input:-webkit-autofill:hover,
+.auth-input-wrap input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0 1000px rgba(24, 17, 40, 0.98) inset;
+  caret-color: #ffffff;
+  transition: background-color 9999s ease-out;
+}
+
+.auth-input-wrap .auth-reveal {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.5rem;
+  padding: 0.5rem;
+  border: 0 !important;
+  border-radius: 0.65rem !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: rgba(196, 188, 224, 0.85) !important;
+}
+
+.auth-input-wrap .auth-reveal:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+  transform: none;
+  color: #ffffff !important;
+}
+
+.auth-link {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #b69bff;
+  transition: color 180ms ease;
+}
+
+.auth-link:hover {
+  color: #d6c6ff;
+}
+
+.auth-submit {
+  position: relative;
+  width: 100%;
+  border: 0 !important;
+  border-radius: 1rem !important;
+  padding: 1rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #ffffff !important;
+  background: linear-gradient(100deg, #6d4bff 0%, #8b5cf6 46%, #d946ef 100%) !important;
+  background-image: linear-gradient(100deg, #6d4bff 0%, #8b5cf6 46%, #d946ef 100%) !important;
+  box-shadow:
+    0 14px 34px rgba(109, 75, 255, 0.42),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: transform 200ms ease, box-shadow 200ms ease, opacity 200ms ease;
+}
+
+.auth-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 18px 44px rgba(139, 92, 246, 0.55),
+    0 0 26px rgba(217, 70, 239, 0.32),
+    inset 0 1px 1px rgba(255, 255, 255, 0.34) !important;
+}
+
+.auth-submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+}
+
+.auth-divider span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(178, 170, 205, 0.7);
+}
+
+.auth-google {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  border-radius: 1rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  padding: 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #16121f !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.auth-google:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #f6f4ff !important;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.4),
+    0 0 22px rgba(167, 139, 250, 0.28) !important;
+}
+
+.auth-google:disabled {
+  opacity: 0.65;
+}
+
+/* The Google mark must keep its own colours against the light-theme svg rule. */
+.auth-google svg,
+.auth-google svg path {
+  color: initial !important;
+  opacity: 1 !important;
+}
+
+.auth-footnote {
+  margin-top: 1.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: rgba(190, 183, 214, 0.75);
+}
+
+.auth-badge {
+  margin: 0 auto;
+  display: flex;
+  height: 3.5rem;
+  width: 3.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  background: radial-gradient(circle at 30% 25%, rgba(167, 139, 250, 0.3), rgba(109, 75, 255, 0.12));
+  box-shadow: 0 0 26px rgba(139, 92, 246, 0.35);
+  color: #c9b6ff;
+}
+
+.auth-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(190, 183, 214, 0.8);
+  transition: color 180ms ease;
+}
+
+.auth-back:hover {
+  color: #ffffff;
+}
+
+.auth-note {
+  border-radius: 1rem;
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  background: rgba(139, 92, 246, 0.08);
+  padding: 0.9rem 1rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: rgba(214, 208, 235, 0.85);
+}
+
+.auth-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: rgba(206, 199, 230, 0.85);
+}
+
+.auth-check input[type="checkbox"] {
+  margin-top: 0.2rem;
+  height: 1rem;
+  width: 1rem;
+  flex: none;
+  accent-color: #8b5cf6;
+}
+
+/* Auth screens are deliberately dark in both themes — the rim light needs a dark
+   field to read as light. Undo the light-theme cascade inside .auth-shell only. */
+:root[data-theme="light"] .auth-shell,
+:root[data-theme="light"] .auth-shell.min-h-screen {
+  background: #050208 !important;
+  color: #f4f2ff !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-card-inner {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.16), transparent 60%),
+    linear-gradient(165deg, rgba(30, 22, 48, 0.92), rgba(10, 6, 18, 0.96)) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(40px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-title,
+:root[data-theme="light"] .auth-shell .auth-brand span {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-subtitle,
+:root[data-theme="light"] .auth-shell .auth-footnote,
+:root[data-theme="light"] .auth-shell .auth-label,
+:root[data-theme="light"] .auth-shell .auth-check,
+:root[data-theme="light"] .auth-shell .auth-note {
+  color: rgba(214, 208, 235, 0.8) !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-link,
+:root[data-theme="light"] .auth-shell .auth-badge {
+  color: #b69bff !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-input-wrap {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-input-wrap input {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-input-wrap .auth-reveal,
+:root[data-theme="light"] .auth-shell .auth-input-wrap .auth-reveal svg {
+  color: rgba(196, 188, 224, 0.85) !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-submit svg,
+:root[data-theme="light"] .auth-shell .auth-google svg {
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .auth-shell .auth-submit svg {
+  color: #ffffff !important;
+}
+
+/* Tailwind utility classes used inside the dark auth card must not be repainted
+   by the light-theme cascade above. */
+:root[data-theme="light"] .auth-shell .text-white,
+:root[data-theme="light"] .auth-shell .text-gray-100,
+:root[data-theme="light"] .auth-shell .text-gray-200 {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .auth-shell .text-gray-300,
+:root[data-theme="light"] .auth-shell .text-gray-400,
+:root[data-theme="light"] .auth-shell .text-gray-500 {
+  color: rgba(190, 183, 214, 0.75) !important;
+}
+
+:root[data-theme="light"] .auth-shell [class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+:root[data-theme="light"] .auth-shell [class*="border-white/"] {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+:root[data-theme="light"] .auth-shell svg:not([class*="text-"]) {
+  color: inherit !important;
+}
+
+/* Nested controls (the country/phone picker) keep the card's dark treatment. */
+:root[data-theme="light"] .auth-phone button {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-theme="light"] .auth-phone button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14) !important;
+  transform: none;
+}
+
+:root[data-theme="light"] .auth-phone button svg {
+  color: rgba(190, 183, 214, 0.8) !important;
+}
+
+@media (max-width: 480px) {
+  .auth-card-inner {
+    padding: 1.75rem 1.25rem;
+  }
+
+  .auth-title {
+    font-size: 1.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card {
+    animation: none;
+    /* Freeze the rim at its brightest arc so the effect survives without motion. */
+    --auth-edge-angle: 300deg;
+  }
+}
+

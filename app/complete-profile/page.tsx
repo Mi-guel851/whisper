@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
-import GlassPanel from "@/components/GlassPanel";
+import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
+import AuthField from "@/components/auth/AuthField";
 import CountryPhoneInput, { type CountryPhoneValue } from "@/components/CountryPhoneInput";
 import { COUNTRIES } from "@/lib/countries";
-import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { AtSign, Lock, ShieldCheck, Loader2 } from "lucide-react";
 
 function countryCodeFromProfile(countryName: string | null | undefined, fallbackCode: string | null | undefined) {
   if (fallbackCode) return fallbackCode;
@@ -29,8 +30,6 @@ export default function CompleteProfilePage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [countryPhone, setCountryPhone] = useState<CountryPhoneValue>({
     countryCode: "NG",
     dialCode: "+234",
@@ -199,130 +198,131 @@ export default function CompleteProfilePage() {
 
   if (checking) {
     return (
-      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
-        <p className="text-gray-400">Loading...</p>
-      </main>
+      <AuthShell>
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-white/70">
+          <Loader2 size={18} className="animate-spin" />
+          Loading...
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (step === "recovery") {
+    return (
+      <AuthShell>
+        <div className="auth-badge">
+          <ShieldCheck size={24} />
+        </div>
+
+        <h1 className="auth-title mt-4">Set a recovery phrase</h1>
+        <p className="auth-subtitle">
+          Whisper doesn&apos;t use email to reset passwords, so this phrase is the only way back
+          into your account. Store it somewhere safe.
+        </p>
+
+        <div className="mt-7 space-y-4">
+          <AuthField
+            label="Recovery phrase"
+            value={recoveryPhrase}
+            onChange={setRecoveryPhrase}
+            placeholder="e.g. purple-ghost-echoes-42"
+            required
+          />
+
+          <p className="auth-note">
+            If you lose this phrase, no one — including us — can recover your account.
+          </p>
+
+          <label className="auth-check">
+            <input
+              type="checkbox"
+              checked={confirmedSaved}
+              onChange={(e) => setConfirmedSaved(e.target.checked)}
+            />
+            I&apos;ve saved this recovery phrase somewhere secure. I understand it cannot be
+            recovered if I lose it.
+          </label>
+
+          <button
+            onClick={handleSaveRecoveryPhrase}
+            disabled={savingPhrase}
+            className="auth-submit"
+          >
+            {savingPhrase ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 size={18} className="animate-spin" />
+                Saving...
+              </span>
+            ) : (
+              "Finish Setup"
+            )}
+          </button>
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden theme-bg-gradient flex items-center justify-center text-white px-4">
+    <AuthShell>
+      <AuthBrand />
 
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
-      <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
+      <h1 className="auth-title">One last step</h1>
+      <p className="auth-subtitle">
+        Pick a username, set a password, and tell us where you&apos;re based so payments land in
+        the right currency.
+      </p>
 
-      {step === "form" ? (
-        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-[32px]">
-          <h1 className="text-center text-3xl font-black">One last step</h1>
-          <p className="mt-2 mb-8 text-center text-gray-300">
-            Pick a username, set a password, and tell us where you&apos;re based so we can
-            get your premium payments in the right currency.
-          </p>
+      <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+        <AuthField
+          label="Username"
+          icon={AtSign}
+          value={username}
+          onChange={setUsername}
+          placeholder="yourname"
+          autoComplete="username"
+          required
+        />
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username"
-              required
-              className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
-            />
+        <AuthField
+          label="Password"
+          type="password"
+          icon={Lock}
+          value={password}
+          onChange={setPassword}
+          placeholder="At least 6 characters"
+          autoComplete="new-password"
+          required
+        />
 
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a password"
-                required
-                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-12 outline-none focus:border-purple-500 min-h-[56px]"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-gray-400 hover:text-white"
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-            </div>
+        <AuthField
+          label="Confirm password"
+          type="password"
+          icon={Lock}
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          placeholder="Repeat your password"
+          autoComplete="new-password"
+          required
+        />
 
-            <div className="relative">
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm password"
-                required
-                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-12 outline-none focus:border-purple-500 min-h-[56px]"
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword((v) => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-gray-400 hover:text-white"
-                tabIndex={-1}
-              >
-                {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <CountryPhoneInput value={countryPhone} onChange={setCountryPhone} />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
-            >
-              {loading ? "Saving..." : "Continue"}
-            </button>
-          </form>
-        </GlassPanel>
-      ) : (
-        <GlassPanel strong className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-[32px]">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-purple-500/15">
-            <ShieldCheck size={26} className="text-purple-300" />
+        <div>
+          <span className="auth-label">Country &amp; phone</span>
+          <div className="auth-phone rounded-2xl border border-white/10 bg-white/5 p-4">
+            <CountryPhoneInput value={countryPhone} onChange={setCountryPhone} />
           </div>
+        </div>
 
-          <h1 className="mt-4 text-center text-3xl font-black">Set a recovery phrase</h1>
-          <p className="mt-2 mb-6 text-center text-gray-300">
-            Since Whisper doesn&apos;t use email to reset your password, this phrase is the{" "}
-            <span className="font-semibold text-white">only way</span> to get back into your
-            account if you forget your password. Store it somewhere safe — a notes app, a
-            password manager, written down. If you lose it, no one (including us) can recover
-            your account.
-          </p>
-
-          <div className="space-y-4">
-            <input
-              value={recoveryPhrase}
-              onChange={(e) => setRecoveryPhrase(e.target.value)}
-              placeholder="e.g. purple-ghost-echoes-42"
-              className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
-            />
-
-            <label className="flex items-start gap-3 text-sm text-gray-300">
-              <input
-                type="checkbox"
-                checked={confirmedSaved}
-                onChange={(e) => setConfirmedSaved(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-white/20 bg-white/10"
-              />
-              I&apos;ve saved this recovery phrase somewhere secure. I understand it cannot be
-              recovered if I lose it.
-            </label>
-
-            <button
-              onClick={handleSaveRecoveryPhrase}
-              disabled={savingPhrase}
-              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
-            >
-              {savingPhrase ? "Saving..." : "Finish Setup"}
-            </button>
-          </div>
-        </GlassPanel>
-      )}
-    </main>
+        <button type="submit" disabled={loading} className="auth-submit">
+          {loading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 size={18} className="animate-spin" />
+              Saving...
+            </span>
+          ) : (
+            "Continue"
+          )}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

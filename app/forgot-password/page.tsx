@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ToastProvider";
-import GlassPanel from "@/components/GlassPanel";
-import { ChevronLeft, KeyRound, Eye, EyeOff } from "lucide-react";
+import AuthShell from "@/components/auth/AuthShell";
+import AuthField from "@/components/auth/AuthField";
+import { ChevronLeft, KeyRound, Lock, AtSign, Loader2 } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -15,7 +16,6 @@ export default function ForgotPasswordPage() {
   const [phrase, setPhrase] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -52,82 +52,75 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden theme-bg-gradient flex items-center justify-center text-white px-4">
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
-      <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
+    <AuthShell>
+      <Link href="/login" className="auth-back mb-6">
+        <ChevronLeft size={16} />
+        Back to login
+      </Link>
 
-      <GlassPanel className="relative z-10 w-full max-w-md rounded-[2rem] border border-white/15 bg-white/10 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-[32px] mx-4">
-        <Link
-          href="/login"
-          className="mb-6 flex items-center gap-1 text-sm font-semibold text-gray-400 hover:text-white"
-        >
-          <ChevronLeft size={16} />
-          Back to login
-        </Link>
+      <div className="auth-badge">
+        <KeyRound size={24} />
+      </div>
 
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-purple-500/15">
-          <KeyRound size={26} className="text-purple-300" />
-        </div>
+      <h1 className="auth-title mt-4">Reset password</h1>
+      <p className="auth-subtitle">
+        Enter your username and the recovery phrase you set when you signed up.
+      </p>
 
-        <h1 className="mt-4 text-center text-3xl font-black">Reset your password</h1>
-        <p className="mt-2 mb-8 text-center text-gray-300">
-          Enter your username and the recovery phrase you set when you signed up.
-        </p>
+      <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+        <AuthField
+          label="Username"
+          icon={AtSign}
+          value={username}
+          onChange={setUsername}
+          placeholder="yourname"
+          autoComplete="username"
+          required
+        />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username"
-            required
-            className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
-          />
+        <AuthField
+          label="Recovery phrase"
+          icon={KeyRound}
+          type="password"
+          value={phrase}
+          onChange={setPhrase}
+          placeholder="e.g. purple-ghost-echoes-42"
+          required
+        />
 
-          <input
-            value={phrase}
-            onChange={(e) => setPhrase(e.target.value)}
-            placeholder="Recovery phrase"
-            required
-            className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
-          />
+        <AuthField
+          label="New password"
+          type="password"
+          icon={Lock}
+          value={newPassword}
+          onChange={setNewPassword}
+          placeholder="At least 6 characters"
+          autoComplete="new-password"
+          required
+        />
 
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password"
-              required
-              className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 pr-12 outline-none focus:border-purple-500 min-h-[56px]"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-gray-400 hover:text-white"
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-            </button>
-          </div>
+        <AuthField
+          label="Confirm new password"
+          type="password"
+          icon={Lock}
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          placeholder="Repeat your new password"
+          autoComplete="new-password"
+          required
+        />
 
-          <input
-            type={showPassword ? "text" : "password"}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm new password"
-            required
-            className="w-full rounded-2xl border border-white/10 bg-white/10 p-4 outline-none focus:border-purple-500"
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 p-4 font-bold text-black hover:opacity-90 disabled:opacity-60 transition"
-          >
-            {loading ? "Resetting..." : "Reset password"}
-          </button>
-        </form>
-      </GlassPanel>
-    </main>
+        <button type="submit" disabled={loading} className="auth-submit">
+          {loading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 size={18} className="animate-spin" />
+              Resetting...
+            </span>
+          ) : (
+            "Reset password"
+          )}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

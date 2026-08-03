@@ -3,9 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { useToast } from "@/components/ToastProvider";
+import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
+import AuthField from "@/components/auth/AuthField";
+import { AtSign, Loader2 } from "lucide-react";
 
 export default function SetupPage() {
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [username, setUsername] = useState("");
   const [userId, setUserId] = useState("");
@@ -52,7 +57,7 @@ export default function SetupPage() {
     setLoading(false);
 
     if (error) {
-      alert(error.message);
+      showToast(error.message);
       return;
     }
 
@@ -60,39 +65,34 @@ export default function SetupPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
-      <div className="w-full max-w-md rounded-3xl bg-white/10 backdrop-blur-xl p-8">
+    <AuthShell>
+      <AuthBrand />
 
-        <h1 className="text-4xl font-bold mb-2">
-          Choose Username
-        </h1>
+      <h1 className="auth-title">Choose Username</h1>
+      <p className="auth-subtitle">This becomes your Whisper profile link.</p>
 
-        <p className="mb-8 text-gray-300">
-          This becomes your Whisper profile link.
-        </p>
+      <form onSubmit={saveProfile} className="mt-7 space-y-4">
+        <AuthField
+          label="Username"
+          icon={AtSign}
+          value={username}
+          onChange={setUsername}
+          placeholder="yourname"
+          autoComplete="username"
+          required
+        />
 
-        <form onSubmit={saveProfile} className="space-y-5">
-
-          <input
-            type="text"
-            placeholder="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full rounded-2xl bg-black/30 p-4 outline-none"
-            required
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-2xl bg-purple-500 p-4 font-bold text-black"
-          >
-            {loading ? "Saving..." : "Continue"}
-          </button>
-
-        </form>
-
-      </div>
-    </main>
+        <button type="submit" disabled={loading} className="auth-submit">
+          {loading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 size={18} className="animate-spin" />
+              Saving...
+            </span>
+          ) : (
+            "Continue"
+          )}
+        </button>
+      </form>
+    </AuthShell>
   );
 }
