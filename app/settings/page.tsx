@@ -54,7 +54,7 @@ export default function SettingsPage() {
       <div className="relative z-10 mx-auto max-w-xl">
         <BackButton />
 
-        <h1 className="text-4xl font-black mb-8">Settings</h1>
+        <h1 className="page-title mb-8">Settings</h1>
 
         <GlassPanel strong className="rounded-3xl p-5 mb-4">
           <h2 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1 px-1">

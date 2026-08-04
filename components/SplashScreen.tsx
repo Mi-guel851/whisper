@@ -30,7 +30,7 @@ export default function SplashScreen() {
           className="animate-bounce drop-shadow-[0_0_50px_rgba(34,211,238,.9)]"
         />
 
-        <h1 className="mt-6 text-5xl font-black text-white">
+        <h1 className="display-title mt-6 text-white">
           Whisper
         </h1>
 

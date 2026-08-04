@@ -163,8 +163,8 @@ export default function ActivityLogPage() {
         <BackButton />
 
         <div className="mb-6">
-          <h1 className="text-3xl font-black">Activity Log</h1>
-          <p className="mt-2 text-sm text-gray-400">
+          <h1 className="page-title">Activity Log</h1>
+          <p className="page-subtitle mt-2">
             Recent sign-ins and the device used to access your account.
           </p>
         </div>

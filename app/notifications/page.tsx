@@ -250,7 +250,7 @@ export default function NotificationsPage() {
     <main className="min-h-screen theme-bg-gradient pb-28 text-white">
       <div className="p-6">
         <BackButton />
-        <h1 className="mt-4 text-4xl font-black">📡 Activity</h1>
+        <h1 className="page-title mt-4">📡 Activity</h1>
 
         {loading ? (
           <p className="mt-8 text-gray-400">Loading...</p>

@@ -1,19 +1,25 @@
-const CACHE_NAME = "whisper-cache-v2";
+const CACHE_NAME = "whisper-cache-v3";
 
-const STATIC_ASSETS = [
-  "/",
-  "/ghost.png",
-  "/globals.css",
-  "/favicon.ico",
-  "/index.html",
-  "/offline.html"
-];
+// Only URLs that actually resolve. `/globals.css` and `/index.html` were in
+// this list but neither exists in an App Router build — CSS is emitted under
+// /_next with a content hash, and there is no index.html. That mattered more
+// than a 404 in the log: `cache.addAll` rejects atomically, so one bad entry
+// meant *nothing* was ever precached and offline mode never worked.
+const STATIC_ASSETS = ["/", "/ghost.png", "/favicon.ico", "/offline.html"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      // Individually, so a single missing asset can't take the whole
+      // installation down with it again.
+      Promise.all(
+        STATIC_ASSETS.map((url) =>
+          cache
+            .add(url)
+            .catch((error) => console.warn("[sw] precache skipped", url, error))
+        )
+      )
+    )
   );
   self.skipWaiting();
 });

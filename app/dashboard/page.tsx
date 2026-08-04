@@ -12,6 +12,7 @@ import StatsRow from "@/components/StatsRow";
 import ActivityChart from "@/components/ActivityChart";
 import RecentMessages from "@/components/RecentMessages";
 import BottomNavigation from "@/components/BottomNavigation";
+import BrandedLoader from "@/components/BrandedLoader";
 import TermsModal from "@/components/TermsModal";
 
 export default function DashboardPage() {
@@ -66,32 +67,20 @@ export default function DashboardPage() {
   }, [router]);
 
   if (checking) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-[#05010F] text-white">
-        <p className="text-gray-400">Loading...</p>
-      </main>
-    );
+    return <BrandedLoader />;
   }
 
   return (
     <main className="relative min-h-screen overflow-hidden theme-bg-gradient pb-36">
-      <style>{`
-        @keyframes bgColorShift {
-          0%, 100% {
-            background: radial-gradient(circle at top left, var(--theme-accent-purple), transparent 34rem),
-                        radial-gradient(circle at bottom right, var(--theme-accent-pink), transparent 32rem),
-                        linear-gradient(180deg, var(--theme-bg), var(--theme-surface));
-          }
-          50% {
-            background: radial-gradient(circle at top right, var(--theme-accent-pink), transparent 34rem),
-                        radial-gradient(circle at bottom left, var(--theme-accent-purple), transparent 32rem),
-                        linear-gradient(180deg, var(--theme-surface), var(--theme-bg));
-          }
-        }
-        main.theme-bg-gradient {
-          animation: bgColorShift 15s ease-in-out infinite;
-        }
-      `}</style>
+      {/* Ambient drift.
+
+          This used to be a 15s keyframe animating the `background` shorthand on
+          <main> itself, which repaints a full-viewport gradient every frame on
+          the main thread — the single most expensive thing on the screen. It's
+          now two static gradient layers cross-fading on `opacity`, which the
+          compositor handles without touching paint, and it looks identical. */}
+      <div className="dashboard-ambient" aria-hidden />
+
       <div className="pointer-events-none absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-purple-600/10 blur-[180px]" />
       <div className="pointer-events-none absolute top-1/3 right-[-150px] h-[420px] w-[420px] rounded-full bg-purple-600/10 blur-[180px]" />
 

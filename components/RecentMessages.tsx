@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import { MessageSquareQuote, ArrowUpRight } from "lucide-react";
 import ShareMessageCard from "./ShareMessageCard";
 import SectionLoadingBar from "./SectionLoadingBar";
-import GlassPanel from "./GlassPanel";
+import EdgeLitCard from "./EdgeLitCard";
 
 function timeAgo(dateString: string) {
   const diffMs = Date.now() - new Date(dateString).getTime();
@@ -87,11 +87,11 @@ export default function RecentMessages() {
   }, []);
 
   return (
-    <GlassPanel className="rounded-3xl p-6">
+    <EdgeLitCard radius="3xl" intensity={0.38} speed={19} innerClassName="p-6">
       <SectionLoadingBar loading={loading} />
 
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">Latest whispers</h2>
+        <h2 className="section-title text-white">Latest whispers</h2>
         <Link
           href="/notifications"
           className="flex items-center gap-1 text-sm font-semibold text-cyan-400 hover:text-cyan-300"
@@ -144,6 +144,6 @@ export default function RecentMessages() {
           onClose={() => setSharing(null)}
         />
       )}
-    </GlassPanel>
+    </EdgeLitCard>
   );
 }

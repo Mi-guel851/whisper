@@ -3,15 +3,22 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Clock, MessageCircle, UserPlus, Users, X } from "lucide-react";
+import { motion } from "framer-motion";
 
 import { supabase } from "@/lib/supabase/client";
 import { presenceManager } from "@/lib/realtime/presence";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
+import Button from "@/components/Button";
+import BrandedLoader from "@/components/BrandedLoader";
 import GlassPanel from "@/components/GlassPanel";
+import PersonRow from "@/components/PersonRow";
+import SegmentedTabs from "@/components/SegmentedTabs";
+import type { SegmentedTab } from "@/components/SegmentedTabs";
 import { useToast } from "@/components/ToastProvider";
 import { anonymousDisplayName as anonymousName } from "@/lib/anonymousIdentity";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
+import { staggerContainer } from "@/lib/motion";
 
 type FriendTab = "discover" | "requests" | "friends" | "active";
 type RequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
@@ -74,14 +81,46 @@ function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
   return rows.map((row) => ({ ...row, sender: singleProfile(row.sender), receiver: singleProfile(row.receiver) }));
 }
 
-function AnonymousAvatar({ userId, online = false }: { userId?: string | null; online?: boolean }) {
+/**
+ * A list surface for `PersonRow`s, with an empty state that fills the same
+ * slot. Every tab on this screen renders one of these, so "no results" can't
+ * drift into four different-looking blank panels.
+ */
+function PersonList({
+  children,
+  empty,
+  isEmpty,
+}: {
+  children: React.ReactNode;
+  empty: React.ReactNode;
+  isEmpty: boolean;
+}) {
+  if (isEmpty) {
+    return (
+      <GlassPanel className="rounded-2xl px-6 py-10 text-center">
+        {empty}
+      </GlassPanel>
+    );
+  }
+
   return (
-    <div className="relative shrink-0">
-      <img src={generatedAvatarUrl(userId || "ghost")} alt="" className="h-12 w-12 rounded-full border border-white/15 bg-white/10 object-cover p-0.5 shadow-lg shadow-black/20" loading="lazy" />
-      {online && (
-        <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#05010F] bg-green-500 shadow-[0_0_0_2px_rgba(0,0,0,0.15)]" />
-      )}
-    </div>
+    <motion.div
+      className="person-list"
+      variants={staggerContainer(0.05)}
+      initial="hidden"
+      animate="visible"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function ActiveNowLabel() {
+  return (
+    <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: "var(--theme-success)" }}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--theme-success)" }} />
+      Active now
+    </span>
   );
 }
 
@@ -208,10 +247,13 @@ function FriendsPageContent() {
   const friendIdSet = new Set(friends.map((friend) => friend.friend_id));
   const activeNow = onlineUserIds.filter((id) => id !== myId && !friendIdSet.has(id));
 
-  const tabs: { value: FriendTab; label: string }[] = [
+  // The count lives on the tab as a badge, not baked into the label string —
+  // a label that changes width every time someone comes online re-lays out the
+  // whole control mid-animation.
+  const tabs: SegmentedTab<FriendTab>[] = [
     { value: "discover", label: "Discover" },
-    { value: "active", label: `Active${activeNow.length > 0 ? ` (${activeNow.length})` : ""}` },
-    { value: "requests", label: "Requests" },
+    { value: "active", label: "Active", badge: activeNow.length },
+    { value: "requests", label: "Requests", badge: incoming.length },
     { value: "friends", label: "Friends" },
   ];
 
@@ -311,140 +353,184 @@ function FriendsPageContent() {
     setBusyId(null);
   }
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center theme-bg-gradient text-white">Loading...</main>;
+  if (loading) return <BrandedLoader label="Finding people" />;
 
   return (
     <main className="min-h-screen theme-bg-gradient pb-28 text-white">
       <div className="mx-auto max-w-2xl px-6 py-8">
         <BackButton />
         <div className="mt-4 flex items-center gap-3">
-          <Users className="text-purple-400" size={28} />
-          <h1 className="text-3xl font-black">Discover People</h1>
+          <Users className="text-purple-400" size={24} />
+          <h1 className="page-title">Discover People</h1>
         </div>
-        <p className="mt-2 text-sm text-gray-400">Meet registered Whisper users anonymously.</p>
+        <p className="page-subtitle mt-2">Meet registered Whisper users anonymously.</p>
 
-        {/* ── Tab Bar ── */}
-        <div className="mt-6 grid grid-cols-4 gap-1 rounded-2xl bg-white/5 p-1">
-          {tabs.map((item) => (
-            <button
-              key={item.value}
-              onClick={() => setActiveTab(item.value)}
-              className={`relative rounded-xl px-2 py-2 text-xs font-bold transition ${
-                tab === item.value ? "bg-white text-[#10051f]" : "text-gray-300 hover:bg-white/10"
-              }`}
-            >
-              {item.value === "active" && activeNow.length > 0 && tab !== "active" && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[9px] font-black text-white">
-                  {activeNow.length}
-                </span>
-              )}
-              {item.label.split(" (")[0]}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs
+          className="mt-6"
+          label="Friends sections"
+          tabs={tabs}
+          value={tab}
+          onChange={setActiveTab}
+        />
 
-        {/* ── Discover Tab ── */}
+        {/* ── Discover ── */}
         {tab === "discover" && (
           <section className="mt-6 space-y-3">
-            {people.length === 0
-              ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No people to discover right now.</GlassPanel>
-              : people.map((profile) => (
-                <GlassPanel key={profile.id} className="flex items-center gap-4 rounded-2xl p-4">
-                  <AnonymousAvatar userId={profile.id} online={onlineUserIds.includes(profile.id)} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{anonymousName(profile.id)}</p>
-                    <p className="text-xs">
-                      {onlineUserIds.includes(profile.id)
-                        ? <span className="font-semibold text-green-400">● Active now</span>
-                        : <span className="text-gray-400">Anonymous Whisper user</span>}
-                    </p>
-                  </div>
-                  <button onClick={() => addFriend(profile.id)} disabled={busyId === profile.id} className="rounded-xl bg-purple-500 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60">
-                    <UserPlus size={14} className="mr-1 inline" /> Add Friend
-                  </button>
-                </GlassPanel>
-              ))}
+            <PersonList
+              isEmpty={people.length === 0}
+              empty={
+                <>
+                  <p className="card-title">No one new right now</p>
+                  <p className="mt-1 text-sm theme-text-muted">
+                    You have already reached everyone on Whisper. Check back soon.
+                  </p>
+                </>
+              }
+            >
+              {people.map((profile) => {
+                const online = onlineUserIds.includes(profile.id);
+                return (
+                  <PersonRow
+                    key={profile.id}
+                    avatarUrl={generatedAvatarUrl(profile.id)}
+                    name={anonymousName(profile.id)}
+                    online={online}
+                    subtitle={online ? <ActiveNowLabel /> : "Anonymous Whisper user"}
+                    actions={
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        loading={busyId === profile.id}
+                        onClick={() => addFriend(profile.id)}
+                        icon={<UserPlus size={15} />}
+                      >
+                        Add Friend
+                      </Button>
+                    }
+                  />
+                );
+              })}
+            </PersonList>
+
             {hasMorePeople && (
-              <button onClick={showMorePeople} disabled={discoverLoading} className="w-full rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:opacity-60">
-                {discoverLoading ? "Loading..." : "Show More People"}
-              </button>
+              <Button
+                variant="secondary"
+                fullWidth
+                loading={discoverLoading}
+                onClick={showMorePeople}
+              >
+                Show more people
+              </Button>
             )}
           </section>
         )}
 
-        {/* ── Active Tab ── */}
+        {/* ── Active ── */}
         {tab === "active" && (
           <section className="mt-6">
-            <div className="mb-4 flex items-center gap-2">
-              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-green-400" />
-              <h2 className="text-sm font-black uppercase tracking-widest text-green-400">Online Right Now</h2>
-              <span className="rounded-full bg-green-400/20 px-2 py-0.5 text-xs font-bold text-green-300">{activeNow.length}</span>
+            <div className="mb-3 flex items-center gap-2">
+              <span
+                className="h-2 w-2 animate-pulse rounded-full"
+                style={{ background: "var(--theme-success)" }}
+              />
+              <h2 className="eyebrow" style={{ color: "var(--theme-success)" }}>
+                Online right now
+              </h2>
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-bold tabular-nums"
+                style={{
+                  background: "color-mix(in srgb, var(--theme-success) 20%, transparent)",
+                  color: "var(--theme-success)",
+                }}
+              >
+                {activeNow.length}
+              </span>
             </div>
-            {activeNow.length === 0 ? (
-              <GlassPanel className="rounded-3xl p-10 text-center text-gray-400">
-                <p className="text-2xl mb-2">👻</p>
-                <p className="font-semibold">No one else is online right now.</p>
-                <p className="text-xs mt-1">Check back soon!</p>
-              </GlassPanel>
-            ) : (
-              <div className="space-y-3">
-                {activeNow.map((id) => (
-                  <GlassPanel key={id} className="flex items-center gap-4 rounded-2xl p-4">
-                    <AnonymousAvatar userId={id} online={true} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{anonymousName(id)}</p>
-                      <p className="text-xs font-semibold text-green-400">● Active now</p>
-                    </div>
-                    <button
+
+            <PersonList
+              isEmpty={activeNow.length === 0}
+              empty={
+                <>
+                  <p className="mb-2 text-2xl">👻</p>
+                  <p className="card-title">No one else is online</p>
+                  <p className="mt-1 text-sm theme-text-muted">Check back soon.</p>
+                </>
+              }
+            >
+              {activeNow.map((id) => (
+                <PersonRow
+                  key={id}
+                  avatarUrl={generatedAvatarUrl(id)}
+                  name={anonymousName(id)}
+                  online
+                  subtitle={<ActiveNowLabel />}
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={busyId === id}
                       onClick={() => addFriend(id)}
-                      disabled={busyId === id}
-                      className="rounded-xl bg-purple-500 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60"
+                      icon={<UserPlus size={15} />}
                     >
-                      <UserPlus size={14} className="mr-1 inline" /> Add Friend
-                    </button>
-                  </GlassPanel>
-                ))}
-              </div>
-            )}
+                      Add Friend
+                    </Button>
+                  }
+                />
+              ))}
+            </PersonList>
           </section>
         )}
 
-        {/* ── Requests Tab ── */}
+        {/* ── Requests ── */}
         {tab === "requests" && (
           <section className="mt-6 space-y-6">
             <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
-            <RequestList title="Sent Requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
+            <RequestList title="Sent requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
           </section>
         )}
 
-        {/* ── Friends Tab ── */}
+        {/* ── Friends ── */}
         {tab === "friends" && (
-          <section className="mt-6 space-y-3">
-            {friends.length === 0
-              ? <GlassPanel className="rounded-3xl p-8 text-center text-gray-400">No friends yet.</GlassPanel>
-              : friends.map((friend) => (
-                <FriendCard key={friend.id} friend={friend} busy={busyId === friend.friend_id} online={onlineUserIds.includes(friend.friend_id)} onChat={() => startChat(friend.friend_id)} />
+          <section className="mt-6">
+            <PersonList
+              isEmpty={friends.length === 0}
+              empty={
+                <>
+                  <p className="card-title">No friends yet</p>
+                  <p className="mt-1 text-sm theme-text-muted">
+                    Add someone from Discover to start a private chat.
+                  </p>
+                </>
+              }
+            >
+              {friends.map((friend) => (
+                <PersonRow
+                  key={friend.id}
+                  avatarUrl={generatedAvatarUrl(friend.friend_id)}
+                  name={anonymousName(friend.friend_id)}
+                  online={onlineUserIds.includes(friend.friend_id)}
+                  subtitle={
+                    onlineUserIds.includes(friend.friend_id) ? <ActiveNowLabel /> : "Friend"
+                  }
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={busyId === friend.friend_id}
+                      onClick={() => startChat(friend.friend_id)}
+                      icon={<MessageCircle size={15} />}
+                    >
+                      Message
+                    </Button>
+                  }
+                />
               ))}
+            </PersonList>
           </section>
         )}
       </div>
       <BottomNavigation />
     </main>
-  );
-}
-
-function FriendCard({ friend, onChat, busy, online }: { friend: FriendRow; onChat: () => void; busy: boolean; online: boolean }) {
-  return (
-    <GlassPanel className="flex items-center gap-4 rounded-2xl p-4">
-      <AnonymousAvatar userId={friend.friend_id} online={online} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold">{anonymousName(friend.friend_id)}</p>
-        <p className="text-xs text-gray-400">Friend</p>
-      </div>
-      <button onClick={onChat} disabled={busy} className="rounded-xl bg-white/10 p-3 transition hover:bg-white/15 disabled:opacity-60" aria-label="Open chat">
-        <MessageCircle size={18} />
-      </button>
-    </GlassPanel>
   );
 }
 
@@ -454,45 +540,74 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
 }) {
   return (
     <div>
-      <h2 className="mb-3 text-lg font-black">{title}</h2>
-      <div className="space-y-3">
-        {requests.length === 0
-          ? <GlassPanel className="rounded-3xl p-6 text-center text-sm text-gray-400">{empty}</GlassPanel>
-          : requests.map((request) => {
-            const profileId = mode === "incoming" ? request.sender_id : request.receiver_id;
-            return (
-              <GlassPanel key={request.id} className="flex items-center gap-3 rounded-2xl p-4">
-                <AnonymousAvatar userId={profileId} online={onlineUserIds.includes(profileId)} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{anonymousName(profileId)}</p>
-                  <p className="truncate text-xs text-gray-400">{mode === "incoming" ? "Wants to be friends" : "Request pending"}</p>
-                </div>
-                {mode === "incoming" ? (
-                  <div className="flex gap-2">
-                    <button onClick={() => onAccept(request.id)} disabled={busyId === request.id} className="rounded-xl bg-green-400 px-3 py-2 text-xs font-black text-[#05010F] disabled:opacity-60" aria-label="Accept">
-                      <Check size={14} className="mr-1 inline" />Accept
-                    </button>
-                    <button onClick={() => onDecline(request.id)} disabled={busyId === request.id} className="rounded-xl bg-rose-500 p-2 text-white disabled:opacity-60" aria-label="Decline">
-                      <X size={16} />
-                    </button>
-                  </div>
+      <h2 className="section-title mb-3">{title}</h2>
+      <PersonList
+        isEmpty={requests.length === 0}
+        empty={<p className="text-sm theme-text-muted">{empty}</p>}
+      >
+        {requests.map((request) => {
+          const profileId = mode === "incoming" ? request.sender_id : request.receiver_id;
+          const busy = busyId === request.id;
+          return (
+            <PersonRow
+              key={request.id}
+              avatarUrl={generatedAvatarUrl(profileId)}
+              name={anonymousName(profileId)}
+              online={onlineUserIds.includes(profileId)}
+              subtitle={mode === "incoming" ? "Wants to be friends" : "Request pending"}
+              actions={
+                mode === "incoming" ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="success"
+                      loading={busy}
+                      onClick={() => onAccept(request.id)}
+                      icon={<Check size={15} />}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => onDecline(request.id)}
+                      aria-label={`Decline request from ${anonymousName(profileId)}`}
+                    >
+                      <X size={17} />
+                    </Button>
+                  </>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-xs font-bold text-yellow-300"><Clock size={14} />Pending</span>
-                    <button onClick={() => onCancel(request.id)} disabled={busyId === request.id} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Cancel</button>
-                  </div>
-                )}
-              </GlassPanel>
-            );
-          })}
-      </div>
+                  <>
+                    <span
+                      className="flex items-center gap-1 text-xs font-semibold"
+                      style={{ color: "var(--theme-warning)" }}
+                    >
+                      <Clock size={14} />
+                      Pending
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      loading={busy}
+                      onClick={() => onCancel(request.id)}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )
+              }
+            />
+          );
+        })}
+      </PersonList>
     </div>
   );
 }
 
 export default function FriendsPage() {
   return (
-    <Suspense fallback={<main className="flex min-h-screen items-center justify-center theme-bg-gradient text-white">Loading...</main>}>
+    <Suspense fallback={<BrandedLoader label="Finding people" />}>
       <FriendsPageContent />
     </Suspense>
   );

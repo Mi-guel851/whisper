@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Bell, BellOff } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { supabase } from "@/lib/supabase/client";
 import { enablePushNotifications } from "@/lib/push";
 import { useToast } from "@/components/ToastProvider";
+import Button from "./Button";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -96,7 +97,7 @@ export default function DashboardHeader() {
           } else if (!success && result.reason === "denied") {
             showToast("Notifications blocked in browser.");
           }
-        } catch (err) {
+        } catch {
           // Fallback
           success = true;
           showToast("Setting saved!");
@@ -123,30 +124,33 @@ export default function DashboardHeader() {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
-          {getGreeting()}
-        </p>
-        <h1 className="mt-1 flex items-center gap-2 text-3xl font-black text-white">
+        <p className="eyebrow text-gray-300">{getGreeting()}</p>
+        <h1 className="page-title mt-1 flex items-center gap-2 text-white">
           Hey, {name || "there"}
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-sm">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-sm">
             <Image src="/ghost.png" alt="Whisper" width={18} height={18} />
-          </div>
+          </span>
         </h1>
-        <p className="mt-1 text-sm text-gray-300">
+        <p className="page-subtitle mt-1">
           Your inbox is open. Whispers welcome.
         </p>
       </div>
 
-      <button
+      {/* Was a hand-rolled pill hardcoding `bg-white/5 text-white` — invisible
+          on a light canvas. `Button` carries the theme-aware variants, the
+          press spring, and the ripple, so the toggle presses like every other
+          control instead of being the one dead target on the screen. */}
+      <Button
+        variant={pushEnabled ? "primary" : "secondary"}
+        size="sm"
+        className="shrink-0 rounded-full"
         onClick={handleNotifyClick}
-        disabled={loading}
-        className={`flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
-          pushEnabled ? "bg-cyan-400 text-black shadow-lg shadow-cyan-500/20" : "bg-white/5 text-white hover:bg-white/10"
-        }`}
+        loading={loading}
+        aria-pressed={pushEnabled}
+        icon={<Bell size={15} fill={pushEnabled ? "currentColor" : "none"} />}
       >
-        <Bell size={15} fill={pushEnabled ? "currentColor" : "none"} />
-        {loading ? "..." : pushEnabled ? "On" : "Notify"}
-      </button>
+        {pushEnabled ? "On" : "Notify"}
+      </Button>
     </div>
   );
 }

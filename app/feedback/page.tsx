@@ -40,8 +40,8 @@ export default function FeedbackPage() {
               <Lightbulb size={32} className="text-purple-300" />
             </div>
           </div>
-          <h1 className="text-4xl font-black mb-2">Feedback</h1>
-          <p className="text-gray-400">Tell us what&apos;s working and what could be better.</p>
+          <h1 className="page-title mb-2">Feedback</h1>
+          <p className="page-subtitle">Tell us what&apos;s working and what could be better.</p>
         </div>
 
         <GlassPanel strong className="rounded-3xl p-6 md:p-8">

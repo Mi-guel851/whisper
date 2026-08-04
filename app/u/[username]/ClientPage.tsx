@@ -149,8 +149,8 @@ export default function PublicProfile() {
     return (
       <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white text-center px-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">User not found</h1>
-          <p className="text-gray-400">@{username} doesn&apos;t exist on Whisper.</p>
+          <h1 className="page-title mb-2">User not found</h1>
+          <p className="page-subtitle">@{username} doesn&apos;t exist on Whisper.</p>
         </div>
       </main>
     );

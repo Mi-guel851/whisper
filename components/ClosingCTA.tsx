@@ -1,39 +1,83 @@
-// app/components/ClosingCTA.tsx
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
-import GlassPanel from "./GlassPanel";
+import { motion } from "framer-motion";
+import EdgeLitCard from "./EdgeLitCard";
+import { ButtonLink } from "./Button";
+import { respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
+import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
 
 export default function ClosingCTA() {
+  const reduced = useSafeReducedMotion();
+
   return (
     <section className="relative mx-auto max-w-5xl px-4 py-16 text-center sm:px-8 sm:py-24">
-      <GlassPanel strong className="rounded-[28px] p-8 sm:rounded-[40px] sm:p-16">
-
-        <Image
-          src="/ghost.png"
-          alt="Whisper"
-          width={64}
-          height={64}
-          className="mx-auto mb-6 animate-pulse drop-shadow-[0_0_18px_rgba(34,211,238,.9)]"
-        />
-
-        <h2 className="text-3xl font-black text-white sm:text-5xl">
-          Ready to hear the truth?
-        </h2>
-
-        <p className="mx-auto mt-4 max-w-xl text-base text-gray-300 sm:text-xl">
-          Create your Whisper link and start receiving honest, anonymous messages today.
-        </p>
-
-        <Link
-          href="/signup"
-          className="mt-8 inline-block w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-600 px-10 py-4 text-base font-bold text-white transition hover:scale-105 sm:mt-10 sm:w-auto sm:py-5 sm:text-lg"
+      <motion.div
+        variants={respectMotion(staggerContainer(0.08), reduced)}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.35 }}
+      >
+        {/* The closing CTA is the last thing on the page, so its rim runs
+            brighter than the sections above it but slower than the hero —
+            the eye should settle here, not be pulled back to the top. */}
+        <EdgeLitCard
+          radius="3xl"
+          intensity={0.55}
+          speed={13}
+          innerClassName="p-8 sm:p-16"
         >
-          Create My Link — It&apos;s Free
-        </Link>
+          {/* Slow float rather than `animate-pulse`. Pulsing opacity on a logo
+              reads as a loading state; drifting reads as ambient. */}
+          <motion.div
+            variants={respectMotion(staggerItem, reduced)}
+            className="mx-auto mb-6 w-fit"
+          >
+            <motion.div
+              animate={reduced ? undefined : { y: [0, -8, 0] }}
+              transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <Image
+                src="/ghost.png"
+                alt=""
+                width={64}
+                height={64}
+                className="drop-shadow-[0_0_18px_rgba(34,211,238,0.75)]"
+              />
+            </motion.div>
+          </motion.div>
 
-      </GlassPanel>
+          <motion.h2
+            variants={respectMotion(staggerItem, reduced)}
+            className="marketing-title"
+            style={{ color: "var(--bridge-text)" }}
+          >
+            Ready to hear the truth?
+          </motion.h2>
+
+          <motion.p
+            variants={respectMotion(staggerItem, reduced)}
+            className="mx-auto mt-4 max-w-xl text-base sm:text-xl"
+            style={{ color: "var(--bridge-text-secondary)" }}
+          >
+            Create your Whisper link and start receiving honest, anonymous
+            messages today.
+          </motion.p>
+
+          <motion.div
+            variants={respectMotion(staggerItem, reduced)}
+            className="mt-8 sm:mt-10"
+          >
+            <ButtonLink
+              href="/signup"
+              size="lg"
+              className="w-full sm:w-auto"
+            >
+              Create My Link — It&apos;s Free
+            </ButtonLink>
+          </motion.div>
+        </EdgeLitCard>
+      </motion.div>
     </section>
   );
 }

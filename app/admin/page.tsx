@@ -86,25 +86,25 @@ export default function AdminPage() {
       <div className="mx-auto max-w-4xl mt-4">
         <div className="mb-8 flex items-center gap-3">
           <ShieldAlert className="text-purple-500" size={32} />
-          <h1 className="text-4xl font-black">Admin Dashboard</h1>
+          <h1 className="page-title">Admin Dashboard</h1>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3 mb-8">
           <GlassPanel className="rounded-3xl p-6">
             <Users className="text-purple-400 mb-3" size={24} />
-            <div className="text-3xl font-black">{stats?.total_users ?? "—"}</div>
+            <div className="stat-value">{stats?.total_users ?? "—"}</div>
             <div className="text-gray-400 mt-1">Total Users</div>
           </GlassPanel>
 
           <GlassPanel className="rounded-3xl p-6">
             <MessageCircle className="text-purple-300 mb-3" size={24} />
-            <div className="text-3xl font-black">{stats?.total_messages ?? "—"}</div>
+            <div className="stat-value">{stats?.total_messages ?? "—"}</div>
             <div className="text-gray-400 mt-1">Total Messages</div>
           </GlassPanel>
 
           <GlassPanel className="rounded-3xl p-6">
             <Eye className="text-pink-300 mb-3" size={24} />
-            <div className="text-3xl font-black">{stats?.total_views ?? "—"}</div>
+            <div className="stat-value">{stats?.total_views ?? "—"}</div>
             <div className="text-gray-400 mt-1">Total Link Views</div>
           </GlassPanel>
         </div>

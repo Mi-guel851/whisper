@@ -218,18 +218,18 @@ export default function PremiumPage() {
           <GlassPanel className="max-w-full overflow-hidden rounded-[2rem] p-6 shadow-2xl shadow-purple-600/10">
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-400/10 px-3 py-1 text-xs font-black uppercase tracking-[0.25em] text-purple-300"><Sparkles size={14} /> Premium Wallet</p>
-                <h1 className="flex items-center gap-3 text-5xl font-black tracking-tight">
-  <WhisperCoinIcon size={44} />
-  Whisper Coins
-</h1>
-                <p className="mt-3 max-w-xl text-sm text-gray-300">Buy coins for whisper hints, image sends, and one-time inbox chat access from one premium wallet.</p>
+                <p className="eyebrow mb-3 inline-flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-400/10 px-3 py-1 tracking-[0.25em] text-purple-300"><Sparkles size={14} /> Premium Wallet</p>
+                <h1 className="page-title flex items-center gap-3">
+                  <WhisperCoinIcon size={36} />
+                  Whisper Coins
+                </h1>
+                <p className="page-subtitle mt-3 max-w-xl">Buy coins for whisper hints, image sends, and one-time inbox chat access from one premium wallet.</p>
               </div>
               <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity }}>
                 <GlassPanel strong className="rounded-[2rem] p-6 text-center">
                   <Coins className="mx-auto mb-3 h-14 w-14 text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,.65)]" />
-                  <div className="text-5xl font-black"><AnimatedBalance value={balance} /></div>
-                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-yellow-100/80">Current balance</p>
+                  <div className="stat-value"><AnimatedBalance value={balance} /></div>
+                  <p className="eyebrow mt-1 tracking-[0.2em] text-yellow-100/80">Current balance</p>
                 </GlassPanel>
               </motion.div>
             </div>
@@ -237,7 +237,7 @@ export default function PremiumPage() {
         </motion.section>
 
         <section className="mt-8">
-          <h2 className="mb-4 flex items-center gap-2 text-2xl font-black"><Gem className="text-cyan-400" /> Buy Coins</h2>
+          <h2 className="section-title mb-4 flex items-center gap-2"><Gem className="text-cyan-400" /> Buy Coins</h2>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {COIN_PACKAGES.map((pkg) => (
@@ -253,7 +253,7 @@ export default function PremiumPage() {
                     </span>
                   )}
                   <Coins className="mx-auto mb-4 h-10 w-10 text-yellow-200" />
-                  <p className="text-3xl font-black">{pkg.coins.toLocaleString()}</p>
+                  <p className="stat-value">{pkg.coins.toLocaleString()}</p>
                   <p className="text-sm text-gray-300">Whisper Coins</p>
                   <p className="mt-3 text-lg font-black text-cyan-400">
                     {ratesLoading ? <Loader2 size={16} className="mx-auto animate-spin" /> : localPriceFor(pkg)}

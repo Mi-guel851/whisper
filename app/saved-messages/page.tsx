@@ -9,8 +9,8 @@ export default function SavedMessagesPage() {
       <div className="relative z-10 mx-auto max-w-xl">
         <BackButton />
         <div className="flex flex-col items-center justify-center text-center py-24">
-          <h1 className="text-3xl font-black mb-2">Saved Messages</h1>
-          <p className="text-gray-400">This feature is coming soon.</p>
+          <h1 className="page-title mb-2">Saved Messages</h1>
+          <p className="page-subtitle">This feature is coming soon.</p>
         </div>
       </div>
     </main>

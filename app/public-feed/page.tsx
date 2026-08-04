@@ -580,8 +580,8 @@ export default function PublicFeedPage() {
         <BackButton />
 
         <div className="mb-7 mt-5">
-          <h1 className="text-4xl font-black">Public Feed</h1>
-          <p className="mt-1 text-sm text-gray-400">Real thoughts from the Whisper community.</p>
+          <h1 className="page-title">Public Feed</h1>
+          <p className="page-subtitle mt-1">Real thoughts from the Whisper community.</p>
         </div>
 
         <GlassPanel strong className="mb-7 rounded-3xl p-5">

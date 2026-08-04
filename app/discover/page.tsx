@@ -137,12 +137,12 @@ export default function DiscoverPage() {
         <BackButton />
 
         <div className="mt-4 flex items-center gap-3">
-          <Compass className="text-purple-400" size={28} />
-          <h1 className="text-3xl font-black">Discover</h1>
+          <Compass className="text-purple-400" size={24} />
+          <h1 className="page-title">Discover</h1>
         </div>
-        <p className="mt-1 text-sm text-gray-400">Explore Whisper and manage your connections.</p>
+        <p className="page-subtitle mt-1">Explore Whisper and manage your connections.</p>
 
-        <h2 className="mt-10 mb-5 text-xs font-bold uppercase tracking-widest text-gray-300">
+        <h2 className="eyebrow mt-10 mb-5">
           Explore
         </h2>
         <section className="discover-icon-grid grid grid-cols-3 gap-x-3 gap-y-7">

@@ -1,133 +1,325 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   WHISPER DESIGN SYSTEM
+   --------------------------------------------------------------------------
+   Layer order matters. Read top to bottom:
+     1. Primitive tokens      — theme-independent scales (type, motion, radii)
+     2. Semantic tokens       — the light and dark palettes
+     3. Base                  — element defaults
+     4. Components            — the public class API used across ~48 routes
+     5. Compatibility bridge  — maps dark-only Tailwind utilities onto tokens
+     6. Features              — auth, friends strip, chat, marketing
+
+   The class names in section 4 are a CONTRACT. Screens depend on them by
+   name; their implementations can change, their names cannot.
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. PRIMITIVE TOKENS
+   ========================================================================== */
+
 :root {
-  color-scheme: light dark;
-  --theme-bg: #ffffff;
-  --theme-surface: #fafafa;
-  --theme-card: #f5f5f5;
-  --theme-border: #dddddd;
-  --theme-text: #111111;
-  --theme-text-secondary: #555555;
-  --theme-text-muted: #777777;
-  --theme-accent-purple: #8b5cf6;
-  --theme-accent-pink: #ec4899;
-  --theme-hover-purple: #a855f7;
-  --theme-hover-pink: #f472b6;
+  /* --- Type scale. Tracking tightens as size grows, the way optical sizing
+         works in a real type family; this is what separates "big bold text"
+         from typography. --- */
+  --text-2xs:  0.6875rem;  --leading-2xs:  0.95rem;   --tracking-2xs:  0.02em;
+  --text-xs:   0.75rem;    --leading-xs:   1.05rem;   --tracking-xs:   0.01em;
+  --text-sm:   0.8125rem;  --leading-sm:   1.2rem;    --tracking-sm:   0.005em;
+  --text-base: 0.9375rem;  --leading-base: 1.45rem;   --tracking-base: 0;
+  --text-md:   1rem;       --leading-md:   1.55rem;   --tracking-md:  -0.006em;
+  --text-lg:   1.125rem;   --leading-lg:   1.7rem;    --tracking-lg:  -0.011em;
+  --text-xl:   1.3125rem;  --leading-xl:   1.8rem;    --tracking-xl:  -0.014em;
+  --text-2xl:  1.5rem;     --leading-2xl:  1.95rem;   --tracking-2xl: -0.019em;
+  --text-3xl:  1.875rem;   --leading-3xl:  2.25rem;   --tracking-3xl: -0.022em;
+  --text-4xl:  2.25rem;    --leading-4xl:  2.5rem;    --tracking-4xl: -0.026em;
+  --text-5xl:  3rem;       --leading-5xl:  3.1rem;    --tracking-5xl: -0.03em;
+  --text-6xl:  3.75rem;    --leading-6xl:  3.85rem;   --tracking-6xl: -0.034em;
+
+  /* --- Radii --- */
+  --radius-xs:  0.375rem;
+  --radius-sm:  0.5rem;
+  --radius-md:  0.75rem;
+  --radius-lg:  1rem;
+  --radius-xl:  1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+  --radius-full: 9999px;
+
+  /* --- Motion. Shared with lib/motion.ts so CSS and Framer Motion agree. --- */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:    cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-soft:      cubic-bezier(0.65, 0, 0.35, 1);
+
+  --dur-instant: 110ms;
+  --dur-fast:    170ms;
+  --dur-base:    260ms;
+  --dur-slow:    420ms;
+  --dur-slower:  640ms;
+
+  /* --- Brand. Constant across themes; only their *application* varies. --- */
+  --brand-cyan:   #22d3ee;
+  --brand-purple: #8b5cf6;
+  --brand-pink:   #ec4899;
+}
+
+
+/* ==========================================================================
+   2. SEMANTIC TOKENS
+   --------------------------------------------------------------------------
+   Dark is the default because the markup was authored dark-first. Light is
+   applied explicitly by [data-theme="light"], set before paint by the inline
+   script in app/layout.tsx.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  --theme-bg:             #000000;
+  --theme-surface:        #0a0a0c;
+  --theme-card:           #111114;
+  --theme-elevated:       #17171c;
+  --theme-border:         #242429;
+  --theme-border-strong:  #33333a;
+
+  --theme-text:           #ffffff;
+  --theme-text-secondary: #b3b3c0;
+  --theme-text-muted:     #7a7a8a;
+
+  --theme-accent-purple:  #8b5cf6;
+  --theme-accent-pink:    #ec4899;
+  --theme-hover-purple:   #a855f7;
+  --theme-hover-pink:     #f472b6;
+  --theme-accent-from:    #22d3ee;
+  --theme-accent-to:      #a855f7;
+  --theme-accent-contrast: #05050a;
+
   --theme-success: #22c55e;
   --theme-warning: #f59e0b;
-  --theme-error: #ef4444;
-  --theme-glass: rgba(245, 245, 245, 0.78);
-  --theme-glass-strong: rgba(250, 250, 250, 0.92);
-  --theme-shadow: 0 18px 60px rgba(17, 17, 17, 0.08);
-  --theme-shadow-soft: 0 10px 30px rgba(17, 17, 17, 0.07);
-  --theme-nav-bg: rgba(250, 250, 250, 0.86);
-  --theme-nav-border: rgba(221, 221, 221, 0.9);
-  --theme-nav-shadow: 0 -18px 60px rgba(17, 17, 17, 0.08);
-  --theme-nav-inactive: #777777;
-  --theme-nav-active-text: #111111;
-  --theme-accent-from: #22d3ee;
-  --theme-accent-to: #8b5cf6;
-  --theme-accent-contrast: #000000;
+  --theme-error:   #ef4444;
+  --theme-info:    #38bdf8;
+
+  /* Glass in dark theme is a white-tinted FILM over the backdrop, not a dark
+     panel. The previous values (rgba(18,18,22,.72) / rgba(20,20,25,.9)) were
+     near-opaque near-black — on a black canvas that reads as a flat card and
+     is exactly why the home page stopped looking like glass. The trailing
+     solid colour is the fallback layer: where backdrop-filter is unsupported
+     (older Android WebView in the Capacitor shell) the film alone would leave
+     text sitting on the raw background. */
+  --theme-glass:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.035)),
+    rgba(12, 12, 17, 0.52);
+  --theme-glass-strong:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)),
+    rgba(14, 14, 20, 0.6);
+  --theme-glass-border: rgba(255, 255, 255, 0.12);
+  --theme-glass-sheen:  rgba(255, 255, 255, 0.08);
+
+  /* Layered elevation: ambient spread + directional key + contact shadow.
+     A single flat shadow is the tell of a template. */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --elev-2: 0 2px 4px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.32);
+  --elev-3: 0 4px 8px rgba(0, 0, 0, 0.36), 0 14px 34px rgba(0, 0, 0, 0.38);
+  --elev-4: 0 8px 16px rgba(0, 0, 0, 0.34), 0 24px 60px rgba(0, 0, 0, 0.46);
+  --elev-5: 0 12px 24px rgba(0, 0, 0, 0.36), 0 40px 100px rgba(0, 0, 0, 0.58);
+  --elev-rim: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  --theme-shadow:      var(--elev-4);
+  --theme-shadow-soft: var(--elev-2);
+
+  --theme-nav-bg:          rgba(10, 10, 12, 0.86);
+  --theme-nav-border:      rgba(255, 255, 255, 0.08);
+  --theme-nav-shadow:      0 -12px 40px rgba(0, 0, 0, 0.5);
+  --theme-nav-inactive:    #7a7a8a;
+  --theme-nav-active-text: #ffffff;
+
+  /* Fills used by the compatibility bridge (section 5). In dark these are
+     white-translucent; in light they invert to dark-translucent. */
+  --fill-1: rgba(255, 255, 255, 0.04);
+  --fill-2: rgba(255, 255, 255, 0.07);
+  --fill-3: rgba(255, 255, 255, 0.11);
+  --fill-4: rgba(255, 255, 255, 0.16);
+  --hairline: rgba(255, 255, 255, 0.1);
+
+  /* Bridge text. Overridden inside always-dark islands (auth, friends strip,
+     accent buttons) so those don't each need their own !important block. */
+  --bridge-text:           var(--theme-text);
+  --bridge-text-secondary: var(--theme-text-secondary);
+  --bridge-text-muted:     var(--theme-text-muted);
+
+  /* Ambient backdrop (components/Background.tsx). Radial rather than flat so
+     each blob has a soft core instead of a uniform disc behind the blur. */
+  --theme-blob-1: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.5), transparent 68%);
+  --theme-blob-2: radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.34), transparent 68%);
+  --theme-blob-3: radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.32), transparent 70%);
+  --grid-line: rgba(255, 255, 255, 0.16);
+
   --background: var(--theme-bg);
   --foreground: var(--theme-text);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --theme-bg: #000000;
-    --theme-surface: #0a0a0a;
-    --theme-card: #111111;
-    --theme-border: #232323;
-    --theme-text: #ffffff;
-    --theme-text-secondary: #b5b5b5;
-    --theme-text-muted: #777777;
-    --theme-glass: rgba(17, 17, 17, 0.72);
-    --theme-glass-strong: rgba(17, 17, 17, 0.9);
-    --theme-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-    --theme-shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.32);
-    --theme-nav-bg: rgba(10, 10, 10, 0.86);
-    --theme-nav-border: rgba(35, 35, 35, 0.94);
-    --theme-nav-shadow: 0 -18px 60px rgba(0, 0, 0, 0.4);
-    --theme-nav-inactive: #777777;
-    --theme-nav-active-text: #ffffff;
-    --theme-accent-from: #22d3ee;
-    --theme-accent-to: #a855f7;
-    --theme-accent-contrast: #000000;
+/* System preference resolves to light only when no explicit theme is set. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-theme="light"]) {
+    color-scheme: light;
   }
 }
 
-:root[data-theme="dark"] {
-  --theme-bg: #000000;
-  --theme-surface: #0a0a0a;
-  --theme-card: #111111;
-  --theme-border: #232323;
-  --theme-text: #ffffff;
-  --theme-text-secondary: #b5b5b5;
-  --theme-text-muted: #777777;
-  --theme-glass: rgba(17, 17, 17, 0.72);
-  --theme-glass-strong: rgba(17, 17, 17, 0.9);
-  --theme-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-  --theme-shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.32);
-  --theme-nav-bg: rgba(10, 10, 10, 0.86);
-  --theme-nav-border: rgba(35, 35, 35, 0.94);
-  --theme-nav-shadow: 0 -18px 60px rgba(0, 0, 0, 0.4);
-  --theme-nav-inactive: #777777;
-  --theme-nav-active-text: #ffffff;
-  --theme-accent-from: #22d3ee;
-  --theme-accent-to: #a855f7;
-  --theme-accent-contrast: #000000;
-}
-
 :root[data-theme="light"] {
-  --theme-bg: #ffffff;
-  --theme-surface: #fafafa;
-  --theme-card: #f5f5f5;
-  --theme-border: #dddddd;
-  --theme-text: #111111;
-  --theme-text-secondary: #555555;
-  --theme-text-muted: #777777;
-  --theme-glass: rgba(245, 245, 245, 0.78);
-  --theme-glass-strong: rgba(250, 250, 250, 0.92);
-  --theme-shadow: 0 18px 60px rgba(17, 17, 17, 0.08);
-  --theme-shadow-soft: 0 10px 30px rgba(17, 17, 17, 0.07);
-  --theme-nav-bg: rgba(250, 250, 250, 0.86);
-  --theme-nav-border: rgba(221, 221, 221, 0.9);
-  --theme-nav-shadow: 0 -18px 60px rgba(17, 17, 17, 0.08);
-  --theme-nav-inactive: #777777;
-  --theme-nav-active-text: #111111;
+  color-scheme: light;
+
+  /* A tinted canvas with genuinely elevated white cards on top of it —
+     white-on-white is what made the old light theme read as flat. */
+  --theme-bg:             #f2f4fb;
+  --theme-surface:        #f8f9fd;
+  --theme-card:           #ffffff;
+  --theme-elevated:       #ffffff;
+  --theme-border:         #e3e6f2;
+  --theme-border-strong:  #cfd4e8;
+
+  --theme-text:           #16172c;
+  --theme-text-secondary: #4b5273;
+  --theme-text-muted:     #767d9d;
+
+  --theme-accent-purple:  #6d3fe0;
+  --theme-accent-pink:    #d33d92;
+  --theme-hover-purple:   #5a2fd0;
+  --theme-hover-pink:     #bd2f7f;
+  --theme-accent-from:    #6d3fe0;
+  --theme-accent-to:      #2563eb;
+  --theme-accent-contrast: #ffffff;
+
+  --theme-success: #12a150;
+  --theme-warning: #c2620a;
+  --theme-error:   #d92d20;
+  --theme-info:    #0d74d4;
+
+  /* Same film structure as dark, inverted: a bright translucent sheet whose
+     top edge catches more light. Kept opaque enough that body copy on a busy
+     backdrop still passes contrast. */
+  --theme-glass:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.7)),
+    rgba(255, 255, 255, 0.62);
+  --theme-glass-strong:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.86)),
+    rgba(255, 255, 255, 0.8);
+  --theme-glass-border: rgba(22, 23, 44, 0.09);
+  --theme-glass-sheen:  rgba(255, 255, 255, 0.9);
+
+  /* Light-theme shadows are cool-tinted, never neutral grey — neutral grey
+     on a tinted canvas reads as dirt. */
+  --elev-1: 0 1px 2px rgba(38, 43, 90, 0.06),  0 2px 6px rgba(38, 43, 90, 0.05);
+  --elev-2: 0 2px 4px rgba(38, 43, 90, 0.06),  0 6px 16px rgba(38, 43, 90, 0.08);
+  --elev-3: 0 4px 8px rgba(38, 43, 90, 0.07),  0 14px 32px rgba(38, 43, 90, 0.1);
+  --elev-4: 0 8px 16px rgba(38, 43, 90, 0.08), 0 24px 56px rgba(38, 43, 90, 0.13);
+  --elev-5: 0 12px 24px rgba(38, 43, 90, 0.1), 0 40px 90px rgba(38, 43, 90, 0.16);
+  --elev-rim: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  --theme-nav-bg:          rgba(255, 255, 255, 0.9);
+  --theme-nav-border:      rgba(22, 23, 44, 0.08);
+  --theme-nav-shadow:      0 -10px 34px rgba(38, 43, 90, 0.12);
+  --theme-nav-inactive:    #6a7192;
+  --theme-nav-active-text: #2b1d6b;
+
+  --fill-1: rgba(22, 23, 44, 0.035);
+  --fill-2: rgba(22, 23, 44, 0.06);
+  --fill-3: rgba(22, 23, 44, 0.09);
+  --fill-4: rgba(22, 23, 44, 0.13);
+  --hairline: rgba(22, 23, 44, 0.1);
+
+  /* Lower alpha and warmer hues: at dark-theme strength these blobs turn the
+     pale canvas muddy rather than reading as light. */
+  --theme-blob-1: radial-gradient(circle at 50% 50%, rgba(124, 82, 232, 0.2), transparent 68%);
+  --theme-blob-2: radial-gradient(circle at 50% 50%, rgba(56, 160, 235, 0.16), transparent 68%);
+  --theme-blob-3: radial-gradient(circle at 50% 50%, rgba(224, 108, 176, 0.15), transparent 70%);
+  /* Dark hairlines — a white grid over a near-white canvas is invisible. */
+  --grid-line: rgba(38, 43, 90, 0.1);
 }
 
 @theme inline {
   --color-background: var(--theme-bg);
   --color-foreground: var(--theme-text);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-* {
+
+/* ==========================================================================
+   3. BASE
+   --------------------------------------------------------------------------
+   Wrapped in `@layer base` deliberately. Tailwind v4 declares its layers as
+   `theme, base, components, utilities`, and UNLAYERED css beats every layer
+   regardless of specificity. Left unlayered, `button { color: inherit }` here
+   silently outranked `text-[#10051f]` on a button — which is exactly how the
+   Friends tab bar ended up rendering white text on a white pill. Anything
+   that styles a bare element belongs in this layer so a utility in the markup
+   can still win.
+   ========================================================================== */
+
+@layer base {
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   border-color: var(--theme-border);
-  transition-property: color, background-color, border-color, box-shadow, opacity, transform, filter;
-  transition-duration: 250ms;
-  transition-timing-function: ease-in-out;
+}
+
+/* Deliberately NOT a universal transition. The previous `* { transition:
+   ...transform, filter }` animated every element in the app, which fought
+   Framer Motion for control of transform and forced continuous style
+   recalculation. Theme changes are handled by the narrow rule below. */
+html[data-theme-changing] *,
+html[data-theme-changing] *::before,
+html[data-theme-changing] *::after {
+  transition: background-color var(--dur-base) var(--ease-soft),
+              border-color var(--dur-base) var(--ease-soft),
+              color var(--dur-base) var(--ease-soft) !important;
 }
 
 html {
   min-height: 100%;
   background: var(--theme-bg);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
   background: var(--theme-bg);
   color: var(--theme-text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  letter-spacing: var(--tracking-base);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+}
+
+/* Headings inherit the optical tracking from the scale rather than being
+   left at Tailwind's default 0. */
+h1 { font-size: var(--text-4xl); line-height: var(--leading-4xl); letter-spacing: var(--tracking-4xl); }
+h2 { font-size: var(--text-2xl); line-height: var(--leading-2xl); letter-spacing: var(--tracking-2xl); }
+h3 { font-size: var(--text-xl);  line-height: var(--leading-xl);  letter-spacing: var(--tracking-xl); }
+h4 { font-size: var(--text-lg);  line-height: var(--leading-lg);  letter-spacing: var(--tracking-lg); }
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--theme-accent-purple) 32%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-purple) 30%, transparent);
   color: var(--theme-text);
 }
 
@@ -140,61 +332,22 @@ button, a {
 }
 
 button {
-  position: relative;
-  isolation: isolate;
-  border-radius: 1rem;
-  border-color: color-mix(in srgb, var(--theme-border) 70%, rgba(255, 255, 255, 0.25));
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.18),
-    inset 0 1px 1px rgba(255, 255, 255, 0.18),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(18px) saturate(170%) contrast(115%);
-  -webkit-backdrop-filter: blur(18px) saturate(170%) contrast(115%);
+  font: inherit;
+  color: inherit;
 }
 
-button::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(125deg, rgba(255, 255, 255, 0.12), transparent 42%, rgba(255, 255, 255, 0.04));
-  pointer-events: none;
-  opacity: 0.7;
-  z-index: -1;
-}
+button:not(:disabled), a[href] { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
 
-button:hover:not(:disabled) {
-  box-shadow:
-    0 12px 30px rgba(0, 0, 0, 0.24),
-    0 0 18px color-mix(in srgb, var(--theme-accent-from) 18%, transparent),
-    inset 0 1px 2px rgba(255, 255, 255, 0.24),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.16);
-}
-
-.glass-control {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.035));
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.28),
-    inset 0 1px 2px rgba(255, 255, 255, 0.24),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.14);
-  backdrop-filter: blur(26px) saturate(190%) contrast(120%);
-  -webkit-backdrop-filter: blur(26px) saturate(190%) contrast(120%);
-}
-
-.glass-control:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(34, 211, 238, 0.08));
-}
-
-button:not(:disabled), a[href] {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
+/* One consistent focus ring for the whole app. Keyboard only. */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--theme-accent-purple);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
 }
 
 input, textarea, select {
+  font: inherit;
   color: var(--theme-text);
   caret-color: var(--theme-accent-purple);
 }
@@ -203,13 +356,142 @@ input::placeholder, textarea::placeholder {
   color: var(--theme-text-muted);
 }
 
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* Scrollbars, themed. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--fill-4) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--fill-3);
+  border-radius: var(--radius-full);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--fill-4); }
+
+} /* end @layer base */
+
+
+/* ==========================================================================
+   4. COMPONENTS — the public class API
+   ========================================================================== */
+
+/* --- Typography -------------------------------------------------------- */
+/* Heading size was being decided per screen with raw Tailwind steps
+   (`text-4xl` on a phone-width app header, `text-2xl` next to it for the same
+   rank), which is why the app read as loud rather than expensive. These are
+   the only sizes a heading may be, chosen by ROLE:
+
+     .display-title  marketing hero — the one place a huge face is earned
+     .marketing-title a landing-page section heading
+     .page-title     an app screen's H1 ("Chats", "Discover", "Settings")
+     .page-subtitle  the muted line under it
+     .section-title  a group heading inside a screen
+     .card-title     the primary line inside a card or row
+     .stat-value     a large tabular number
+     .eyebrow        the uppercase micro-label above a section
+
+   Each steps down one notch at phone widths. Tracking comes from the scale,
+   so bigger text is optically tighter instead of Tailwind's flat 0. Weight is
+   part of the role too — these deliberately land on 800 rather than `font-black`,
+   which at display sizes reads as shouting rather than as confidence.
+
+   These are unlayered, so they beat Tailwind's `@layer utilities` regardless of
+   source order; a stray `text-4xl` left beside one can't quietly win. */
+
+.display-title {
+  font-size: var(--text-4xl);
+  line-height: var(--leading-4xl);
+  letter-spacing: var(--tracking-4xl);
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+.marketing-title {
+  font-size: var(--text-3xl);
+  line-height: var(--leading-3xl);
+  letter-spacing: var(--tracking-3xl);
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+.page-title {
+  font-size: var(--text-2xl);
+  line-height: var(--leading-2xl);
+  letter-spacing: var(--tracking-2xl);
+  font-weight: 800;
+}
+
+.page-subtitle {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  letter-spacing: var(--tracking-sm);
+  color: var(--theme-text-muted);
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  letter-spacing: var(--tracking-lg);
+  font-weight: 700;
+}
+
+.card-title {
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
+  letter-spacing: var(--tracking-md);
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: var(--text-3xl);
+  line-height: 1;
+  letter-spacing: var(--tracking-3xl);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+@media (min-width: 640px) {
+  .display-title   { font-size: var(--text-5xl); line-height: var(--leading-5xl); letter-spacing: var(--tracking-5xl); }
+  .marketing-title { font-size: var(--text-4xl); line-height: var(--leading-4xl); letter-spacing: var(--tracking-4xl); }
+  .page-title      { font-size: var(--text-3xl); line-height: var(--leading-3xl); letter-spacing: var(--tracking-3xl); }
+  .section-title   { font-size: var(--text-xl);  line-height: var(--leading-xl);  letter-spacing: var(--tracking-xl); }
+  .stat-value      { font-size: var(--text-4xl); letter-spacing: var(--tracking-4xl); }
+}
+
+@media (min-width: 1024px) {
+  .display-title   { font-size: var(--text-6xl); line-height: var(--leading-6xl); letter-spacing: var(--tracking-6xl); }
+  .marketing-title { font-size: var(--text-5xl); line-height: var(--leading-5xl); letter-spacing: var(--tracking-5xl); }
+}
+
+/* --- Page canvas ------------------------------------------------------- */
+
 .theme-bg-gradient,
 body,
 main.min-h-screen {
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--theme-accent-purple) 18%, transparent), transparent 34rem),
-    radial-gradient(circle at bottom right, color-mix(in srgb, var(--theme-accent-pink) 14%, transparent), transparent 32rem),
-    linear-gradient(180deg, var(--theme-bg), var(--theme-surface));
+    radial-gradient(ellipse 60rem 40rem at 8% -8%,
+      color-mix(in srgb, var(--theme-accent-purple) 16%, transparent), transparent 70%),
+    radial-gradient(ellipse 50rem 36rem at 96% 4%,
+      color-mix(in srgb, var(--theme-accent-from) 12%, transparent), transparent 70%),
+    radial-gradient(ellipse 55rem 40rem at 50% 108%,
+      color-mix(in srgb, var(--theme-accent-pink) 10%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--theme-bg) 0%, var(--theme-surface) 100%);
+  background-attachment: fixed;
   color: var(--theme-text);
 }
 
@@ -220,166 +502,229 @@ main.min-h-screen {
 
 .theme-accent-text,
 .premium-gradient-text {
-  background: linear-gradient(135deg, var(--theme-accent-purple), var(--theme-accent-pink));
+  background: linear-gradient(115deg,
+    var(--theme-accent-from) 0%,
+    var(--theme-accent-purple) 52%,
+    var(--theme-accent-pink) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
-@keyframes frostShimmer {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 1.05;
-  }
-}
+.theme-text-muted  { color: var(--theme-text-secondary); }
+.theme-text-subtle { color: var(--theme-text-muted); }
 
-@keyframes discoverIconFloat {
-  0%, 100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-3px) rotate(1deg);
-  }
-}
-
-@keyframes discoverHandWave {
-  0%, 68%, 100% {
-    transform: rotate(0deg) translateY(0);
-  }
-  74% {
-    transform: rotate(18deg) translateY(-2px);
-  }
-  80% {
-    transform: rotate(-14deg) translateY(-4px);
-  }
-  86% {
-    transform: rotate(16deg) translateY(-3px);
-  }
-  92% {
-    transform: rotate(-8deg) translateY(-1px);
-  }
-}
-
-.discover-anime-wave {
-  transform-box: fill-box;
-  transform-origin: 0% 100%;
-  animation: discoverHandWave 3s ease-in-out infinite;
-}
-
-.discover-icon-tile {
-  animation: discoverIconFloat 5s ease-in-out infinite;
-}
-
-.discover-icon-grid > a:nth-child(3n + 2) .discover-icon-tile {
-  animation-delay: -1.6s;
-}
-
-.discover-icon-grid > a:nth-child(3n) .discover-icon-tile {
-  animation-delay: -3.2s;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .discover-icon-tile {
-    animation: none;
-  }
-  .discover-anime-wave {
-    animation: none;
-  }
-}
+/* --- Glass surfaces ---------------------------------------------------- */
 
 .theme-surface,
 .liquid-glass,
 .liquid-glass-strong,
-.premium-card {
-  background: var(--theme-glass);
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  box-shadow: 
-    0 8px 32px rgba(0, 0, 0, 0.12),
-    inset 0 1px 2px rgba(255, 255, 255, 0.2),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.1),
-    0 0 1px rgba(255, 255, 255, 0.15) inset;
-  backdrop-filter: blur(32px) saturate(180%) contrast(120%) brightness(1.05);
-  -webkit-backdrop-filter: blur(32px) saturate(180%) contrast(120%) brightness(1.05);
+.premium-card,
+.premium-card-strong {
   position: relative;
-  overflow: hidden;
-}
-
-.liquid-glass::before,
-.liquid-glass-strong::before,
-.premium-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: 
-    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.12), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.08), transparent 45%);
-  pointer-events: none;
-  border-radius: inherit;
-  animation: frostShimmer 6s ease-in-out infinite;
-}
-
-.liquid-glass::after,
-.liquid-glass-strong::after,
-.premium-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    transparent 50%,
-    rgba(255, 255, 255, 0.04) 100%
-  );
-  pointer-events: none;
-  border-radius: inherit;
+  background: var(--theme-glass);
+  border: 1px solid var(--theme-glass-border);
+  box-shadow: var(--elev-3), var(--elev-rim);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
 }
 
 .liquid-glass-strong,
 .premium-card-strong {
   background: var(--theme-glass-strong);
+  box-shadow: var(--elev-4), var(--elev-rim);
 }
 
+/* A single soft sheen. The previous version stacked two pseudo-elements with
+   an infinite opacity animation on every card on screen. */
+.liquid-glass::before,
+.liquid-glass-strong::before,
+.premium-card::before,
+.premium-card-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(150deg,
+    var(--theme-glass-sheen) 0%,
+    transparent 42%,
+    transparent 100%);
+  opacity: 0.55;
+  pointer-events: none;
+}
 
-.theme-text-muted { color: var(--theme-text-secondary); }
-.theme-text-subtle { color: var(--theme-text-muted); }
+/* Opt-in hover lift for cards that are actually clickable. */
+.premium-card-interactive {
+  transition: transform var(--dur-base) var(--ease-out-quint),
+              box-shadow var(--dur-base) var(--ease-out-quint);
+  will-change: transform;
+}
+
+.premium-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elev-5), var(--elev-rim);
+}
+
+.premium-card-interactive:active {
+  transform: translateY(0) scale(0.995);
+  transition-duration: var(--dur-instant);
+}
+
+/* For cards whose transform is driven by JS (pointer tilt). Transitions
+   box-shadow ONLY — declaring `transition: transform` here would ease every
+   frame Framer writes and make the card lag the cursor. */
+.feature-card {
+  transition: box-shadow var(--dur-base) var(--ease-out-quint);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .feature-card:hover {
+    box-shadow: var(--elev-5), var(--elev-rim);
+  }
+}
+
+/* --- Glass control (nav bars, floating toolbars) ----------------------- */
+.glass-control {
+  border: 1px solid var(--theme-glass-border);
+  background: var(--theme-glass);
+  box-shadow: var(--elev-3), var(--elev-rim);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+/* --- Text nav links ---------------------------------------------------- */
+
+.nav-link {
+  position: relative;
+  color: var(--bridge-text-secondary);
+  transition: color var(--dur-fast) var(--ease-out-quint);
+}
+
+/* The rule grows from the centre out. `scaleX` on a pseudo-element rather than
+   an animated `width`, so it composites instead of triggering layout. */
+.nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 1.5px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg,
+    var(--theme-accent-from), var(--theme-accent-purple));
+  transform: scaleX(0);
+  transition: transform var(--dur-base) var(--ease-out-quint);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nav-link:hover { color: var(--bridge-text); }
+  .nav-link:hover::after { transform: scaleX(1); }
+}
+
+.nav-link:focus-visible::after { transform: scaleX(1); }
 
 .premium-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 1rem;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
   border: 1px solid transparent;
-  font-weight: 800;
-  box-shadow: var(--theme-shadow-soft);
-  transition: transform 220ms ease-in-out, box-shadow 220ms ease-in-out, opacity 220ms ease-in-out, background 220ms ease-in-out;
+  font-weight: 650;
+  font-size: var(--text-base);
+  letter-spacing: var(--tracking-base);
+  white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease-out-quint),
+              box-shadow var(--dur-base) var(--ease-out-quint),
+              background-color var(--dur-fast) var(--ease-soft),
+              border-color var(--dur-fast) var(--ease-soft),
+              opacity var(--dur-fast) linear;
 }
 
-.premium-button:hover:not(:disabled) {
-  transform: translateY(-1px) scale(1.01);
-  box-shadow: var(--theme-shadow);
-}
-
+.premium-button:hover:not(:disabled) { transform: translateY(-1px); }
 .premium-button:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: translateY(0) scale(0.975);
+  transition-duration: var(--dur-instant);
 }
 
 .premium-button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   box-shadow: none;
+  transform: none;
+}
+
+/* --- Universal press feedback ------------------------------------------ */
+
+/* Every click gets an acknowledgement, not just the ones wired to a component.
+   Screens are full of bare `<button>`s and `<Link>`s — tab strips, chips, icon
+   buttons, feature cards — and a product feels cheap the moment one of them
+   swallows a tap silently.
+
+   Uses the standalone `scale` property rather than `transform`, so it composes
+   with Tailwind's `translate-*`/`rotate-*` utilities instead of clobbering the
+   position of anything centred with `-translate-x-1/2`.
+
+   Excluded: elements that already animate their own press (`.premium-button`
+   springs, `.premium-card-interactive` lifts), and anything opting out with
+   `.no-press` — a full-bleed row shrinking away from its own container edges
+   looks like a bug, not like feedback. */
+:where(button, [role="button"], a[href], summary, label[for]):not(
+  :where(.premium-button, .premium-card-interactive, .no-press)
+) {
+  transition: scale var(--dur-fast) var(--ease-out-quint);
+}
+
+/* Specificity here is deliberately 0,1,0 — every `:not()` argument is wrapped
+   in `:where()` so it contributes nothing. That's what lets a single-class
+   rule like `.settings-row:active` below override the amount without needing
+   `!important` or a doubled selector. */
+:where(button, [role="button"], a[href], summary, label[for]):not(
+  :where(.premium-button, .premium-card-interactive, .no-press)
+):active:not(:where(:disabled, [aria-disabled="true"])) {
+  scale: 0.97;
+  transition-duration: var(--dur-instant);
+}
+
+/* Full-width and full-bleed controls scale less — the same 3% on a 340px-wide
+   row is a visible 10px gap on each side, which reads as the row detaching
+   from its container rather than as a press. */
+:where(button, [role="button"], a[href]).w-full:active:not(:disabled),
+.settings-row:active,
+.person-row:active {
+  scale: 0.99;
 }
 
 .premium-button-primary {
   background: linear-gradient(135deg, var(--theme-accent-purple), var(--theme-accent-pink));
   color: #ffffff;
+  --bridge-text: #ffffff;
+  --bridge-text-secondary: rgba(255, 255, 255, 0.86);
+  --bridge-text-muted: rgba(255, 255, 255, 0.7);
+  box-shadow: var(--elev-2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.premium-button-primary:hover:not(:disabled) {
+  box-shadow: var(--elev-3),
+    0 0 26px color-mix(in srgb, var(--theme-accent-purple) 34%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .premium-button-secondary {
-  background: color-mix(in srgb, var(--theme-accent-pink) 16%, var(--theme-card));
-  border-color: color-mix(in srgb, var(--theme-accent-pink) 26%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent-purple) 12%, var(--theme-card));
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 26%, transparent);
   color: var(--theme-text);
+  box-shadow: var(--elev-1);
+}
+
+.premium-button-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-accent-purple) 18%, var(--theme-card));
+  box-shadow: var(--elev-2);
 }
 
 .premium-button-ghost {
@@ -389,440 +734,458 @@ main.min-h-screen {
   box-shadow: none;
 }
 
+.premium-button-ghost:hover:not(:disabled) {
+  background: var(--fill-2);
+  color: var(--theme-text);
+}
+
 .premium-button-outline {
   background: transparent;
-  border-color: var(--theme-border);
+  border-color: var(--theme-border-strong);
   color: var(--theme-text);
   box-shadow: none;
 }
 
-.premium-button-danger { background: var(--theme-error); color: #ffffff; }
-.premium-button-success { background: var(--theme-success); color: #ffffff; }
+.premium-button-outline:hover:not(:disabled) {
+  background: var(--fill-1);
+  border-color: var(--theme-accent-purple);
+}
+
+.premium-button-danger {
+  background: var(--theme-error);
+  color: #ffffff;
+  --bridge-text: #ffffff;
+  box-shadow: var(--elev-2);
+}
+.premium-button-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-error) 86%, #000);
+  box-shadow: var(--elev-3), 0 0 24px color-mix(in srgb, var(--theme-error) 30%, transparent);
+}
+
+.premium-button-success {
+  background: var(--theme-success);
+  color: #ffffff;
+  --bridge-text: #ffffff;
+  box-shadow: var(--elev-2);
+}
+.premium-button-success:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-success) 86%, #000);
+  box-shadow: var(--elev-3), 0 0 24px color-mix(in srgb, var(--theme-success) 30%, transparent);
+}
+
+/* Ripple, painted from the pointer's origin by components/Button.tsx. */
+.premium-button-ripple {
+  position: absolute;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  opacity: 0.28;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0);
+  animation: buttonRipple 620ms var(--ease-out-quint) forwards;
+}
+
+@keyframes buttonRipple {
+  to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+/* --- Inputs ------------------------------------------------------------ */
 
 .premium-input {
+  width: 100%;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--theme-border);
-  background: color-mix(in srgb, var(--theme-card) 82%, transparent);
+  background: var(--theme-card);
   color: var(--theme-text);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent-purple) 0%, transparent);
+  box-shadow: var(--elev-1);
+  transition: border-color var(--dur-fast) var(--ease-soft),
+              box-shadow var(--dur-base) var(--ease-out-quint),
+              background-color var(--dur-fast) var(--ease-soft);
+}
+
+.premium-input:hover:not(:focus):not(:disabled) {
+  border-color: var(--theme-border-strong);
 }
 
 .premium-input:focus {
   border-color: var(--theme-accent-purple);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent-purple) 16%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--theme-accent-purple) 18%, transparent),
+    0 0 20px color-mix(in srgb, var(--theme-accent-purple) 16%, transparent);
   outline: none;
 }
 
-@keyframes premium-fade-up {
-  from { opacity: 0; transform: translateY(10px) scale(0.99); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+.premium-input[aria-invalid="true"] {
+  border-color: var(--theme-error);
+}
+.premium-input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-error) 20%, transparent);
 }
 
-@keyframes slideIn {
-  from { opacity: 0; transform: translateY(14px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+/* --- Skeleton / shimmer ------------------------------------------------ */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--fill-2);
+  border-radius: var(--radius-md);
 }
 
-.animate-premium-enter {
-  animation: premium-fade-up 260ms ease-in-out both;
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg,
+    transparent, var(--fill-3) 55%, transparent);
+  animation: shimmer 1.6s var(--ease-soft) infinite;
 }
 
-/* Compatibility bridge: mapping utility classes to theme tokens while preserving accents */
-.text-white, .text-gray-100, .text-gray-200 { color: var(--theme-text) !important; }
-.text-gray-300, .text-gray-400 { color: var(--theme-text-secondary) !important; }
-.text-gray-500, .text-gray-600 { color: var(--theme-text-muted) !important; }
-
-/* Preserve accent colors - Cyan to Purple gradients */
-.text-cyan-400 { color: #22d3ee !important; }
-.text-purple-400 { color: #a855f7 !important; }
-.text-pink-500 { color: #ec4899 !important; }
-
-.bg-cyan-400 { background-color: #22d3ee !important; }
-.bg-purple-500 { background-color: #8b5cf6 !important; }
-.bg-purple-600 { background-color: #7c3aed !important; }
-
-.from-cyan-400 { --tw-gradient-from: #22d3ee !important; --tw-gradient-to: rgb(34 211 238 / 0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
-.from-purple-500 { --tw-gradient-from: #8b5cf6 !important; --tw-gradient-to: rgb(139 92 246 / 0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
-.to-purple-500 { --tw-gradient-to: #8b5cf6 !important; }
-.to-purple-600 { --tw-gradient-to: #7c3aed !important; }
-.to-cyan-400 { --tw-gradient-to: #22d3ee !important; }
-
-.bg-white\/5 { background-color: rgba(255, 255, 255, 0.05) !important; }
-.bg-white\/10 { background-color: rgba(255, 255, 255, 0.1) !important; }
-.bg-black\/30 { background-color: rgba(0, 0, 0, 0.3) !important; }
-.bg-black\/40 { background-color: rgba(0, 0, 0, 0.4) !important; }
-
-/* ── WHISPER LOGO GLOW PULSE ── */
-@keyframes whisper-glow {
-  0%   { opacity: 0.06; filter: blur(0px) drop-shadow(0 0 24px #a855f7); transform: scale(1); }
-  50%  { opacity: 0.18; filter: blur(0px) drop-shadow(0 0 60px #22d3ee) drop-shadow(0 0 80px #a855f7); transform: scale(1.06); }
-  100% { opacity: 0.06; filter: blur(0px) drop-shadow(0 0 24px #a855f7); transform: scale(1); }
+@keyframes shimmer {
+  to { transform: translateX(100%); }
 }
 
-@keyframes statsLivePulse {
-  0% { opacity: 0.6; transform: translateY(4px) scale(0.96); }
-  55% { opacity: 1; transform: translateY(0) scale(1.04); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.stats-live-value {
-  animation: statsLivePulse 900ms ease-out both;
-}
-
-.whisper-logo-glow {
-  animation: whisper-glow 3.5s ease-in-out infinite;
-  pointer-events: none;
-  user-select: none;
-}
-
-.typing-text-layer {
-  display: inline-block;
-  z-index: 1;
-  opacity: 1 !important;
-  font-weight: 950;
-  letter-spacing: -0.01em;
-  -webkit-text-stroke: 0.25px currentColor;
-}
-
-:root[data-theme="light"] .typing-text-ink {
-  color: #21154f !important;
-  -webkit-text-fill-color: #21154f !important;
-  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.35), 0 4px 12px rgba(49, 46, 129, 0.24);
-}
-
-:root[data-theme="light"] .typing-text-gradient {
-  color: #7c3aed !important;
-  background-image: linear-gradient(110deg, #4338ca 0%, #7c3aed 48%, #db2777 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent !important;
-  text-shadow: 0 3px 12px rgba(109, 40, 217, 0.28);
-  -webkit-text-stroke: 0.35px rgba(49, 46, 129, 0.65);
-}
-
-:root[data-theme="light"] .friends-strip {
-  background: color-mix(in srgb, var(--theme-card) 92%, var(--theme-accent-purple) 8%);
-  border-color: color-mix(in srgb, var(--theme-border) 78%, var(--theme-accent-purple) 22%);
-  box-shadow: var(--theme-shadow-soft);
-}
-
-:root[data-theme="light"] .friends-strip {
-  background: linear-gradient(135deg, #4f46a5, #2563b8);
-  border-color: rgba(129, 140, 248, 0.55);
-  box-shadow: 0 12px 28px rgba(37, 63, 145, 0.28);
-}
-
-:root[data-theme="light"] .friends-strip h2,
-:root[data-theme="light"] .friends-strip > div > span,
-:root[data-theme="light"] .friends-strip button > span {
-  color: #ffffff !important;
-}
-
-:root[data-theme="light"] .friends-strip button {
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  color: #ffffff !important;
-}
-
-:root[data-theme="light"] .friends-strip button:hover:not(:disabled),
-:root[data-theme="light"] .friends-strip button:active:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12) !important;
-  background-image: none !important;
-  box-shadow: none !important;
-}
-
-/* Modern light theme foundation: structured canvas, elevated cards, and restrained glass. */
-:root[data-theme="light"] {
-  color-scheme: light;
-  --theme-bg: #f4f6ff;
-  --theme-surface: #eef1ff;
-  --theme-card: #ffffff;
-  --theme-border: #d9def7;
-  --theme-text: #20213a;
-  --theme-text-secondary: #596080;
-  --theme-text-muted: #7c84a3;
-  --theme-accent-purple: #6d4dd8;
-  --theme-accent-pink: #c04491;
-  --theme-glass: rgba(255, 255, 255, 0.88);
-  --theme-glass-strong: rgba(255, 255, 255, 0.96);
-  --theme-shadow: 0 18px 45px rgba(70, 78, 145, 0.14);
-  --theme-shadow-soft: 0 8px 22px rgba(70, 78, 145, 0.1);
-  --theme-nav-bg: rgba(255, 255, 255, 0.94);
-  --theme-nav-border: #d9def7;
-  --theme-nav-shadow: 0 -12px 34px rgba(70, 78, 145, 0.14);
-  --theme-nav-inactive: #687092;
-  --theme-nav-active-text: #31256f;
-  --theme-accent-from: #6d4dd8;
-  --theme-accent-to: #2563eb;
-  --theme-accent-contrast: #ffffff;
-}
-
-:root[data-theme="light"] body,
-:root[data-theme="light"] .theme-bg-gradient,
-:root[data-theme="light"] main.min-h-screen {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(109, 77, 216, 0.16), transparent 30rem),
-    radial-gradient(circle at 100% 12%, rgba(37, 99, 235, 0.12), transparent 28rem),
-    radial-gradient(circle at 50% 100%, rgba(192, 68, 145, 0.08), transparent 32rem),
-    linear-gradient(180deg, #f8f9ff 0%, #eef1ff 100%) !important;
-  color: var(--theme-text);
-}
-
-:root[data-theme="light"] .premium-card,
-:root[data-theme="light"] .premium-card-strong,
-:root[data-theme="light"] .liquid-glass,
-:root[data-theme="light"] .liquid-glass-strong {
-  background: var(--theme-glass);
-  border: 1px solid var(--theme-border);
-  box-shadow:
-    0 18px 45px rgba(70, 78, 145, 0.14),
-    inset 0 1px 1px rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
-}
-
-:root[data-theme="light"] .premium-card-strong,
-:root[data-theme="light"] .liquid-glass-strong {
-  background: var(--theme-glass-strong);
-}
-
-:root[data-theme="light"] .premium-card::before,
-:root[data-theme="light"] .premium-card-strong::before,
-:root[data-theme="light"] .liquid-glass::before,
-:root[data-theme="light"] .liquid-glass-strong::before {
-  background: linear-gradient(135deg, rgba(109, 77, 216, 0.08), transparent 52%, rgba(37, 99, 235, 0.06));
-  opacity: 1;
-  animation: none;
-}
-
-:root[data-theme="light"] button,
-:root[data-theme="light"] .glass-control {
-  color: #ffffff !important;
-  border-color: rgba(79, 70, 229, 0.28) !important;
-  background: linear-gradient(135deg, #6d4dd8, #2563eb) !important;
-  box-shadow: 0 8px 20px rgba(70, 78, 145, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.3);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-:root[data-theme="light"] button:hover:not(:disabled),
-:root[data-theme="light"] .glass-control:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5b3fc0, #1d4ed8) !important;
-  transform: translateY(-1px);
-}
-
-:root[data-theme="light"] svg:not([class*="text-"]) {
-  color: #4f46e5;
-}
-
-:root[data-theme="light"] .text-white,
-:root[data-theme="light"] .text-gray-100,
-:root[data-theme="light"] .text-gray-200 {
-  color: var(--theme-text) !important;
-}
-
-:root[data-theme="light"] .text-gray-300,
-:root[data-theme="light"] .text-gray-400,
-:root[data-theme="light"] .text-gray-500 {
-  color: var(--theme-text-secondary) !important;
-}
-
-:root[data-theme="light"] .text-cyan-200,
-:root[data-theme="light"] .text-cyan-300,
-:root[data-theme="light"] .text-cyan-400 {
-  color: #2563eb !important;
-}
-
-:root[data-theme="light"] .text-purple-300,
-:root[data-theme="light"] .text-purple-400,
-:root[data-theme="light"] .text-pink-300,
-:root[data-theme="light"] .text-pink-400,
-:root[data-theme="light"] .text-pink-500 {
-  color: #6d4dd8 !important;
-}
-
-/* Keep navigation readable; it is a surface, not an action button. */
-:root[data-theme="light"] nav.glass-control {
-  color: #20213a !important;
-  background: #ffffff !important;
-  background-image: none !important;
-  border: 1px solid #d9def7 !important;
-  box-shadow: 0 14px 34px rgba(70, 78, 145, 0.18) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-:root[data-theme="light"] nav.glass-control a > div {
-  color: #4f46e5 !important;
-}
-
-:root[data-theme="light"] nav.glass-control a > span {
-  color: #4b4670 !important;
-}
-
-:root[data-theme="light"] nav.glass-control a[aria-current="page"] > span,
-:root[data-theme="light"] nav.glass-control a:hover > span {
-  color: #31256f !important;
-}
-
-:root[data-theme="light"] nav.glass-control a > div svg,
-:root[data-theme="light"] nav.glass-control a > div img {
-  opacity: 1 !important;
-  filter: none !important;
-}
-
-nav.glass-control a:hover > div:not(.scale-105) {
-  background-color: transparent !important;
-  background-image: none !important;
-  box-shadow: none !important;
-}
-
-nav.glass-control a:hover > div:not(.scale-105) svg {
-  color: var(--classic-purple, #6d4dd8) !important;
-  transform: translateY(-1px);
-}
-
-:root[data-theme="light"] button svg {
-  color: #ffffff !important;
-  opacity: 1 !important;
-}
-
-:root[data-theme="light"] button:disabled {
-  color: #e0e7ff !important;
-  opacity: 0.72;
-}
-
-/* Tailwind's button reset can remove the radius; restore it for every rectangular control. */
-button:not([class*="rounded-full"]),
-button:not([class*="rounded-full"]):hover,
-button:not([class*="rounded-full"]):focus-visible {
-  border-radius: 1rem !important;
-}
-
-/* Light-theme accent contrast: prevent colored components from becoming washed out. */
-:root[data-theme="light"] [class*="from-yellow-"] {
-  --tw-gradient-from: #f59e0b !important;
-  --tw-gradient-to: #f59e0b00 !important;
-}
-
-:root[data-theme="light"] [class*="via-pink-"] {
-  --tw-gradient-via: #ec4899 !important;
-}
-
-:root[data-theme="light"] [class*="to-purple-"] {
-  --tw-gradient-to: #6d28d9 !important;
-}
-
-:root[data-theme="light"] [class*="border-yellow-"] {
-  border-color: #d97706 !important;
-}
-
-:root[data-theme="light"] [class*="text-yellow-"] {
-  color: #92400e !important;
-}
-
-:root[data-theme="light"] [class*="bg-yellow-"] {
-  background-color: #fef3c7 !important;
-}
-
-:root[data-theme="light"] [class*="shadow-yellow-"] {
-  box-shadow: 0 16px 36px rgba(217, 119, 6, 0.28) !important;
-}
-
-:root[data-theme="light"] [class*="bg-white/"] {
-  background-color: rgba(255, 255, 255, 0.72) !important;
-}
-
-:root[data-theme="light"] [class*="border-white/"] {
-  border-color: rgba(79, 70, 229, 0.28) !important;
-}
-
-/* Friends strip final cascade: transparent avatar controls and high-contrast labels. */
-:root[data-theme="light"] .friends-strip {
-  border-radius: 1.5rem !important;
-  background: linear-gradient(135deg, #4f46a5, #2563b8) !important;
-  border: 1px solid rgba(129, 140, 248, 0.65) !important;
-  box-shadow: 0 12px 28px rgba(37, 63, 145, 0.3) !important;
-}
-
-:root[data-theme="light"] .friends-strip h2,
-:root[data-theme="light"] .friends-strip > div:first-child > span,
-:root[data-theme="light"] .friends-strip button > span {
-  color: #ffffff !important;
-  font-weight: 800 !important;
-  text-shadow: 0 1px 3px rgba(15, 23, 42, 0.45);
-}
-
-:root[data-theme="light"] .friends-strip button,
-:root[data-theme="light"] .friends-strip button:hover,
-:root[data-theme="light"] .friends-strip button:active,
-:root[data-theme="light"] .friends-strip button:focus-visible {
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  color: #ffffff !important;
-}
-
-:root[data-theme="light"] .friends-strip button:hover,
-:root[data-theme="light"] .friends-strip button:active {
-  background: rgba(255, 255, 255, 0.14) !important;
-}
-
-:root[data-theme="light"] .friends-strip .friends-name,
-:root[data-theme="light"] .friends-strip button .friends-name,
-:root[data-theme="light"] .friends-strip button:hover .friends-name,
-:root[data-theme="light"] .friends-strip button:focus-visible .friends-name {
-  color: #ffffff !important;
-  font-weight: 800 !important;
-  text-shadow: 0 1px 3px rgba(15, 23, 42, 0.55) !important;
-}
-
-:root[data-theme="dark"] .friends-strip {
-  background: rgba(16, 13, 24, 0.9) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  box-shadow: none !important;
-}
-
-:root[data-theme="dark"] .friends-strip button {
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
-:root[data-theme="dark"] .typing-text-ink {
-  color: currentColor !important;
-  -webkit-text-fill-color: currentColor !important;
-  text-shadow: none;
-}
-
-:root[data-theme="dark"] .typing-text-gradient {
-  color: #22d3ee !important;
-  background-image: linear-gradient(110deg, #22d3ee 0%, #38bdf8 45%, #8b5cf6 100%);
-  -webkit-text-fill-color: transparent !important;
-  -webkit-text-stroke: 0;
-}
-
-:root[data-theme="dark"] .typing-text-layer > span:last-child {
-  background-image: linear-gradient(180deg, #22d3ee, #8b5cf6) !important;
-  box-shadow: 0 0 10px rgba(34, 211, 238, 0.65);
-}
-
-/* ==========================================================================
-   Auth surfaces — edge-lit glass.
-   These screens keep their own dark palette in every theme so the rim light
-   stays legible; the light-theme cascade is neutralised at the bottom.
-   ========================================================================== */
-
-/* Registered so the angle can be animated. `inherits: true` lets .auth-card::before
-   read the parent's animated value and keep the bloom in sync with the rim. */
-@property --auth-edge-angle {
+@property --edge-angle {
   syntax: "<angle>";
   inherits: true;
   initial-value: 0deg;
 }
+
+.edge-lit {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--radius-2xl);
+  padding: 1px;
+  --edge-angle: 0deg;
+  --edge-opacity: 0.85;
+  --edge-speed: 9s;
+  background: conic-gradient(
+    from var(--edge-angle) at 50% 50%,
+    transparent 0deg,
+    color-mix(in srgb, var(--theme-accent-from) calc(var(--edge-opacity) * 100%), transparent) 55deg,
+    color-mix(in srgb, #ffffff calc(var(--edge-opacity) * 90%), transparent) 82deg,
+    color-mix(in srgb, var(--theme-accent-pink) calc(var(--edge-opacity) * 100%), transparent) 112deg,
+    transparent 185deg,
+    transparent 255deg,
+    color-mix(in srgb, var(--theme-accent-purple) calc(var(--edge-opacity) * 75%), transparent) 305deg,
+    transparent 360deg);
+  box-shadow: var(--elev-4);
+  animation: edgeSpin var(--edge-speed) linear infinite;
+}
+
+.edge-lit::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: inherit;
+  filter: blur(14px);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.edge-lit-inner {
+  position: relative;
+  height: 100%;
+  border-radius: calc(var(--radius-2xl) - 1px);
+  background: var(--theme-glass-strong);
+  box-shadow: var(--elev-rim);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+@keyframes edgeSpin {
+  to { --edge-angle: 360deg; }
+}
+
+.settings-row {
+  position: relative;
+  transition: background-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.settings-row:hover,
+.settings-row:focus-visible {
+  background: var(--theme-glass);
+}
+
+.settings-chevron {
+  transition: transform var(--dur-base) var(--ease-out-quint);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .settings-row:hover .settings-chevron {
+    transform: translateX(3px);
+  }
+}
+
+/* --- Segmented control ------------------------------------------------- */
+
+/* The travelling pill is a Framer layout animation in SegmentedTabs; the press
+   scale comes from the universal rule above. All that's left here is killing
+   the mobile tap flash, which would otherwise paint a grey box over the pill
+   for ~100ms on every tab change. */
+.segmented-tab {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- Person row -------------------------------------------------------- */
+
+/* Facebook's friends list reads as a list, not as a stack of floating cards:
+   one continuous surface with hairline separators. Forty individually
+   shadowed panels is what made this screen look busy. */
+.person-list {
+  border-radius: var(--radius-2xl);
+  background: var(--theme-glass);
+  border: 1px solid var(--theme-glass-border);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: var(--elev-2);
+  overflow: hidden;
+}
+
+.person-list > * + * {
+  border-top: 1px solid var(--theme-glass-border);
+}
+
+.person-list > * {
+  /* The list owns the corners; rows must not paint their own or the hairline
+     separators end up floating inside a rounded gap. */
+  border-radius: 0;
+}
+
+.person-row {
+  transition: background-color var(--dur-fast) var(--ease-out-quint),
+              scale var(--dur-fast) var(--ease-out-quint);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .person-row:hover {
+    background: var(--fill-1);
+  }
+}
+
+@keyframes blobDrift {
+  0%, 100% { translate: 0 0;        scale: 1;    }
+  33%      { translate: 3% -4%;     scale: 1.06; }
+  66%      { translate: -4% 2%;     scale: 0.96; }
+}
+
+/* --- Dashboard ambient backdrop ---------------------------------------- */
+
+/* Two full-bleed gradient layers cross-fading on opacity. The second is a
+   ::after so the whole effect costs one element in the markup, and neither
+   layer ever repaints — only their opacity changes, which stays on the
+   compositor. */
+.dashboard-ambient,
+.dashboard-ambient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  animation: ambientFade 18s var(--ease-soft) infinite;
+}
+
+.dashboard-ambient {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--theme-accent-purple) 22%, transparent), transparent 34rem),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--theme-accent-pink) 18%, transparent), transparent 32rem);
+}
+
+.dashboard-ambient::after {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--theme-accent-pink) 20%, transparent), transparent 34rem),
+    radial-gradient(circle at bottom left, color-mix(in srgb, var(--theme-accent-purple) 22%, transparent), transparent 32rem);
+  animation-direction: reverse;
+}
+
+@keyframes ambientFade {
+  0%, 100% { opacity: 1;    }
+  50%      { opacity: 0.15; }
+}
+
+@keyframes phoneTilt {
+  0%,
+  100% { transform: rotateY(-6deg) rotateX(2deg)  translateZ(0);     }
+  50%  { transform: rotateY(6deg)  rotateX(-2deg) translateZ(10px);  }
+}
+
+.phone-tilt {
+  animation: phoneTilt 7s var(--ease-soft) infinite;
+}
+
+/* --- Legacy animation helpers (still referenced by screens) ------------- */
+
+@keyframes premium-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-premium-enter {
+  animation: premium-fade-up var(--dur-base) var(--ease-out-quint) both;
+}
+
+@keyframes statsLivePulse {
+  0%   { opacity: 0.6; transform: translateY(4px) scale(0.96); }
+  55%  { opacity: 1;   transform: translateY(0) scale(1.04); }
+  100% { opacity: 1;   transform: translateY(0) scale(1); }
+}
+
+.stats-live-value {
+  animation: statsLivePulse 900ms var(--ease-out-quint) both;
+}
+
+@keyframes whisper-glow {
+  0%, 100% { opacity: 0.06; filter: drop-shadow(0 0 24px var(--theme-accent-purple)); transform: scale(1); }
+  50%      { opacity: 0.18; filter: drop-shadow(0 0 60px var(--brand-cyan)) drop-shadow(0 0 80px var(--theme-accent-purple)); transform: scale(1.06); }
+}
+
+.whisper-logo-glow {
+  animation: whisper-glow 3.5s var(--ease-soft) infinite;
+  pointer-events: none;
+  user-select: none;
+}
+
+.text-white,
+.text-gray-100,
+.text-gray-200 { color: var(--bridge-text) !important; }
+
+.text-gray-300,
+.text-gray-400 { color: var(--bridge-text-secondary) !important; }
+
+.text-gray-500,
+.text-gray-600 { color: var(--bridge-text-muted) !important; }
+
+/* Accents keep their identity, resolved per theme. */
+.text-cyan-100, .text-cyan-200, .text-cyan-300, .text-cyan-400 {
+  color: var(--theme-accent-from) !important;
+}
+.text-purple-300, .text-purple-400, .text-purple-500 {
+  color: var(--theme-accent-purple) !important;
+}
+.text-pink-300, .text-pink-400, .text-pink-500 {
+  color: var(--theme-accent-pink) !important;
+}
+
+.bg-white\/5   { background-color: var(--fill-1) !important; }
+.bg-white\/10  { background-color: var(--fill-2) !important; }
+.bg-white\/15  { background-color: var(--fill-3) !important; }
+.bg-white\/20  { background-color: var(--fill-4) !important; }
+
+.border-white\/5,
+.border-white\/10,
+.border-white\/15,
+.border-white\/20 { border-color: var(--hairline) !important; }
+
+.divide-white\/\[0\.06\] > * + * { border-color: var(--hairline) !important; }
+
+/* Accent gradient stops used across marketing + dashboard. */
+.from-cyan-400   { --tw-gradient-from: var(--theme-accent-from) !important; }
+.to-cyan-400     { --tw-gradient-to:   var(--theme-accent-from) !important; }
+.from-purple-500 { --tw-gradient-from: var(--theme-accent-purple) !important; }
+.to-purple-500,
+.to-purple-600   { --tw-gradient-to:   var(--theme-accent-purple) !important; }
+
+.bg-cyan-400   { background-color: var(--theme-accent-from) !important; }
+.bg-purple-500,
+.bg-purple-600 { background-color: var(--theme-accent-purple) !important; }
+
+/* Always-dark islands. One declaration each, instead of a block per child. */
+.on-dark,
+.auth-shell,
+.friends-strip,
+[data-surface="dark"] {
+  --bridge-text: #ffffff;
+  --bridge-text-secondary: rgba(226, 222, 245, 0.8);
+  --bridge-text-muted: rgba(190, 183, 214, 0.62);
+  --fill-1: rgba(255, 255, 255, 0.05);
+  --fill-2: rgba(255, 255, 255, 0.09);
+  --fill-3: rgba(255, 255, 255, 0.13);
+  --fill-4: rgba(255, 255, 255, 0.18);
+  --hairline: rgba(255, 255, 255, 0.12);
+}
+
+@keyframes discoverIconFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-3px) rotate(1deg); }
+}
+
+@keyframes discoverHandWave {
+  0%, 68%, 100% { transform: rotate(0deg) translateY(0); }
+  74% { transform: rotate(18deg) translateY(-2px); }
+  80% { transform: rotate(-14deg) translateY(-4px); }
+  86% { transform: rotate(16deg) translateY(-3px); }
+  92% { transform: rotate(-8deg) translateY(-1px); }
+}
+
+.discover-anime-wave {
+  transform-box: fill-box;
+  transform-origin: 0% 100%;
+  animation: discoverHandWave 3s var(--ease-soft) infinite;
+}
+
+.discover-icon-tile {
+  animation: discoverIconFloat 5s var(--ease-soft) infinite;
+}
+
+.discover-icon-grid > a:nth-child(3n + 2) .discover-icon-tile { animation-delay: -1.6s; }
+.discover-icon-grid > a:nth-child(3n)     .discover-icon-tile { animation-delay: -3.2s; }
+
+/* --- Marketing headline ------------------------------------------------ */
+
+.typing-text-layer {
+  display: inline-block;
+  z-index: 1;
+  font-weight: 800;
+  letter-spacing: var(--tracking-5xl);
+}
+
+.typing-text-ink {
+  color: var(--theme-text);
+  -webkit-text-fill-color: var(--theme-text);
+}
+
+.typing-text-gradient {
+  background-image: linear-gradient(110deg,
+    var(--theme-accent-from) 0%,
+    var(--theme-accent-purple) 48%,
+    var(--theme-accent-pink) 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.typing-text-layer > span:last-child {
+  background-image: linear-gradient(180deg,
+    var(--theme-accent-from), var(--theme-accent-purple)) !important;
+}
+
+/* --- Friends strip ----------------------------------------------------- */
+
+.friends-strip {
+  border-radius: var(--radius-2xl);
+  background: linear-gradient(135deg, #4a3fa8 0%, #2f5fc0 100%);
+  border: 1px solid rgba(139, 145, 255, 0.35);
+  box-shadow: var(--elev-3);
+}
+
+.friends-strip .friends-name,
+.friends-strip h2 {
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(15, 23, 42, 0.45);
+}
+
+.friends-strip button {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.friends-strip button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 
 .auth-shell {
   position: relative;
@@ -833,17 +1196,16 @@ button:not([class*="rounded-full"]):focus-visible {
   align-items: center;
   justify-content: center;
   padding: 1.5rem 1rem;
-  background: #050208 !important;
+  background: #050208;
   color: #f4f2ff;
-  /* Shared so the base rules and the light-theme overrides below can't drift. */
   --auth-submit-bg: linear-gradient(100deg, #6d4bff 0%, #8b5cf6 46%, #d946ef 100%);
   --auth-submit-shadow: 0 14px 34px rgba(109, 75, 255, 0.42), inset 0 1px 1px rgba(255, 255, 255, 0.3);
-  --auth-submit-shadow-hover: 0 18px 44px rgba(139, 92, 246, 0.55), 0 0 26px rgba(217, 70, 239, 0.32),
-    inset 0 1px 1px rgba(255, 255, 255, 0.34);
+  --auth-submit-shadow-hover: 0 18px 44px rgba(139, 92, 246, 0.55),
+    0 0 26px rgba(217, 70, 239, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.34);
 }
 
-/* The aurora clips its own blobs, so .auth-shell can stay overflow-visible and
-   let absolutely-positioned popovers (the country picker) escape the card. */
+/* The shell stays overflow-visible so the country picker can escape the card;
+   the aurora clips its own blobs instead. */
 .auth-aurora {
   position: absolute;
   inset: 0;
@@ -859,73 +1221,32 @@ button:not([class*="rounded-full"]):focus-visible {
   filter: blur(120px);
 }
 
-.auth-aurora .aurora-1 {
-  top: -14rem;
-  left: -12rem;
-  height: 34rem;
-  width: 34rem;
-  background: rgba(124, 58, 237, 0.5);
-}
+.auth-aurora .aurora-1 { top: -14rem; left: -12rem; height: 34rem; width: 34rem; background: rgba(124, 58, 237, 0.5); }
+.auth-aurora .aurora-2 { bottom: -18rem; right: -10rem; height: 38rem; width: 38rem; background: rgba(168, 85, 247, 0.34); }
+.auth-aurora .aurora-3 { top: 42%; left: 50%; height: 26rem; width: 26rem; transform: translate(-50%, -50%); background: rgba(236, 72, 153, 0.16); }
+.auth-aurora .aurora-4 { top: 30%; right: 4%; height: 18rem; width: 18rem; background: rgba(99, 75, 255, 0.28); }
 
-.auth-aurora .aurora-2 {
-  bottom: -18rem;
-  right: -10rem;
-  height: 38rem;
-  width: 38rem;
-  background: rgba(168, 85, 247, 0.34);
-}
-
-.auth-aurora .aurora-3 {
-  top: 42%;
-  left: 50%;
-  height: 26rem;
-  width: 26rem;
-  transform: translate(-50%, -50%);
-  background: rgba(236, 72, 153, 0.16);
-}
-
-.auth-aurora .aurora-4 {
-  top: 30%;
-  right: 4%;
-  height: 18rem;
-  width: 18rem;
-  background: rgba(99, 75, 255, 0.28);
-}
-
-/* The card: a 1px conic-gradient rim that rotates, masked to the border only. */
 .auth-card {
   position: relative;
   z-index: 10;
   width: 100%;
-  border-radius: 2rem;
-  padding: 1px; /* the rim's thickness */
-  /* Static fallback for engines without @property: the rim renders, it just won't spin. */
-  --auth-edge-angle: 0deg;
-  background:
-    conic-gradient(
-      from var(--auth-edge-angle) at 50% 50%,
-      rgba(255, 255, 255, 0.06) 0deg,
-      rgba(167, 139, 250, 0.95) 62deg,
-      rgba(255, 255, 255, 0.98) 88deg,
-      rgba(232, 121, 249, 0.9) 118deg,
-      rgba(255, 255, 255, 0.06) 190deg,
-      rgba(255, 255, 255, 0.06) 250deg,
-      rgba(129, 140, 248, 0.75) 300deg,
-      rgba(255, 255, 255, 0.06) 360deg
-    );
-  box-shadow:
-    0 40px 120px rgba(0, 0, 0, 0.7),
-    0 0 60px rgba(124, 58, 237, 0.22);
-  animation: authEdgeSpin 8s linear infinite;
+  border-radius: var(--radius-3xl);
+  padding: 1px;
+  --edge-angle: 0deg;
+  background: conic-gradient(
+    from var(--edge-angle) at 50% 50%,
+    rgba(255, 255, 255, 0.06) 0deg,
+    rgba(167, 139, 250, 0.95) 62deg,
+    rgba(255, 255, 255, 0.98) 88deg,
+    rgba(232, 121, 249, 0.9) 118deg,
+    rgba(255, 255, 255, 0.06) 190deg,
+    rgba(255, 255, 255, 0.06) 250deg,
+    rgba(129, 140, 248, 0.75) 300deg,
+    rgba(255, 255, 255, 0.06) 360deg);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.7), 0 0 60px rgba(124, 58, 237, 0.22);
+  animation: edgeSpin 8s linear infinite;
 }
 
-@keyframes authEdgeSpin {
-  to {
-    --auth-edge-angle: 360deg;
-  }
-}
-
-/* Soft bloom cast by the rim onto the backdrop. */
 .auth-card::before {
   content: "";
   position: absolute;
@@ -940,18 +1261,15 @@ button:not([class*="rounded-full"]):focus-visible {
 
 .auth-card-inner {
   position: relative;
-  border-radius: calc(2rem - 1px);
+  border-radius: calc(var(--radius-3xl) - 1px);
   background:
     radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.16), transparent 60%),
     linear-gradient(165deg, rgba(30, 22, 48, 0.92), rgba(10, 6, 18, 0.96));
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   padding: 2.25rem 2rem;
-  /* No overflow:hidden — backgrounds already clip to border-radius, and hiding
-     overflow here would cut off the country picker's dropdown. */
 }
 
-/* Specular highlight along the top inner edge. */
 .auth-card-inner::before {
   content: "";
   position: absolute;
@@ -972,32 +1290,31 @@ button:not([class*="rounded-full"]):focus-visible {
 }
 
 .auth-brand span {
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-size: var(--text-md);
+  font-weight: 650;
   color: #efeaff;
 }
 
 .auth-title {
   text-align: center;
-  font-size: 2.25rem;
+  font-size: var(--text-4xl);
   line-height: 1.1;
-  font-weight: 900;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: var(--tracking-4xl);
   color: #ffffff;
 }
 
 .auth-subtitle {
   margin-top: 0.5rem;
   text-align: center;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   color: rgba(214, 208, 235, 0.75);
 }
 
 .auth-label {
   display: block;
   margin-bottom: 0.4rem;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: rgba(223, 218, 241, 0.82);
 }
@@ -1006,11 +1323,12 @@ button:not([class*="rounded-full"]):focus-visible {
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: 1rem;
+  border-radius: var(--radius-lg);
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025));
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.09);
-  transition: border-color 200ms ease, box-shadow 200ms ease;
+  transition: border-color var(--dur-fast) var(--ease-soft),
+              box-shadow var(--dur-base) var(--ease-out-quint);
 }
 
 .auth-input-wrap:focus-within {
@@ -1033,16 +1351,14 @@ button:not([class*="rounded-full"]):focus-visible {
   border: 0;
   background: transparent;
   padding: 0.95rem 1rem;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   color: #ffffff;
   outline: none;
 }
 
-.auth-input-wrap input::placeholder {
-  color: rgba(168, 160, 196, 0.55);
-}
+.auth-input-wrap input::placeholder { color: rgba(168, 160, 196, 0.55); }
 
-/* Kill Chrome's yellow autofill wash without losing the typed value. */
+/* Kill Chrome's autofill wash without losing the typed value. */
 .auth-input-wrap input:-webkit-autofill,
 .auth-input-wrap input:-webkit-autofill:hover,
 .auth-input-wrap input:-webkit-autofill:focus {
@@ -1059,63 +1375,48 @@ button:not([class*="rounded-full"]):focus-visible {
   justify-content: center;
   margin-right: 0.5rem;
   padding: 0.5rem;
-  border: 0 !important;
-  border-radius: 0.65rem !important;
-  background: transparent !important;
-  background-image: none !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  color: rgba(196, 188, 224, 0.85) !important;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: rgba(196, 188, 224, 0.85);
 }
 
 .auth-input-wrap .auth-reveal:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: none !important;
-  transform: none;
-  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }
 
 .auth-link {
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: 650;
   color: #b69bff;
-  transition: color 180ms ease;
+  transition: color var(--dur-fast) var(--ease-soft);
 }
-
-.auth-link:hover {
-  color: #d6c6ff;
-}
+.auth-link:hover { color: #d6c6ff; }
 
 .auth-submit {
   position: relative;
   width: 100%;
-  border: 0 !important;
-  border-radius: 1rem !important;
+  border: 0;
+  border-radius: var(--radius-lg);
   padding: 1rem;
-  font-size: 1rem;
-  font-weight: 800;
-  color: #ffffff !important;
-  background: var(--auth-submit-bg) !important;
-  background-image: var(--auth-submit-bg) !important;
-  box-shadow: var(--auth-submit-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  transition: transform 200ms ease, box-shadow 200ms ease, opacity 200ms ease;
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--auth-submit-bg);
+  box-shadow: var(--auth-submit-shadow);
+  transition: transform var(--dur-fast) var(--ease-out-quint),
+              box-shadow var(--dur-base) var(--ease-out-quint),
+              opacity var(--dur-fast) linear;
 }
 
 .auth-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: var(--auth-submit-shadow-hover) !important;
+  box-shadow: var(--auth-submit-shadow-hover);
 }
-
-.auth-submit:active:not(:disabled) {
-  transform: translateY(0) scale(0.99);
-}
-
-.auth-submit:disabled {
-  opacity: 0.6;
-}
+.auth-submit:active:not(:disabled) { transform: translateY(0) scale(0.99); }
+.auth-submit:disabled { opacity: 0.6; }
 
 .auth-divider {
   display: flex;
@@ -1133,7 +1434,7 @@ button:not([class*="rounded-full"]):focus-visible {
 }
 
 .auth-divider span {
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1146,43 +1447,35 @@ button:not([class*="rounded-full"]):focus-visible {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  border-radius: 1rem !important;
-  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   padding: 1rem;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #16121f !important;
-  background: #ffffff !important;
-  background-image: none !important;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  transition: transform 200ms ease, box-shadow 200ms ease;
+  font-size: var(--text-md);
+  font-weight: 650;
+  color: #16121f;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  transition: transform var(--dur-fast) var(--ease-out-quint),
+              box-shadow var(--dur-base) var(--ease-out-quint),
+              background-color var(--dur-fast) var(--ease-soft);
 }
 
 .auth-google:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: #f6f4ff !important;
-  box-shadow:
-    0 16px 38px rgba(0, 0, 0, 0.4),
-    0 0 22px rgba(167, 139, 250, 0.28) !important;
+  background: #f6f4ff;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.4), 0 0 22px rgba(167, 139, 250, 0.28);
 }
 
-.auth-google:disabled {
-  opacity: 0.65;
-}
+.auth-google:disabled { opacity: 0.65; }
 
-/* The Google mark must keep its own colours against the light-theme svg rule. */
+/* The Google mark keeps its own brand colours. */
 .auth-google svg,
-.auth-google svg path {
-  color: initial !important;
-  opacity: 1 !important;
-}
+.auth-google svg path { color: initial; opacity: 1; }
 
 .auth-footnote {
   margin-top: 1.75rem;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   color: rgba(190, 183, 214, 0.75);
 }
 
@@ -1204,22 +1497,19 @@ button:not([class*="rounded-full"]):focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: rgba(190, 183, 214, 0.8);
-  transition: color 180ms ease;
+  transition: color var(--dur-fast) var(--ease-soft);
 }
-
-.auth-back:hover {
-  color: #ffffff;
-}
+.auth-back:hover { color: #ffffff; }
 
 .auth-note {
-  border-radius: 1rem;
+  border-radius: var(--radius-lg);
   border: 1px solid rgba(167, 139, 250, 0.22);
   background: rgba(139, 92, 246, 0.08);
   padding: 0.9rem 1rem;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: rgba(214, 208, 235, 0.85);
 }
@@ -1228,7 +1518,7 @@ button:not([class*="rounded-full"]):focus-visible {
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: rgba(206, 199, 230, 0.85);
 }
@@ -1238,174 +1528,47 @@ button:not([class*="rounded-full"]):focus-visible {
   height: 1rem;
   width: 1rem;
   flex: none;
-  accent-color: #8b5cf6;
+  accent-color: var(--brand-purple);
 }
 
-/* Auth screens are deliberately dark in both themes — the rim light needs a dark
-   field to read as light. Undo the light-theme cascade inside .auth-shell only. */
-:root[data-theme="light"] .auth-shell,
-:root[data-theme="light"] .auth-shell.min-h-screen {
-  background: #050208 !important;
-  color: #f4f2ff !important;
+/* Nested controls (country/phone picker) keep the card's dark treatment. */
+.auth-phone button {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
-
-:root[data-theme="light"] .auth-shell .auth-card-inner {
-  background:
-    radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.16), transparent 60%),
-    linear-gradient(165deg, rgba(30, 22, 48, 0.92), rgba(10, 6, 18, 0.96)) !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  backdrop-filter: blur(40px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-title,
-:root[data-theme="light"] .auth-shell .auth-brand span {
-  color: #ffffff !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-subtitle,
-:root[data-theme="light"] .auth-shell .auth-footnote,
-:root[data-theme="light"] .auth-shell .auth-label,
-:root[data-theme="light"] .auth-shell .auth-check,
-:root[data-theme="light"] .auth-shell .auth-note {
-  color: rgba(214, 208, 235, 0.8) !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-link,
-:root[data-theme="light"] .auth-shell .auth-badge {
-  color: #b69bff !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-input-wrap {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-input-wrap input {
-  color: #ffffff !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-input-wrap .auth-reveal,
-:root[data-theme="light"] .auth-shell .auth-input-wrap .auth-reveal svg {
-  color: rgba(196, 188, 224, 0.85) !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-submit svg,
-:root[data-theme="light"] .auth-shell .auth-google svg {
-  opacity: 1 !important;
-}
-
-:root[data-theme="light"] .auth-shell .auth-submit svg {
-  color: #ffffff !important;
-}
-
-/* Tailwind utility classes used inside the dark auth card must not be repainted
-   by the light-theme cascade above. */
-:root[data-theme="light"] .auth-shell .text-white,
-:root[data-theme="light"] .auth-shell .text-gray-100,
-:root[data-theme="light"] .auth-shell .text-gray-200 {
-  color: #ffffff !important;
-}
-
-:root[data-theme="light"] .auth-shell .text-gray-300,
-:root[data-theme="light"] .auth-shell .text-gray-400,
-:root[data-theme="light"] .auth-shell .text-gray-500 {
-  color: rgba(190, 183, 214, 0.75) !important;
-}
-
-:root[data-theme="light"] .auth-shell [class*="bg-white/"] {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
-:root[data-theme="light"] .auth-shell [class*="border-white/"] {
-  border-color: rgba(255, 255, 255, 0.1) !important;
-}
-
-:root[data-theme="light"] .auth-shell svg:not([class*="text-"]) {
-  color: inherit !important;
-}
-
-/* Nested controls (the country/phone picker) keep the card's dark treatment. */
-:root[data-theme="light"] .auth-phone button {
-  color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  background-image: none !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-:root[data-theme="light"] .auth-phone button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14) !important;
-  transform: none;
-}
-
-:root[data-theme="light"] .auth-phone button svg {
-  color: rgba(190, 183, 214, 0.8) !important;
-}
-
-/* `:root[data-theme="light"] button` scores (0,2,1) and would otherwise repaint
-   every control in the card as an indigo pill. These selectors outrank it. */
-:root[data-theme="light"] .auth-shell button.auth-submit {
-  color: #ffffff !important;
-  background: var(--auth-submit-bg) !important;
-  background-image: var(--auth-submit-bg) !important;
-  box-shadow: var(--auth-submit-shadow) !important;
-}
-
-:root[data-theme="light"] .auth-shell button.auth-submit:hover:not(:disabled) {
-  background: var(--auth-submit-bg) !important;
-  background-image: var(--auth-submit-bg) !important;
-  box-shadow: var(--auth-submit-shadow-hover) !important;
-}
-
-:root[data-theme="light"] .auth-shell button.auth-google {
-  color: #16121f !important;
-  background: #ffffff !important;
-  background-image: none !important;
-  border-color: rgba(255, 255, 255, 0.9) !important;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35) !important;
-}
-
-:root[data-theme="light"] .auth-shell button.auth-google:hover:not(:disabled) {
-  background: #f6f4ff !important;
-  background-image: none !important;
-}
-
-:root[data-theme="light"] .auth-shell button.auth-reveal,
-:root[data-theme="light"] .auth-shell button.auth-reveal:hover:not(:disabled) {
-  background: transparent !important;
-  background-image: none !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
-:root[data-theme="light"] .auth-shell button.auth-reveal svg {
-  color: rgba(196, 188, 224, 0.85) !important;
-}
-
-/* The Google mark keeps its brand colours against the light-theme svg rule. */
-:root[data-theme="light"] .auth-shell button.auth-google svg path {
-  color: initial !important;
-}
+.auth-phone button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.auth-phone button svg { color: rgba(190, 183, 214, 0.8); }
 
 @media (max-width: 480px) {
-  .auth-card-inner {
-    padding: 1.75rem 1.25rem;
-  }
-
-  .auth-title {
-    font-size: 1.9rem;
-  }
+  .auth-card-inner { padding: 1.75rem 1.25rem; }
+  .auth-title { font-size: var(--text-3xl); }
 }
+
+
+/* ==========================================================================
+   8. REDUCED MOTION
+   --------------------------------------------------------------------------
+   Degrade, don't delete. Decorative loops stop; state changes stay legible.
+   ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-card {
-    animation: none;
-    /* Freeze the rim at its brightest arc so the effect survives without motion. */
-    --auth-edge-angle: 300deg;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-}
 
+  /* Freeze the rims at their brightest arc so the effect survives statically. */
+  .auth-card,
+  .edge-lit {
+    animation: none !important;
+    --edge-angle: 300deg;
+  }
+
+  .skeleton::after { animation: none !important; }
+}

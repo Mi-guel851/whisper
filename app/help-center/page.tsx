@@ -65,8 +65,8 @@ export default function HelpCenterPage() {
               <LifeBuoy size={32} className="text-purple-300" />
             </div>
           </div>
-          <h1 className="text-4xl font-black mb-2">Help Center</h1>
-          <p className="text-gray-400">Guides and answers to get the most out of Whisper.</p>
+          <h1 className="page-title mb-2">Help Center</h1>
+          <p className="page-subtitle">Guides and answers to get the most out of Whisper.</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-8">

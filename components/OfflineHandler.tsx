@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Network } from "@capacitor/network";
 import { WifiOff, X } from "lucide-react";
 import GlassPanel from "./GlassPanel";
+import Button from "./Button";
 
 export default function OfflineHandler() {
   const [isOffline, setIsOffline] = useState(false);
@@ -73,12 +74,15 @@ export default function OfflineHandler() {
               <WifiOff size={40} />
             </div>
 
-            <h2 className="text-2xl font-black text-white">Connection Lost</h2>
+            <h2 className="page-title text-white">Connection Lost</h2>
             <p className="mt-3 text-gray-400">
               Please connect to the internet to continue using Whisper.
             </p>
 
-            <button
+            <Button
+              className="mt-8"
+              size="lg"
+              fullWidth
               onClick={async () => {
                 const status = await Network.getStatus();
                 if (status.connected) {
@@ -86,10 +90,9 @@ export default function OfflineHandler() {
                   setShowPopup(false);
                 }
               }}
-              className="mt-8 w-full rounded-2xl bg-gradient-to-r from-purple-500 to-purple-500 p-4 font-bold text-black shadow-lg shadow-purple-600/20 active:scale-95 transition"
             >
               Retry Connection
-            </button>
+            </Button>
           </GlassPanel>
         </div>
       )}

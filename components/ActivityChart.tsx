@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { supabase } from "@/lib/supabase/client";
 import SectionLoadingBar from "./SectionLoadingBar";
-import GlassPanel from "./GlassPanel";
+import EdgeLitCard from "./EdgeLitCard";
 
 type DayBucket = {
   date: string;
@@ -139,16 +139,14 @@ export default function ActivityChart() {
   }, [userId, loadData]);
 
   return (
-    <GlassPanel className="rounded-3xl p-6">
+    <EdgeLitCard radius="3xl" intensity={0.38} speed={17} innerClassName="p-6">
       <SectionLoadingBar loading={loading} />
 
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
-            Last 7 Days
-          </p>
+          <p className="eyebrow text-gray-300">Last 7 days</p>
           <div className="mt-1 flex items-center gap-2">
-            <h2 className="text-xl font-bold text-white">Engagement is climbing</h2>
+            <h2 className="section-title text-white">Engagement is climbing</h2>
             <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live
             </span>
@@ -186,10 +184,10 @@ export default function ActivityChart() {
           <XAxis dataKey="label" hide />
           <Tooltip
             contentStyle={{
-              background: "#1a1a1a",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "var(--theme-elevated)",
+              border: "1px solid var(--theme-glass-border)",
               borderRadius: "12px",
-              color: "#fff",
+              color: "var(--theme-text)",
             }}
           />
           <Area
@@ -204,6 +202,6 @@ export default function ActivityChart() {
           />
         </AreaChart>
       </ResponsiveContainer>
-    </GlassPanel>
+    </EdgeLitCard>
   );
 }

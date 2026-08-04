@@ -49,8 +49,8 @@ export default function ContactSupportPage() {
               <LifeBuoy size={32} className="text-purple-300" />
             </div>
           </div>
-          <h1 className="text-4xl font-black mb-2">Contact Support</h1>
-          <p className="text-gray-400">We usually reply within 24-48 hours.</p>
+          <h1 className="page-title mb-2">Contact Support</h1>
+          <p className="page-subtitle">We usually reply within 24-48 hours.</p>
         </div>
 
         <GlassPanel strong className="rounded-3xl p-6 md:p-8">

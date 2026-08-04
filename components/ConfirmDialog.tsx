@@ -1,7 +1,10 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
-import GlassPanel from "./GlassPanel";
+import Modal from "./Modal";
+import Button from "./Button";
+import { spring } from "@/lib/motion";
 
 export default function ConfirmDialog({
   title,
@@ -11,6 +14,10 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   loading = false,
+  /** "danger" for destructive actions, "default" for benign confirmations. */
+  tone = "danger",
+  /** Callers that mount this conditionally can leave this at its default. */
+  open = true,
 }: {
   title: string;
   description: string;
@@ -19,35 +26,66 @@ export default function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
+  tone?: "danger" | "default";
+  open?: boolean;
 }) {
-  return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <GlassPanel strong className="w-full max-w-sm rounded-3xl p-6">
-        <div className="flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15">
-            <AlertTriangle size={22} className="text-red-400" />
-          </div>
-          <h2 className="mt-4 text-lg font-bold text-white">{title}</h2>
-          <p className="mt-2 text-sm text-gray-400">{description}</p>
-        </div>
+  const accent =
+    tone === "danger" ? "var(--theme-error)" : "var(--theme-accent-purple)";
 
-        <div className="mt-6 flex gap-3">
-          <button
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      size="sm"
+      showClose={false}
+      // A destructive choice should be answered, not dismissed by accident.
+      dismissOnBackdrop={!loading}
+    >
+      <div className="flex flex-col items-center px-6 pb-6 pt-7 text-center">
+        <motion.div
+          className="grid h-12 w-12 place-items-center rounded-full"
+          style={{ background: `color-mix(in srgb, ${accent} 14%, transparent)` }}
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ ...spring.bouncy, delay: 0.08 }}
+        >
+          <AlertTriangle size={22} style={{ color: accent }} />
+        </motion.div>
+
+        <h2
+          className="mt-4 text-[1.125rem] font-bold"
+          style={{ color: "var(--theme-text)", letterSpacing: "var(--tracking-lg)" }}
+        >
+          {title}
+        </h2>
+        <p
+          className="mt-2 text-[0.875rem] leading-relaxed"
+          style={{ color: "var(--theme-text-secondary)" }}
+        >
+          {description}
+        </p>
+
+        <div className="mt-6 flex w-full gap-3">
+          <Button
+            variant="ghost"
             onClick={onCancel}
             disabled={loading}
-            className="flex-1 rounded-2xl bg-white/10 p-3 font-semibold text-white transition hover:bg-white/20 disabled:opacity-60"
+            fullWidth
+            className="border"
+            style={{ borderColor: "var(--theme-border)" }}
           >
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={tone === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
-            disabled={loading}
-            className="flex-1 rounded-2xl bg-red-500 p-3 font-bold text-white transition hover:bg-red-600 disabled:opacity-60"
+            loading={loading}
+            fullWidth
           >
-            {loading ? "Deleting..." : confirmLabel}
-          </button>
+            {confirmLabel}
+          </Button>
         </div>
-      </GlassPanel>
-    </div>
+      </div>
+    </Modal>
   );
 }

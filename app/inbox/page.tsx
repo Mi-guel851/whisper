@@ -372,8 +372,8 @@ export default function InboxPage() {
     <main className="min-h-screen theme-bg-gradient text-white">
       <div className="max-w-2xl mx-auto px-4 py-8 pb-28 sm:px-6">
         <BackButton />
-        <h1 className="text-4xl font-black mb-1 mt-4">💬 Chats</h1>
-        <p className="text-sm text-gray-400 mb-5">Your anonymous conversations</p>
+        <h1 className="page-title mb-1 mt-4">💬 Chats</h1>
+        <p className="page-subtitle mb-5">Your anonymous conversations</p>
 
         {/* Search — WhatsApp keeps it pinned above the list */}
         <div className="mb-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2">

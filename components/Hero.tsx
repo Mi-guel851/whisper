@@ -1,51 +1,129 @@
 "use client";
 
-import Link from "next/link";
+import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import PhoneMockup from "./PhoneMockup";
 import AnimatedHeading from "./AnimatedHeading";
-import GlassPanel from "./GlassPanel";
+import EdgeLitCard from "./EdgeLitCard";
+import { ButtonLink } from "./Button";
+import { ease, respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
+import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+
+/**
+ * The heading runs its own per-character cascade, so the block-level stagger
+ * skips over it and resumes underneath — otherwise the subhead would wait for
+ * ~0.75s of character reveal before starting, and the fold would feel slow.
+ */
+const HEADING_SETTLE = 0.34;
 
 export default function Hero() {
+  const reduced = useSafeReducedMotion();
+
   return (
     <section className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center px-4 pb-16 pt-28 text-center sm:px-8 sm:pb-24 sm:pt-40">
-      <GlassPanel strong className="relative z-10 w-full max-w-4xl rounded-[2rem] border border-white/15 bg-white/10 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)] sm:p-10">
-        <div className="mb-6 inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-black text-cyan-400 sm:px-5 sm:text-base">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-cyan-400" />
-          <span>👻 Anonymous messages • Images • Reactions</span>
-        </div>
-
-        <AnimatedHeading />
-
-        <p className="mt-6 max-w-2xl px-2 text-base font-medium leading-7 text-gray-300 sm:mt-8 sm:text-xl sm:leading-9">
-          Create your anonymous profile, receive honest messages,
-          anonymous images, and discover what people really think of you.
-        </p>
-
-        <div className="mt-8 flex w-full flex-wrap items-center justify-center gap-4 sm:mt-10 sm:w-auto sm:gap-5">
-          <Link
-            href="/signup"
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-600 px-8 py-4 font-black text-black shadow-lg shadow-cyan-500/20 transition hover:scale-105 active:scale-95 sm:w-auto"
+      <motion.div
+        className="relative z-10 w-full max-w-4xl"
+        variants={respectMotion(
+          staggerContainer(0.07, HEADING_SETTLE),
+          reduced
+        )}
+        initial="hidden"
+        animate="visible"
+      >
+        {/* The hero is the one card on the page that earns a bright, quick
+            rim. Everything below it sweeps dimmer and slower, so the eye
+            still lands here first without anything having to sit still. */}
+        <EdgeLitCard
+          radius="3xl"
+          intensity={0.6}
+          speed={11}
+          innerClassName="p-6 sm:p-10"
+        >
+          <motion.div
+            variants={respectMotion(staggerItem, reduced)}
+            className="mb-6 inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-black sm:px-5 sm:text-sm"
+            style={{
+              color: "var(--brand-cyan)",
+              background: "color-mix(in srgb, var(--brand-cyan) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--brand-cyan) 26%, transparent)",
+            }}
           >
-            Create my link
-            <ArrowRight size={18} />
-          </Link>
-          <Link
-            href="/login"
-            className="w-full rounded-2xl border border-white/10 bg-white/5 px-8 py-4 text-center font-black text-white transition hover:bg-white/10 active:scale-95 sm:w-auto"
+            {/* Two-layer dot: a solid core with a slower halo behind it, so the
+                "live" signal reads without the whole pill pulsing. */}
+            <span className="relative flex h-2 w-2 shrink-0">
+              {!reduced && (
+                <motion.span
+                  className="absolute inset-0 rounded-full"
+                  style={{ background: "var(--brand-cyan)" }}
+                  animate={{ scale: [1, 2.4, 1], opacity: [0.55, 0, 0.55] }}
+                  transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }}
+                />
+              )}
+              <span
+                className="relative h-2 w-2 rounded-full"
+                style={{ background: "var(--brand-cyan)" }}
+              />
+            </span>
+            <span>👻 Anonymous messages • Images • Reactions</span>
+          </motion.div>
+
+          <AnimatedHeading />
+
+          <motion.p
+            variants={respectMotion(staggerItem, reduced)}
+            className="mx-auto mt-6 max-w-2xl px-2 text-base font-medium leading-7 sm:mt-8 sm:text-xl sm:leading-9"
+            style={{ color: "var(--bridge-text-secondary)" }}
           >
-            Login
-          </Link>
-        </div>
+            Create your anonymous profile, receive honest messages, anonymous
+            images, and discover what people really think of you.
+          </motion.p>
 
-        <p className="mt-6 px-4 text-sm text-gray-500">
-          Free forever · No sign-in for senders · End-to-end anonymous
-        </p>
-      </GlassPanel>
+          <motion.div
+            variants={respectMotion(staggerItem, reduced)}
+            className="mt-8 flex w-full flex-wrap items-center justify-center gap-3 sm:mt-10 sm:w-auto sm:gap-4"
+          >
+            <ButtonLink
+              href="/signup"
+              size="lg"
+              iconRight={<ArrowRight size={18} />}
+              className="w-full sm:w-auto"
+            >
+              Create my link
+            </ButtonLink>
+            <ButtonLink
+              href="/login"
+              variant="secondary"
+              size="lg"
+              className="w-full sm:w-auto"
+            >
+              Login
+            </ButtonLink>
+          </motion.div>
 
-      <div className="mt-12 w-full sm:mt-16">
+          <motion.p
+            variants={respectMotion(staggerItem, reduced)}
+            className="mt-6 px-4 text-sm"
+            style={{ color: "var(--bridge-text-muted)" }}
+          >
+            Free forever · No sign-in for senders · End-to-end anonymous
+          </motion.p>
+        </EdgeLitCard>
+      </motion.div>
+
+      {/* The mockup arrives last and from further down — it's the payoff, not
+          part of the headline block. */}
+      <motion.div
+        className="mt-12 w-full sm:mt-16"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{
+          duration: reduced ? 0.2 : 0.7,
+          delay: reduced ? 0 : 0.55,
+          ease: ease.outExpo,
+        }}
+      >
         <PhoneMockup />
-      </div>
+      </motion.div>
     </section>
   );
 }

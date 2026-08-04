@@ -5,6 +5,7 @@ import Image from "next/image";
 import { supabase } from "@/lib/supabase/client";
 import { ShieldCheck, HeartHandshake, Ban } from "lucide-react";
 import GlassPanel from "./GlassPanel";
+import Button from "./Button";
 
 export default function TermsModal({ onAccept }: { onAccept: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -32,7 +33,7 @@ export default function TermsModal({ onAccept }: { onAccept: () => void }) {
       <GlassPanel strong className="w-full max-w-md rounded-3xl p-8">
         <div className="flex flex-col items-center text-center">
           <Image src="/ghost.png" alt="Whisper" width={44} height={44} />
-          <h1 className="mt-4 text-2xl font-black text-white">
+          <h1 className="page-title mt-4 text-white">
             Before you whisper...
           </h1>
           <p className="mt-2 text-sm text-gray-400">
@@ -69,13 +70,18 @@ export default function TermsModal({ onAccept }: { onAccept: () => void }) {
           </div>
         </div>
 
-        <button
+        {/* Was a hand-rolled gradient with `active:scale-95` — a harder press
+            than the rest of the app and no loading state, so the label swapped
+            to "Confirming..." and the button changed width mid-submit. */}
+        <Button
+          className="mt-8"
+          size="lg"
+          fullWidth
           onClick={handleAccept}
-          disabled={loading}
-          className="mt-8 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-600 p-4 font-black text-black shadow-lg shadow-cyan-500/20 transition hover:opacity-90 active:scale-95 disabled:opacity-60"
+          loading={loading}
         >
-          {loading ? "Confirming..." : "I Agree — Let's Whisper"}
-        </button>
+          I Agree — Let&apos;s Whisper
+        </Button>
 
         <p className="mt-3 text-center text-xs text-gray-500">
           Violating these guidelines may result in account suspension.

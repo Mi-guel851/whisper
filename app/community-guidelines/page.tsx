@@ -65,8 +65,8 @@ export default function CommunityGuidelinesPage() {
               <ScrollText size={32} className="text-purple-300" />
             </div>
           </div>
-          <h1 className="text-4xl font-black mb-2">Community Guidelines</h1>
-          <p className="text-gray-400">The rules that keep Whisper safe and welcoming for everyone.</p>
+          <h1 className="page-title mb-2">Community Guidelines</h1>
+          <p className="page-subtitle">The rules that keep Whisper safe and welcoming for everyone.</p>
         </div>
 
         <GlassPanel strong className="rounded-3xl p-6 md:p-8">

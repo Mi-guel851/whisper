@@ -10,6 +10,7 @@ import Features from "../components/Features";
 import HowItWorks from "../components/HowItWorks";
 import ClosingCTA from "../components/ClosingCTA";
 import Footer from "../components/Footer";
+import BrandedLoader from "../components/BrandedLoader";
 
 export default function Home() {
   const router = useRouter();
@@ -27,8 +28,8 @@ export default function Home() {
 
   if (checking) {
     return (
-      <main className="min-h-screen flex items-center justify-center theme-bg-gradient">
-        <p className="text-gray-400 text-sm">Loading...</p>
+      <main>
+        <BrandedLoader />
       </main>
     );
   }

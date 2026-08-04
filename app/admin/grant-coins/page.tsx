@@ -122,7 +122,7 @@ export default function GrantCoinsPage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-purple-600/15">
               <ShieldCheck size={26} className="text-purple-400" />
             </div>
-            <h1 className="text-center text-3xl font-black">Admin PIN Required</h1>
+            <h1 className="page-title text-center">Admin PIN Required</h1>
             <p className="mt-2 mb-6 text-center text-sm text-gray-400">
               Enter your admin PIN to access coin granting.
             </p>
@@ -150,7 +150,7 @@ export default function GrantCoinsPage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-purple-500/15">
               <Gift size={26} className="text-purple-300" />
             </div>
-            <h1 className="text-center text-3xl font-black">Grant Beta Coins</h1>
+            <h1 className="page-title text-center">Grant Beta Coins</h1>
             <p className="mt-2 mb-6 text-center text-sm text-gray-400">
               Instantly credits Whisper Coins to any user by username.
             </p>

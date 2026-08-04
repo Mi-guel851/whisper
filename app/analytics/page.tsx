@@ -48,8 +48,8 @@ export default function AnalyticsPage() {
         <BackButton />
         
         <div className="mt-4">
-          <h1 className="text-4xl font-black text-white mb-2">Analytics</h1>
-          <p className="text-gray-400">Your activity and engagement overview</p>
+          <h1 className="page-title text-white mb-2">Analytics</h1>
+          <p className="page-subtitle">Your activity and engagement overview</p>
         </div>
 
         <StatsRow />

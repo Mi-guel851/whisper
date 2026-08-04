@@ -11,8 +11,8 @@ export default function TermsPage() {
       <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-purple-600/20 blur-[180px]" />
 
       <GlassPanel strong className="relative z-10 mx-auto max-w-3xl rounded-3xl p-8 md:p-12">
-        <h1 className="text-4xl font-black mb-2">Terms of Service</h1>
-        <p className="text-gray-400 mb-8">Last updated: July 8, 2026</p>
+        <h1 className="page-title mb-2">Terms of Service</h1>
+        <p className="page-subtitle mb-8">Last updated: July 8, 2026</p>
 
         <div className="space-y-8 text-gray-200 leading-relaxed">
           <section>
