@@ -129,8 +129,20 @@
   --theme-shadow:      var(--elev-4);
   --theme-shadow-soft: var(--elev-2);
 
-  --theme-nav-bg:          rgba(10, 10, 12, 0.86);
-  --theme-nav-border:      rgba(255, 255, 255, 0.08);
+  /* The nav is glass, not a bar. This was a near-opaque slab at 0.86 alpha —
+     the same mistake the card film had above. At that density the blur has
+     nothing left to sample, so the nav read as a solid strip laid over the page
+     instead of a layer floating above it. Same two-part recipe: a top-lit film
+     over a translucent base, denser than a card because the nav sits over
+     moving content and copy still has to be readable on it. */
+  --theme-nav-bg:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04)),
+    rgba(10, 10, 14, 0.56);
+  /* Solid stand-in for the places that need the nav's colour as a plain colour.
+     `border-color` can't take a gradient, and the presence dot punches its ring
+     out of the nav — so it reads from this rather than from the film. */
+  --theme-nav-solid:       #0b0b11;
+  --theme-nav-border:      rgba(255, 255, 255, 0.1);
   --theme-nav-shadow:      0 -12px 40px rgba(0, 0, 0, 0.5);
   --theme-nav-inactive:    #7a7a8a;
   --theme-nav-active-text: #ffffff;
