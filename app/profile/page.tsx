@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   AtSign,
-  ChevronLeft,
   ChevronRight,
   FileText,
   LifeBuoy,
@@ -26,6 +25,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/ToastProvider";
 import BottomNavigation from "@/components/BottomNavigation";
+import BackButton from "@/components/BackButton";
 import AvatarUpload from "@/components/AvatarUpload";
 import LogoutButton from "@/components/LogoutButton";
 import EdgeLitCard from "@/components/EdgeLitCard";
@@ -230,13 +230,7 @@ export default function ProfilePage() {
         animate="visible"
       >
         <motion.div variants={staggerItem} className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            aria-label="Go back"
-            className="glass-control grid h-9 w-9 place-items-center rounded-full"
-          >
-            <ChevronLeft size={18} />
-          </button>
+          <BackButton className="" />
           <div className="flex items-center gap-2">
             <Image src="/ghost.png" alt="" width={24} height={24} />
             <span className="text-sm font-black tracking-wide">WHISPER</span>

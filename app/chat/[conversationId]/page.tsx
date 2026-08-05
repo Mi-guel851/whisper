@@ -16,7 +16,7 @@ import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
-  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera,
+  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy,
 } from "lucide-react";
 
 interface SecureScreenPlugin {
@@ -104,12 +104,15 @@ function MessageBubble({
   onViewPhoto,
   viewingPhotoId,
   onDelete,
+  onCopy,
   onPin,
   isPinned,
   isGroupStart,
   isGroupEnd,
   isSearchHit,
   isActiveHit,
+  isHighlighted,
+  onJumpToQuote,
   registerRef,
 }: {
   msg: Message;
@@ -126,12 +129,15 @@ function MessageBubble({
   onViewPhoto: (msg: Message) => void;
   viewingPhotoId: string | null;
   onDelete: (msg: Message) => void;
+  onCopy: (msg: Message) => void;
   onPin: (msg: Message) => void;
   isPinned: boolean;
   isGroupStart: boolean;
   isGroupEnd: boolean;
   isSearchHit: boolean;
   isActiveHit: boolean;
+  isHighlighted: boolean;
+  onJumpToQuote: (id: string) => void;
   registerRef: (id: string, node: HTMLDivElement | null) => void;
 }) {
   const x = useMotionValue(0);
@@ -149,8 +155,8 @@ function MessageBubble({
     >
       <div className="relative max-w-[80%]">
         <motion.div
-          className="absolute left-2 top-1/2 -translate-y-1/2 text-cyan-400 pointer-events-none"
-          style={{ opacity: replyIconOpacity }}
+          className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2"
+          style={{ opacity: replyIconOpacity, color: "var(--theme-accent-purple)" }}
         >
           <CornerUpLeft size={18} />
         </motion.div>
@@ -175,37 +181,47 @@ function MessageBubble({
           onTouchStart={() => !isPhotoMessage && startPress(msg.id)}
           onTouchEnd={cancelPress}
         >
-          <GlassPanel
-            className={`rounded-2xl px-3 py-2 select-none ${tailCorner} ${
-              isPinned ? "border border-yellow-400/40" : ""
+          {/* An opaque card, not a GlassPanel. A translucent bubble over the
+              doodle wallpaper drags the pattern through its own text — which is
+              what made the light theme unreadable. WhatsApp's bubbles are solid
+              for exactly this reason; only the chrome stays frosted. */}
+          <div
+            className={`chat-bubble ${isMe ? "chat-bubble-out" : ""} ${
+              isHighlighted ? "chat-bubble-flash" : ""
+            } rounded-2xl px-3 py-2 select-none ${tailCorner} ${
+              isPinned ? "ring-1 ring-yellow-400/50" : ""
             } ${isActiveHit ? "ring-2 ring-cyan-300" : isSearchHit ? "ring-1 ring-cyan-400/40" : ""}`}
           >
             {isPinned && (
-              <div className="mb-1 flex items-center gap-1 text-[10px] text-yellow-400">
+              <div className="mb-1 flex items-center gap-1 text-[10px]" style={{ color: "var(--theme-warning)" }}>
                 <Pin size={10} /> Pinned
               </div>
             )}
             {repliedMsg && (
-              <div className="mb-2 border-l-2 border-cyan-400 pl-2 text-xs truncate rounded-sm bg-cyan-400/20 text-cyan-200 py-1 pr-2">
+              <button
+                type="button"
+                onClick={() => onJumpToQuote(repliedMsg.id)}
+                className="chat-quote mb-2 block w-full truncate rounded-sm py-1 pl-2 pr-2 text-left text-xs"
+              >
                 {repliedMsg.content || "📷 Photo"}
-              </div>
+              </button>
             )}
 
             {isPhotoMessage ? (
               <div>
                 {msg.image_viewed_at ? (
-                  <p className="flex items-center gap-2 text-sm text-gray-400 italic">
+                  <p className="chat-meta flex items-center gap-2 text-sm italic">
                     <Eye size={14} /> Photo viewed
                   </p>
                 ) : isMe ? (
-                  <p className="flex items-center gap-2 text-sm text-gray-300">
+                  <p className="chat-meta flex items-center gap-2 text-sm">
                     <ImagePlus size={14} /> Photo sent (view once)
                   </p>
                 ) : (
                   <button
                     onClick={() => onViewPhoto(msg)}
                     disabled={viewingPhotoId === msg.id}
-                    className="flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-cyan-100 disabled:opacity-60"
+                    className="flex items-center gap-2 text-sm font-bold text-[var(--theme-accent-purple)] disabled:opacity-60"
                   >
                     {viewingPhotoId === msg.id ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -216,31 +232,34 @@ function MessageBubble({
                   </button>
                 )}
                 {msg.content && (
-                  <p className="mt-1 text-sm text-gray-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{msg.content}</p>
                 )}
-                <div className="mt-1 flex items-center justify-end gap-1 text-[10px] leading-none text-gray-400">
+                <div className="chat-meta mt-1 flex items-center justify-end gap-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
                   {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-gray-100">
+              <div className="text-sm">
                 {/* Floated so short messages keep the timestamp on the same line and
                     long ones wrap around it — the WhatsApp bubble layout. */}
-                <span className="float-right ml-2 mt-1.5 flex items-center gap-1 text-[10px] leading-none text-gray-400">
+                <span className="chat-meta float-right ml-2 mt-1.5 flex items-center gap-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
                   {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
                 </span>
                 <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
               </div>
             )}
-          </GlassPanel>
+          </div>
         </motion.div>
 
         {Object.keys(msgReactions).length > 0 && (
-          <div className={`mt-1 flex gap-1 ${isMe ? "justify-end" : "justify-start"}`}>
+          <div className={`-mt-1.5 flex gap-1 ${isMe ? "justify-end" : "justify-start"}`}>
             {Object.entries(msgReactions).map(([emoji, count]) => (
-              <span key={emoji} className="rounded-full bg-white/10 px-2 py-0.5 text-xs">
+              <span
+                key={emoji}
+                className="chat-bubble rounded-full px-1.5 py-0.5 text-[11px] leading-none"
+              >
                 {emoji} {count > 1 ? count : ""}
               </span>
             ))}
@@ -249,22 +268,29 @@ function MessageBubble({
 
         {!isPhotoMessage && actionMenuFor === msg.id && (
           <div className={`absolute z-20 -top-16 ${isMe ? "right-0" : "left-0"}`}>
-            <GlassPanel strong className="flex items-center gap-1 rounded-full px-2 py-2">
+            <div className="chat-chrome flex items-center gap-1 rounded-full border px-2 py-2 shadow-xl">
               {EMOJIS.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => toggleReaction(msg.id, emoji)}
-                  className="text-lg hover:scale-125 transition"
+                  className="text-lg transition hover:scale-125"
                 >
                   {emoji}
                 </button>
               ))}
               <button
+                onClick={() => onCopy(msg)}
+                className="chat-icon ml-1 flex h-7 w-7 items-center justify-center rounded-full"
+                title="Copy"
+              >
+                <Copy size={14} />
+              </button>
+              <button
                 onClick={() => {
                   setReplyingTo(msg);
                   setActionMenuFor(null);
                 }}
-                className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+                className="chat-icon flex h-7 w-7 items-center justify-center rounded-full"
                 title="Reply"
               >
                 <CornerUpLeft size={14} />
@@ -274,7 +300,7 @@ function MessageBubble({
                   onPin(msg);
                   setActionMenuFor(null);
                 }}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+                className="chat-icon flex h-7 w-7 items-center justify-center rounded-full"
                 title={isPinned ? "Unpin" : "Pin"}
               >
                 {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -288,16 +314,17 @@ function MessageBubble({
                   className="flex h-7 w-7 items-center justify-center rounded-full bg-rose-500/20 hover:bg-rose-500/40"
                   title="Delete"
                 >
-                  <Trash2 size={14} className="text-rose-400" />
+                  <Trash2 size={14} className="text-rose-500" />
                 </button>
               )}
               <button
                 onClick={() => setActionMenuFor(null)}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+                className="chat-icon flex h-7 w-7 items-center justify-center rounded-full"
+                aria-label="Close"
               >
                 <X size={14} />
               </button>
-            </GlassPanel>
+            </div>
           </div>
         )}
       </div>
@@ -314,6 +341,11 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
+  // Which pin the top bar is showing, and the message flashed after any jump
+  // (pin bar, reply tap). Monotonic counter rather than an index so it never
+  // needs resetting when the pin list changes length.
+  const [pinCursor, setPinCursor] = useState(0);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [otherLabel, setOtherLabel] = useState("");
   const [otherTyping, setOtherTyping] = useState(false);
   const [otherUserId, setOtherUserId] = useState("");
@@ -642,6 +674,22 @@ export default function ChatPage() {
     messageNodes.current.get(target)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [activeHit, searchHits]);
 
+  // The post-jump flash is self-clearing: any jump sets the id, and it fades on
+  // its own rather than needing every call site to schedule a reset.
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = setTimeout(() => setHighlightedId(null), 1400);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
+
+  /** Jump to a quoted message from its reply bubble, and flash it. */
+  const jumpToMessage = useCallback((id: string) => {
+    const node = messageNodes.current.get(id);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(id);
+  }, []);
+
   function stepSearch(direction: 1 | -1) {
     if (!searchHits.length) return;
     setActiveHit((current) => (current + direction + searchHits.length) % searchHits.length);
@@ -882,8 +930,50 @@ export default function ChatPage() {
     return messages.find((m) => m.id === replyToId) || null;
   }
 
+  /**
+   * Copy a message body to the clipboard.
+   *
+   * `navigator.clipboard` needs a secure context and isn't there in every
+   * Android WebView the Capacitor shell runs in, so this falls back to the
+   * old execCommand path rather than throwing on those devices.
+   */
+  async function copyMessage(msg: Message) {
+    const text = msg.content?.trim();
+    if (!text) {
+      showToast("Nothing to copy.");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const scratch = document.createElement("textarea");
+        scratch.value = text;
+        // Off-screen rather than `display: none` — a hidden element can't be
+        // selected, which is what execCommand("copy") operates on.
+        scratch.style.position = "fixed";
+        scratch.style.opacity = "0";
+        document.body.appendChild(scratch);
+        scratch.select();
+        document.execCommand("copy");
+        document.body.removeChild(scratch);
+      }
+      navigator.vibrate?.(15);
+      showToast("Copied to clipboard.", { variant: "success" });
+    } catch {
+      showToast("Couldn't copy that message.", { variant: "error" });
+    }
+    setActionMenuFor(null);
+  }
+
   function startPress(messageId: string) {
-    pressTimer.current = setTimeout(() => { setActionMenuFor(messageId); }, 450);
+    pressTimer.current = setTimeout(() => {
+      // Haptic at the moment the menu commits, so the press has a felt
+      // threshold rather than the menu just appearing.
+      navigator.vibrate?.(18);
+      setActionMenuFor(messageId);
+    }, 450);
   }
 
   function cancelPress() {
@@ -892,26 +982,41 @@ export default function ChatPage() {
 
   const pinnedMessages = messages.filter((m) => pinnedMessageIds.has(m.id));
 
+  // The pin the bar is currently showing. Clamped rather than stored as an id so
+  // unpinning the visible one falls through to a neighbour instead of blanking
+  // the bar while pins remain.
+  const pinIndex = pinnedMessages.length ? pinCursor % pinnedMessages.length : 0;
+  const activePin = pinnedMessages[pinIndex] ?? null;
+
+  /** Scroll to the shown pin, then advance so a second tap steps to the next. */
+  function jumpToNextPin() {
+    if (!activePin) return;
+    const node = messageNodes.current.get(activePin.id);
+    node?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(activePin.id);
+    if (pinnedMessages.length > 1) setPinCursor((c) => c + 1);
+  }
+
   if (loading) {
     return (
-      <main className="flex h-screen items-center justify-center theme-bg-gradient text-white">
-        <p className="text-gray-400">Loading...</p>
+      <main className="chat-canvas flex h-screen items-center justify-center">
+        <p className="chat-meta">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="relative flex h-screen flex-col overflow-hidden theme-bg-gradient text-white">
+    <main className="chat-canvas relative flex h-screen flex-col overflow-hidden">
       <div className="relative z-10 flex h-full flex-col">
 
         {/* Header — single compact row, WhatsApp style */}
-        <div className="flex-shrink-0 border-b border-white/10 bg-black/20 px-2 py-2 backdrop-blur-xl">
+        <div className="chat-chrome flex-shrink-0 border-b px-2 py-2">
           {searchOpen ? (
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={closeSearch}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10"
+                className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
                 aria-label="Close search"
               >
                 <ArrowLeft size={20} />
@@ -921,16 +1026,16 @@ export default function ChatPage() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search messages..."
-                className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-gray-500"
+                className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[var(--chat-meta)]"
               />
-              <span className="shrink-0 px-1 text-xs text-gray-400">
+              <span className="chat-meta shrink-0 px-1 text-xs">
                 {searchHits.length ? `${activeHit + 1}/${searchHits.length}` : searchQuery.trim() ? "0/0" : ""}
               </span>
               <button
                 type="button"
                 onClick={() => stepSearch(1)}
                 disabled={!searchHits.length}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 disabled:opacity-40"
+                className="chat-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
                 aria-label="Older match"
               >
                 <ChevronUp size={18} />
@@ -939,7 +1044,7 @@ export default function ChatPage() {
                 type="button"
                 onClick={() => stepSearch(-1)}
                 disabled={!searchHits.length}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10 disabled:opacity-40"
+                className="chat-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
                 aria-label="Newer match"
               >
                 <ChevronDown size={18} />
@@ -950,7 +1055,7 @@ export default function ChatPage() {
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10"
+                className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
                 aria-label="Back"
               >
                 <ArrowLeft size={20} />
@@ -958,18 +1063,21 @@ export default function ChatPage() {
               <img
                 src={generatedAvatarUrl(otherUserId || "ghost")}
                 alt=""
-                className="h-9 w-9 shrink-0 rounded-full border border-white/20 bg-white/10 object-cover p-0.5"
+                className="chat-bubble h-9 w-9 shrink-0 rounded-full object-cover p-0.5"
               />
               <div className="min-w-0 flex-1 leading-tight">
-                <p className="truncate text-[15px] font-bold text-white">{otherLabel}</p>
-                <p className={`truncate text-[11px] ${otherTyping || otherUserOnline ? "text-emerald-400" : "text-gray-400"}`}>
+                <p className="truncate text-[15px] font-bold">{otherLabel}</p>
+                <p
+                  className={`truncate text-[11px] ${otherTyping || otherUserOnline ? "" : "chat-meta"}`}
+                  style={otherTyping || otherUserOnline ? { color: "var(--theme-success)" } : undefined}
+                >
                   {otherTyping ? "typing..." : otherUserOnline ? "online" : "offline"}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-white/10"
+                className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
                 aria-label="Search messages"
               >
                 <Search size={19} />
@@ -978,15 +1086,39 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Pinned messages bar */}
-        {pinnedMessages.length > 0 && (
-          <div className="flex-shrink-0 border-b border-yellow-400/20 bg-yellow-400/5 px-4 py-2">
-            <div className="flex items-center gap-2 text-xs text-yellow-400">
-              <Pin size={12} />
-              <span className="truncate">
-                {pinnedMessages[pinnedMessages.length - 1].content || "📷 Photo"}
-              </span>
-              <span className="ml-auto shrink-0 text-yellow-400/60">{pinnedMessages.length} pinned</span>
+        {/* Pinned messages bar.
+            Previously this only *displayed* the newest pin. WhatsApp's bar is a
+            control: tapping it jumps to the message, and tapping again cycles to
+            the next pin rather than re-jumping to the same one. */}
+        {activePin && (
+          <div
+            className="chat-chrome flex-shrink-0 border-b"
+            style={{ borderColor: "color-mix(in srgb, var(--theme-warning) 28%, transparent)" }}
+          >
+            <div className="flex items-center gap-2 px-3 py-2">
+              <button
+                type="button"
+                onClick={jumpToNextPin}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs"
+                style={{ color: "var(--theme-warning)" }}
+                aria-label={`Jump to pinned message${pinnedMessages.length > 1 ? `, ${pinIndex + 1} of ${pinnedMessages.length}` : ""}`}
+              >
+                <Pin size={12} className="shrink-0" />
+                <span className="truncate">{activePin.content || "📷 Photo"}</span>
+                {pinnedMessages.length > 1 && (
+                  <span className="shrink-0 opacity-60">
+                    {pinIndex + 1}/{pinnedMessages.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => togglePin(activePin)}
+                className="chat-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                aria-label="Unpin this message"
+              >
+                <PinOff size={13} />
+              </button>
             </div>
           </div>
         )}
@@ -997,12 +1129,15 @@ export default function ChatPage() {
             <ChatDoodleBackground />
 
             {!chatUnlocked && (
-              <GlassPanel className="rounded-3xl border border-cyan-300/20 p-6 text-center shadow-2xl shadow-cyan-500/10">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-300/25 to-purple-400/25">
-                  <LockKeyhole className="text-cyan-200" />
+              <div className="chat-bubble rounded-3xl p-6 text-center">
+                <div
+                  className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full"
+                  style={{ background: "color-mix(in srgb, var(--theme-accent-purple) 16%, transparent)", color: "var(--theme-accent-purple)" }}
+                >
+                  <LockKeyhole />
                 </div>
                 <h2 className="text-2xl font-black">Chat locked</h2>
-                <p className="mx-auto mt-2 max-w-sm text-sm text-gray-400">
+                <p className="chat-meta mx-auto mt-2 max-w-sm text-sm">
                   {isFriendConversation
                     ? "Unlock this friend conversation once for 40 Coins to send messages."
                     : "Unlock this anonymous conversation once to send messages normally."}
@@ -1010,15 +1145,19 @@ export default function ChatPage() {
                 <button
                   onClick={unlockChat}
                   disabled={unlocking}
-                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-600 px-5 py-3 font-black text-black shadow-lg shadow-cyan-400/20 transition active:scale-95 disabled:opacity-60"
+                  className="mt-5 inline-flex items-center gap-2 rounded-2xl px-5 py-3 font-black shadow-lg transition active:scale-95 disabled:opacity-60"
+                  style={{
+                    background: "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))",
+                    color: "var(--theme-accent-contrast)",
+                  }}
                 >
                   <Coins size={18} /> {unlocking ? "Unlocking..." : `Unlock for ${UNLOCK_CHAT_COST} Coins`}
                 </button>
-              </GlassPanel>
+              </div>
             )}
 
             {messages.length === 0 ? (
-              <p className="mt-10 text-center text-gray-500">Say hi 👻 — they won&apos;t know who you are.</p>
+              <p className="chat-meta mt-10 text-center">Say hi 👻 — they won&apos;t know who you are.</p>
             ) : (
               messages.map((msg, index) => {
                 const previous = index > 0 ? messages[index - 1] : null;
@@ -1039,7 +1178,7 @@ export default function ChatPage() {
                   <div key={msg.id}>
                     {startsDay && (
                       <div className="sticky top-2 z-10 my-4 flex justify-center">
-                        <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[11px] font-semibold text-gray-300 backdrop-blur-md">
+                        <span className="chat-day-chip rounded-full px-3 py-1 text-[11px] font-semibold backdrop-blur-md">
                           {dayLabel(msg.created_at)}
                         </span>
                       </div>
@@ -1059,12 +1198,15 @@ export default function ChatPage() {
                       onViewPhoto={handleViewPhoto}
                       viewingPhotoId={viewingPhotoId}
                       onDelete={(target) => setDeleteConfirm(target)}
+                      onCopy={copyMessage}
                       onPin={togglePin}
                       isPinned={pinnedMessageIds.has(msg.id)}
                       isGroupStart={isGroupStart}
                       isGroupEnd={isGroupEnd}
                       isSearchHit={searchHits.includes(msg.id)}
                       isActiveHit={searchHits[activeHit] === msg.id}
+                      isHighlighted={highlightedId === msg.id}
+                      onJumpToQuote={jumpToMessage}
                       registerRef={registerMessageRef}
                     />
                   </div>
@@ -1073,11 +1215,11 @@ export default function ChatPage() {
             )}
             {otherTyping && (
               <div className="mt-3 flex items-end gap-2">
-                <div className="rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.08] px-4 py-3 shadow-lg shadow-black/10">
+                <div className="chat-bubble rounded-2xl rounded-bl-sm px-4 py-3">
                   <span className="flex items-center gap-1.5" aria-label={`${otherLabel} is typing`}>
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:-0.2s]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-300 [animation-delay:-0.1s]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-300" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--chat-meta)] [animation-delay:-0.2s]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--chat-meta)] [animation-delay:-0.1s]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--chat-meta)]" />
                   </span>
                 </div>
               </div>
@@ -1092,12 +1234,19 @@ export default function ChatPage() {
             <button
               type="button"
               onClick={() => scrollToBottom()}
-              className="pointer-events-auto absolute bottom-3 right-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/70 text-gray-200 shadow-lg backdrop-blur-md hover:bg-black/90"
+              className="chat-chrome pointer-events-auto absolute bottom-3 right-4 flex h-11 w-11 items-center justify-center rounded-full border shadow-lg"
+              style={{ color: "var(--chat-icon)" }}
               aria-label={unseenCount ? `${unseenCount} new messages, scroll to latest` : "Scroll to latest"}
             >
               <ChevronDown size={20} />
               {unseenCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-cyan-400 px-1 text-[11px] font-black text-black">
+                <span
+                  className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[11px] font-black"
+                  style={{
+                    background: "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))",
+                    color: "var(--theme-accent-contrast)",
+                  }}
+                >
                   {unseenCount > 99 ? "99+" : unseenCount}
                 </span>
               )}
@@ -1107,32 +1256,37 @@ export default function ChatPage() {
 
         {/* Pending photo preview */}
         {pendingPhoto && (
-          <div className="flex-shrink-0 mx-3 mb-2 flex items-center gap-3 rounded-xl border border-cyan-400/30 bg-white/5 px-3 py-2 md:mx-6">
+          <div className="chat-field mx-3 mb-2 flex flex-shrink-0 items-center gap-3 rounded-xl px-3 py-2 md:mx-6">
             <img src={pendingPhoto.previewUrl} alt="Selected photo" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
-            <p className="flex-1 truncate text-xs text-gray-300">Ready to send — costs {SEND_IMAGE_COST} coins</p>
-            <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="disabled:opacity-60">
-              <X size={14} className="text-gray-400" />
+            <p className="chat-meta flex-1 truncate text-xs">Ready to send — costs {SEND_IMAGE_COST} coins</p>
+            <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="chat-icon disabled:opacity-60">
+              <X size={14} />
             </button>
           </div>
         )}
 
         {/* Reply preview */}
         {replyingTo && (
-          <div className="flex-shrink-0 mx-3 mb-2 flex items-center justify-between rounded-xl border-l-2 border-cyan-400 bg-white/5 px-3 py-2 md:mx-6">
-            <p className="truncate text-xs text-gray-300">Replying to: {replyingTo.content || "📷 Photo"}</p>
-            <button onClick={() => setReplyingTo(null)}><X size={14} className="text-gray-400" /></button>
+          <div
+            className="chat-field mx-3 mb-2 flex flex-shrink-0 items-center justify-between rounded-xl px-3 py-2 md:mx-6"
+            style={{ borderLeft: "3px solid var(--theme-accent-purple)" }}
+          >
+            <p className="chat-meta truncate text-xs">Replying to: {replyingTo.content || "📷 Photo"}</p>
+            <button onClick={() => setReplyingTo(null)} className="chat-icon" aria-label="Cancel reply">
+              <X size={14} />
+            </button>
           </div>
         )}
 
         {/* Emoji picker */}
         {showEmojiPicker && (
-          <div className="flex-shrink-0 border-t border-white/10 bg-black/40 px-3 py-2 backdrop-blur-xl">
+          <div className="chat-chrome flex-shrink-0 border-t px-3 py-2">
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Emoji</span>
+              <span className="chat-meta text-[11px] font-semibold uppercase tracking-wide">Emoji</span>
               <button
                 type="button"
                 onClick={() => setShowEmojiPicker(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 hover:bg-white/10"
+                className="chat-icon flex h-7 w-7 items-center justify-center rounded-full"
                 aria-label="Close emoji picker"
               >
                 <X size={14} />
@@ -1144,7 +1298,7 @@ export default function ChatPage() {
                   key={`${emoji}-${index}`}
                   type="button"
                   onClick={() => insertEmoji(emoji)}
-                  className="flex h-9 items-center justify-center rounded-lg text-xl transition hover:bg-white/10"
+                  className="chat-icon flex h-9 items-center justify-center rounded-lg text-xl transition"
                 >
                   {emoji}
                 </button>
@@ -1155,14 +1309,17 @@ export default function ChatPage() {
 
         {/* Attachment sheet */}
         {showAttachSheet && (
-          <div className="flex-shrink-0 border-t border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl">
+          <div className="chat-chrome flex-shrink-0 border-t px-4 py-4">
             <div className="flex items-start gap-6">
               <button
                 type="button"
                 onClick={() => { setShowAttachSheet(false); triggerPhotoPicker(); }}
-                className="flex flex-col items-center gap-2 text-[11px] font-semibold text-gray-300"
+                className="chat-meta flex flex-col items-center gap-2 text-[11px] font-semibold"
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500/80 to-purple-600/80 text-white">
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-600"
+                  style={{ color: "#ffffff" }}
+                >
                   <ImagePlus size={20} />
                 </span>
                 Gallery
@@ -1170,14 +1327,17 @@ export default function ChatPage() {
               <button
                 type="button"
                 onClick={() => { setShowAttachSheet(false); triggerCameraPicker(); }}
-                className="flex flex-col items-center gap-2 text-[11px] font-semibold text-gray-300"
+                className="chat-meta flex flex-col items-center gap-2 text-[11px] font-semibold"
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400/80 to-blue-600/80 text-white">
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600"
+                  style={{ color: "#ffffff" }}
+                >
                   <Camera size={20} />
                 </span>
                 Camera
               </button>
-              <p className="ml-auto max-w-[46%] text-[11px] leading-4 text-gray-500">
+              <p className="chat-meta ml-auto max-w-[46%] text-[11px] leading-4">
                 Photos send as view-once and cost {SEND_IMAGE_COST} coins. Your identity stays hidden either way.
               </p>
             </div>
@@ -1186,13 +1346,13 @@ export default function ChatPage() {
 
         {/* Input form */}
         <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-3 pt-2 md:px-6">
-          <div className="flex items-end gap-1.5 rounded-2xl border border-white/10 bg-black/30 p-1.5">
+          <div className="chat-field flex items-end gap-1.5 rounded-2xl p-1.5">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
             <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected} />
             <button
               type="button"
               onClick={() => { setShowEmojiPicker((open) => !open); setShowAttachSheet(false); }}
-              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-white/10"
+              className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition"
               aria-label="Emoji"
               aria-expanded={showEmojiPicker}
             >
@@ -1203,7 +1363,7 @@ export default function ChatPage() {
               onClick={() => { setShowAttachSheet((open) => !open); setShowEmojiPicker(false); }}
               disabled={uploadingPhoto}
               title={`Attach an image (${SEND_IMAGE_COST} coins)`}
-              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-white/10 disabled:opacity-60"
+              className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60"
               aria-expanded={showAttachSheet}
             >
               <Paperclip size={19} />
@@ -1215,19 +1375,23 @@ export default function ChatPage() {
               placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
               disabled={!chatUnlocked}
               rows={1}
-              className="max-h-40 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2.5 leading-6 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 text-white"
+              className="max-h-40 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : (input.trim().length === 0))}
-              className={`mb-1 flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-600 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-cyan-500/20 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
+              className={`mb-1 flex h-10 items-center justify-center rounded-full shadow-lg disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
+              style={{
+                background: "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))",
+                color: "var(--theme-accent-contrast)",
+              }}
             >
               {pendingPhoto ? (
-                uploadingPhoto ? <Loader2 size={16} className="animate-spin text-black" /> : (
-                  <><Coins size={16} className="text-black" /><span className="text-sm font-black text-black">{SEND_IMAGE_COST}</span></>
+                uploadingPhoto ? <Loader2 size={16} className="animate-spin" /> : (
+                  <><Coins size={16} /><span className="text-sm font-black">{SEND_IMAGE_COST}</span></>
                 )
               ) : (
-                <Send size={16} className="text-black" />
+                <Send size={16} />
               )}
             </button>
           </div>
@@ -1237,13 +1401,13 @@ export default function ChatPage() {
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <GlassPanel strong className="w-full max-w-sm rounded-3xl p-6 text-center">
-            <Trash2 size={32} className="mx-auto mb-3 text-rose-400" />
+            <Trash2 size={32} className="mx-auto mb-3 text-rose-500" />
             <h2 className="text-lg font-black">Delete message?</h2>
-            <p className="mt-1 text-sm text-gray-400">This will be removed for everyone.</p>
+            <p className="mt-1 text-sm text-[var(--theme-text-muted)]">This will be removed for everyone.</p>
             <div className="mt-5 flex gap-3">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="flex-1 rounded-2xl border border-white/10 py-2 text-sm font-bold text-gray-300 hover:bg-white/10"
+                className="flex-1 rounded-2xl border border-[var(--theme-border)] py-2 text-sm font-bold text-[var(--theme-text-secondary)]"
               >
                 Cancel
               </button>
@@ -1263,10 +1427,12 @@ export default function ChatPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={closePhotoModal}>
           <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
             {photoModalCaption && (
-              <p className="mb-3 text-center text-sm font-medium text-white">{photoModalCaption}</p>
+              /* Fixed white, not a token: this sits on an always-black scrim in
+                 both themes, so it must not follow the theme's text colour. */
+              <p className="mb-3 text-center text-sm font-medium" style={{ color: "#ffffff" }}>{photoModalCaption}</p>
             )}
             <img src={photoModalUrl} alt="View-once photo" className="max-h-[80vh] max-w-full rounded-2xl object-contain" />
-            <p className="mt-3 text-center text-xs text-gray-400">This photo won&apos;t be available again after you close this view.</p>
+            <p className="mt-3 text-center text-xs" style={{ color: "rgba(255,255,255,0.65)" }}>This photo won&apos;t be available again after you close this view.</p>
             <button onClick={closePhotoModal} className="absolute -top-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
               <X size={18} />
             </button>

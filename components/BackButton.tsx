@@ -33,7 +33,7 @@ export default function BackButton({
         type="button"
         onClick={() => router.back()}
         aria-label="Go back"
-        className="back-chip grid h-9 w-9 shrink-0 place-items-center rounded-full"
+        className="back-chip glass-control grid h-9 w-9 shrink-0 place-items-center rounded-full"
       >
         <ChevronLeft size={18} />
       </button>

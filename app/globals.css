@@ -101,21 +101,24 @@
   --theme-error:   #ef4444;
   --theme-info:    #38bdf8;
 
-  /* Glass in dark theme is a white-tinted FILM over the backdrop, not a dark
-     panel. The previous values (rgba(18,18,22,.72) / rgba(20,20,25,.9)) were
-     near-opaque near-black — on a black canvas that reads as a flat card and
-     is exactly why the home page stopped looking like glass. The trailing
-     solid colour is the fallback layer: where backdrop-filter is unsupported
-     (older Android WebView in the Capacitor shell) the film alone would leave
-     text sitting on the raw background. */
+  /* iPhone-grade frosted glass. Two earlier passes on these values overshot in
+     opposite directions: first a near-opaque slab (0.9 alpha, no glass at all),
+     then a thin pane at 0.52 that read as plain transparency — you could see
+     straight through to the content and the surface had no substance.
+
+     Real system glass is *dense*: roughly three-quarters opaque, with the blur
+     and a saturation boost doing the work rather than the alpha. The top-lit
+     gradient is the gloss — light catching the leading edge of a physical
+     sheet. The trailing solid is the fallback where backdrop-filter is
+     unsupported (older Android WebView in the Capacitor shell). */
   --theme-glass:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.035)),
-    rgba(12, 12, 17, 0.52);
+    linear-gradient(155deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    rgba(15, 15, 21, 0.72);
   --theme-glass-strong:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)),
-    rgba(14, 14, 20, 0.6);
-  --theme-glass-border: rgba(255, 255, 255, 0.12);
-  --theme-glass-sheen:  rgba(255, 255, 255, 0.08);
+    linear-gradient(155deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.055)),
+    rgba(17, 17, 24, 0.82);
+  --theme-glass-border: rgba(255, 255, 255, 0.14);
+  --theme-glass-sheen:  rgba(255, 255, 255, 0.09);
 
   /* Layered elevation: ambient spread + directional key + contact shadow.
      A single flat shadow is the tell of a template. */
@@ -129,20 +132,23 @@
   --theme-shadow:      var(--elev-4);
   --theme-shadow-soft: var(--elev-2);
 
-  /* The nav is glass, not a bar. This was a near-opaque slab at 0.86 alpha —
-     the same mistake the card film had above. At that density the blur has
-     nothing left to sample, so the nav read as a solid strip laid over the page
-     instead of a layer floating above it. Same two-part recipe: a top-lit film
-     over a translucent base, denser than a card because the nav sits over
-     moving content and copy still has to be readable on it. */
+  /* The nav is the same glass one step denser — it's the only chrome that sits
+     over live scrolling content, so a label has to stay readable while a
+     paragraph slides under it.
+
+     A previous pass pushed this to a near-opaque near-black slab, which fixed
+     legibility by removing the glass entirely. The real problem was never the
+     alpha: the blur wasn't landing (see `.app-nav`, which isolates it). With
+     that fixed the film can stay a *tinted* sheet — white-over-dark, like iOS
+     chrome — rather than a black bar. */
   --theme-nav-bg:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04)),
-    rgba(10, 10, 14, 0.56);
+    linear-gradient(155deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)),
+    rgba(14, 14, 20, 0.78);
   /* Solid stand-in for the places that need the nav's colour as a plain colour.
      `border-color` can't take a gradient, and the presence dot punches its ring
      out of the nav — so it reads from this rather than from the film. */
   --theme-nav-solid:       #0b0b11;
-  --theme-nav-border:      rgba(255, 255, 255, 0.1);
+  --theme-nav-border:      rgba(255, 255, 255, 0.13);
   --theme-nav-shadow:      0 -12px 40px rgba(0, 0, 0, 0.5);
   --theme-nav-inactive:    #7a7a8a;
   --theme-nav-active-text: #ffffff;
@@ -208,17 +214,17 @@
   --theme-error:   #d92d20;
   --theme-info:    #0d74d4;
 
-  /* Same film structure as dark, inverted: a bright translucent sheet whose
-     top edge catches more light. Kept opaque enough that body copy on a busy
-     backdrop still passes contrast. */
+  /* Same dense film tuned for the light canvas — white over a bright backdrop
+     still needs enough body to keep text legible while something scrolls
+     underneath it. Higher white values, same 70-80% opacity principle. */
   --theme-glass:
     linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.7)),
-    rgba(255, 255, 255, 0.62);
+    rgba(255, 255, 255, 0.72);
   --theme-glass-strong:
     linear-gradient(155deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.86)),
-    rgba(255, 255, 255, 0.8);
-  --theme-glass-border: rgba(22, 23, 44, 0.09);
-  --theme-glass-sheen:  rgba(255, 255, 255, 0.9);
+    rgba(255, 255, 255, 0.84);
+  --theme-glass-border: rgba(22, 23, 44, 0.11);
+  --theme-glass-sheen:  rgba(255, 255, 255, 0.95);
 
   /* Light-theme shadows are cool-tinted, never neutral grey — neutral grey
      on a tinted canvas reads as dirt. */
@@ -229,14 +235,14 @@
   --elev-5: 0 12px 24px rgba(38, 43, 90, 0.1), 0 40px 90px rgba(38, 43, 90, 0.16);
   --elev-rim: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
-  /* Light glass is a bright film over a translucent white, not flat white at
-     0.9 — which is effectively opaque and killed the blur here too. The film is
-     stronger than on dark because a white surface has less contrast to spend. */
+  /* Densest glass in the light theme, for the same reason as dark: the nav sits
+     over scrolling content, so it needs body rather than transparency — and it
+     has to hold up if backdrop-filter never lands. */
   --theme-nav-bg:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.52)),
-    rgba(248, 249, 253, 0.55);
+    linear-gradient(155deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
+    rgba(250, 251, 255, 0.95);
   --theme-nav-solid:       #f8f9fd;
-  --theme-nav-border:      rgba(22, 23, 44, 0.09);
+  --theme-nav-border:      rgba(22, 23, 44, 0.1);
   --theme-nav-shadow:      0 -10px 34px rgba(38, 43, 90, 0.12);
   --theme-nav-inactive:    #6a7192;
   --theme-nav-active-text: #2b1d6b;
@@ -544,8 +550,8 @@ main.min-h-screen {
   background: var(--theme-glass);
   border: 1px solid var(--theme-glass-border);
   box-shadow: var(--elev-3), var(--elev-rim);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(40px) saturate(200%) brightness(1.04);
+  -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.04);
 }
 
 .liquid-glass-strong,
@@ -602,13 +608,91 @@ main.min-h-screen {
   }
 }
 
+/* --- Back chip --------------------------------------------------------- */
+
+/* The single back affordance, used on ~20 screens. It was `text-white/70`,
+   which is a dark-theme assumption compiled into a shared component — on the
+   light canvas that's white on near-white and the control vanishes.
+
+   Glass rather than a flat fill, so it keeps its edge over a photo, a gradient
+   header, or a plain surface without needing a per-screen variant. */
+/* Composed on top of `.glass-control` (the component's class list carries both)
+   so it picks up the single gloss-and-blur recipe instead of declaring a thinner
+   copy of it — a second definition is how the glass drifted out of sync before.
+   This rule only adds what's specific to a small circular chip. */
+.back-chip {
+  color: var(--bridge-text);
+  box-shadow: var(--elev-2), var(--elev-rim);
+  transition:
+    color var(--dur-fast) var(--ease-soft),
+    background-color var(--dur-fast) var(--ease-soft),
+    box-shadow var(--dur-base) var(--ease-out-quint);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .back-chip:hover {
+    box-shadow: var(--elev-3), var(--elev-rim);
+  }
+}
+
+.back-chip-label {
+  color: var(--bridge-text);
+}
+
 /* --- Glass control (nav bars, floating toolbars) ----------------------- */
+
+/* A bigger blur radius than the cards use, plus a brightness lift. Floating
+   chrome is the surface a user looks *through* most often, and a wide radius is
+   what makes the colours behind it smear into a wash instead of staying
+   recognisable shapes — that smear is the whole effect. */
 .glass-control {
+  position: relative;
   border: 1px solid var(--theme-glass-border);
-  background: var(--theme-glass);
   box-shadow: var(--elev-3), var(--elev-rim);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
+  -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
+
+  /* The gloss is a background layer rather than a `::after`, deliberately. An
+     absolutely-positioned pseudo-element paints *above* static children, so it
+     would need every consumer to raise its own content — and this class is on
+     the nav, the composer chips, the segmented controls and more. Backgrounds
+     always paint below content, so this layers correctly everywhere for free.
+
+     The band is specular highlight: brightest at the leading edge, gone by two
+     thirds down. It's what separates a polished sheet from a frosted pane. */
+  background:
+    linear-gradient(
+      177deg,
+      color-mix(in srgb, var(--theme-glass-sheen) 55%, transparent) 0%,
+      color-mix(in srgb, var(--theme-glass-sheen) 16%, transparent) 34%,
+      transparent 64%
+    ),
+    var(--theme-glass);
+}
+
+/* The bottom nav: the same glass, one step denser. It's the only chrome that
+   sits over live scrolling content, so its film carries more body than a card's
+   — a label has to stay readable while a paragraph slides underneath it.
+
+   Note this re-declares the full background stack rather than only swapping the
+   film. `background` is a shorthand, so a partial override would drop the gloss
+   layer entirely — which is exactly what the inline style on the component used
+   to do, and why the bar read as flat. */
+.app-nav {
+  background:
+    linear-gradient(
+      177deg,
+      color-mix(in srgb, var(--theme-glass-sheen) 55%, transparent) 0%,
+      color-mix(in srgb, var(--theme-glass-sheen) 16%, transparent) 34%,
+      transparent 64%
+    ),
+    var(--theme-nav-bg);
+  border-color: var(--theme-nav-border);
+  box-shadow: var(--theme-nav-shadow), var(--elev-rim);
+  transition:
+    background-color var(--dur-base) var(--ease-soft),
+    border-color var(--dur-base) var(--ease-soft),
+    box-shadow var(--dur-base) var(--ease-out-quint);
 }
 
 /* --- Text nav links ---------------------------------------------------- */
@@ -868,17 +952,144 @@ main.min-h-screen {
   initial-value: 0deg;
 }
 
+/* --- Chat surfaces ------------------------------------------------------
+
+   The chat screen is the one place that deliberately opts out of the app's
+   glass. WhatsApp's thread is a tinted wallpaper with *opaque* bubbles sitting
+   on it, and that opacity is the whole trick: a translucent bubble over a
+   patterned wallpaper drags the pattern through the text behind it. On the
+   light canvas that failed twice over — white glass on near-white, with the
+   doodles reading straight through the words.
+
+   So bubbles here are solid cards and only the chrome (header, composer,
+   sheets) stays frosted. The palette is Whisper's, not WhatsApp's: where
+   WhatsApp tints the canvas warm beige and the outgoing bubble green, this
+   tints them pale lavender and violet off the brand accents.
+
+   These tokens live beside the rules instead of up in the global :root blocks
+   because nothing outside the chat consumes them, and keeping the light/dark
+   pair adjacent is what stops the two drifting apart — which is how the light
+   theme got this far out of step in the first place. */
+
+:root {
+  --chat-canvas:         #08080f;
+  --chat-bubble-in:      #191922;
+  --chat-bubble-in-bd:   rgba(255, 255, 255, 0.07);
+  --chat-bubble-out:     #2a2142;
+  --chat-bubble-out-bd:  rgba(168, 85, 247, 0.22);
+  --chat-bubble-text:    #f1f1f6;
+  --chat-bubble-shadow:  0 1px 2px rgba(0, 0, 0, 0.45);
+  --chat-meta:           #8b8b9c;
+  --chat-chrome:         rgba(13, 13, 19, 0.82);
+  --chat-chrome-bd:      rgba(255, 255, 255, 0.08);
+  --chat-field:          rgba(255, 255, 255, 0.05);
+  --chat-icon:           #9797aa;
+  --chat-icon-hover:     rgba(255, 255, 255, 0.09);
+  --chat-chip:           rgba(18, 18, 26, 0.88);
+  --chat-chip-text:      #b6b6c6;
+  --chat-quote-bg:       rgba(255, 255, 255, 0.06);
+  --chat-quote-text:     #c9c9d6;
+}
+
+:root[data-theme="light"] {
+  /* Desaturated lavender rather than white: a pure-white canvas gives the
+     bubbles nothing to sit on, so the thread loses all depth. */
+  --chat-canvas:         #ebe9f5;
+  --chat-bubble-in:      #ffffff;
+  --chat-bubble-in-bd:   rgba(22, 23, 44, 0.05);
+  --chat-bubble-out:     #e5ddfb;
+  --chat-bubble-out-bd:  rgba(109, 63, 224, 0.14);
+  --chat-bubble-text:    #16172c;
+  --chat-bubble-shadow:  0 1px 2px rgba(38, 43, 90, 0.12);
+  --chat-meta:           #767d9d;
+  --chat-chrome:         rgba(255, 255, 255, 0.86);
+  --chat-chrome-bd:      rgba(22, 23, 44, 0.08);
+  --chat-field:          #ffffff;
+  --chat-icon:           #5f6684;
+  --chat-icon-hover:     rgba(22, 23, 44, 0.06);
+  --chat-chip:           rgba(255, 255, 255, 0.92);
+  --chat-chip-text:      #5f6684;
+  --chat-quote-bg:       rgba(109, 63, 224, 0.07);
+  --chat-quote-text:     #4b5273;
+}
+
+.chat-canvas {
+  background: var(--chat-canvas);
+  color: var(--chat-bubble-text);
+}
+
+/* Header, composer, emoji tray, attachment sheet — the only frosted parts. */
+.chat-chrome {
+  background: var(--chat-chrome);
+  border-color: var(--chat-chrome-bd);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+.chat-bubble {
+  background: var(--chat-bubble-in);
+  border: 1px solid var(--chat-bubble-in-bd);
+  color: var(--chat-bubble-text);
+  box-shadow: var(--chat-bubble-shadow);
+}
+
+.chat-bubble-out {
+  background: var(--chat-bubble-out);
+  border-color: var(--chat-bubble-out-bd);
+}
+
+.chat-meta      { color: var(--chat-meta); }
+.chat-icon      { color: var(--chat-icon); }
+.chat-icon:hover:not(:disabled) { background: var(--chat-icon-hover); }
+.chat-field     { background: var(--chat-field); border: 1px solid var(--chat-chrome-bd); }
+.chat-day-chip  { background: var(--chat-chip); color: var(--chat-chip-text); border: 1px solid var(--chat-chrome-bd); }
+
+/* The quoted message inside a reply bubble. */
+.chat-quote {
+  background: var(--chat-quote-bg);
+  border-left: 3px solid var(--theme-accent-purple);
+  color: var(--chat-quote-text);
+}
+
+/* Flash after any jump (pin bar, tapping a reply quote) so the eye lands on the
+   message it was sent to. Animating box-shadow rather than background keeps the
+   bubble's own fill — a colour flash on the fill would wash out the text. */
+.chat-bubble-flash {
+  animation: chat-bubble-flash 1.3s var(--ease-soft) forwards;
+}
+
+@keyframes chat-bubble-flash {
+  0%,
+  55% {
+    box-shadow:
+      var(--chat-bubble-shadow),
+      0 0 0 3px color-mix(in srgb, var(--theme-accent-purple) 55%, transparent);
+  }
+  100% {
+    box-shadow: var(--chat-bubble-shadow), 0 0 0 3px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble-flash {
+    animation-duration: 1ms;
+    box-shadow:
+      var(--chat-bubble-shadow),
+      0 0 0 3px color-mix(in srgb, var(--theme-accent-purple) 55%, transparent);
+  }
+}
+
 /* --- Chat doodle wallpaper --------------------------------------------- */
 
 /* The tile inherits `currentColor`, so the whole wallpaper is retuned per
    theme from these two declarations. On dark it's a faint white scribble; on
-   light, white strokes were invisible against the canvas but still caught the
-   accent gradients underneath, which is what left grey smudges across the
-   thread — so light theme tints them with the brand purple instead and pulls
-   the opacity down, because a light canvas shows pattern far more readily. */
+   light it takes the brand purple — white strokes were invisible there, and at
+   the near-zero opacity it was tuned to it may as well not have rendered. The
+   light canvas is now a tinted lavender rather than white, which gives the
+   pattern something to sit against, so it can carry real opacity. */
 .chat-doodles {
   color: #ffffff;
-  opacity: 0.22;
+  opacity: 0.2;
 }
 
 .chat-doodles-glow {
@@ -889,13 +1100,13 @@ main.min-h-screen {
 
 :root[data-theme="light"] .chat-doodles {
   color: var(--theme-accent-purple);
-  opacity: 0.07;
+  opacity: 0.13;
 }
 
 :root[data-theme="light"] .chat-doodles-glow {
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--theme-accent-purple) 6%, transparent), transparent 40%),
-    radial-gradient(circle at bottom right, color-mix(in srgb, var(--theme-accent-pink) 5%, transparent), transparent 35%);
+    radial-gradient(circle at top left, color-mix(in srgb, var(--theme-accent-purple) 8%, transparent), transparent 42%),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--theme-accent-pink) 7%, transparent), transparent 38%);
 }
 
 /* --- Edge-lit rim ------------------------------------------------------

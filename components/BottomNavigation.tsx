@@ -206,12 +206,14 @@ export default function BottomNavigation() {
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 px-3 pb-3 sm:px-4 sm:pb-4">
       <nav
         aria-label="Primary navigation"
-        className="glass-control pointer-events-auto mx-auto max-w-xl rounded-[2rem] border px-2.5 py-2 shadow-2xl backdrop-blur-2xl transition-[background,border-color,box-shadow] duration-300 ease-out sm:px-3"
-        style={{
-          background: "var(--theme-nav-bg)",
-          borderColor: "var(--theme-nav-border)",
-          boxShadow: "var(--theme-nav-shadow)",
-        }}
+        /* `glass-control` supplies the blur and the specular gloss; `app-nav`
+           adds only the nav-specific density on top.
+
+           These used to be inline styles, which is why the bar looked flat: an
+           inline `background` replaces the whole shorthand, so it overwrote the
+           gloss layer the class contributes and left the film alone. Styling in
+           CSS lets the two layer instead of one clobbering the other. */
+        className="glass-control app-nav pointer-events-auto mx-auto max-w-xl rounded-[2rem] px-2.5 py-2 sm:px-3"
       >
         <div className="grid grid-cols-6 items-center gap-1">
         {nav.map((item) => {
@@ -256,7 +258,7 @@ export default function BottomNavigation() {
                 )}
 
                 {item.showPresenceDot && anyFriendOnline && (
-                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 bg-green-400" style={{ borderColor: "var(--theme-nav-bg)" }} />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 bg-green-400" style={{ borderColor: "var(--theme-nav-solid)" }} />
                 )}
 
                 {item.badge !== undefined && item.badge > 0 && (
