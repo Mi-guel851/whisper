@@ -1951,6 +1951,172 @@ main.min-h-screen {
 }
 
 
+/* --------------------------------------------------------------------------
+   Marketing surfaces (the logged-out home page)
+   --------------------------------------------------------------------------
+   The home page is the only screen a visitor sees before deciding whether to
+   trust the product, so it runs one notch richer than the app: a wider type
+   scale, a bento grid instead of a uniform card row, and a few purpose-built
+   surfaces that don't exist anywhere else.
+
+   It still reads from the same tokens as everything else. Nothing here
+   hardcodes a colour that the theme owns — the marketing page inherits the
+   light palette for free, which is the entire reason these live as classes
+   rather than as inline styles inside the components.
+   ------------------------------------------------------------------------ */
+
+/* The one piece of type that outruns the shared scale. `clamp` rather than
+   breakpoint steps: the headline is the first thing that renders, and a
+   step-change at 640px is visible as a reflow on a resizing window. */
+.hero-title {
+  font-size: clamp(2.375rem, 6.4vw, 4.25rem);
+  line-height: 1.03;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+/* Small capsule used for the hero eyebrow and the CTA's assurance row. */
+.home-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  padding: 0.4375rem 0.875rem;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  letter-spacing: var(--tracking-xs);
+  font-weight: 700;
+  color: var(--bridge-text-secondary);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+
+/* --- Bento grid --------------------------------------------------------- */
+
+/* Cards of unequal weight in one grid. The hover lift is a `translate` rather
+   than a `transform`, so a card that also carries a Framer-driven transform
+   (the pointer-tilt ones) doesn't have the two fight over the same property. */
+.bento-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-2xl);
+  transition:
+    translate var(--dur-base) var(--ease-out-quint),
+    box-shadow var(--dur-base) var(--ease-out-quint),
+    border-color var(--dur-base) var(--ease-out-quint);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bento-card:hover {
+    translate: 0 -3px;
+    box-shadow: var(--elev-5), var(--elev-rim);
+    border-color: color-mix(in srgb, var(--theme-accent-purple) 30%, transparent);
+  }
+}
+
+/* Icon plate. Tinted fill + matching rim so the glyph reads as a control
+   rather than as loose line art floating on the card. */
+.bento-icon {
+  display: inline-grid;
+  place-items: center;
+  height: 2.5rem;
+  width: 2.5rem;
+  border-radius: var(--radius-md);
+  color: var(--theme-accent-purple);
+  background: color-mix(in srgb, var(--theme-accent-purple) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-purple) 24%, transparent);
+}
+
+/* --- Stat strip --------------------------------------------------------- */
+
+/* Dividers come from the children, not from a border on the container, so the
+   strip can reflow to a 1-column stack on mobile without leaving a dangling
+   rule under the last item. */
+.stat-strip > * + * {
+  border-top: 1px solid var(--hairline);
+}
+
+@media (min-width: 768px) {
+  .stat-strip > * + * {
+    border-top: 0;
+    border-left: 1px solid var(--hairline);
+  }
+}
+
+/* --- Step thread -------------------------------------------------------- */
+
+/* The dashed line joining the four "how it works" nodes. Drawn as a repeating
+   gradient rather than a dashed border because a border's dash phase can't be
+   controlled, and the dashes ended up colliding with the node circles. */
+.step-thread {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--theme-border-strong) 0 6px,
+    transparent 6px 14px
+  );
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.step-node {
+  display: grid;
+  place-items: center;
+  height: 3.5rem;
+  width: 3.5rem;
+  border-radius: var(--radius-full);
+  color: var(--theme-accent-purple);
+  background: var(--theme-glass);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-purple) 34%, transparent);
+  box-shadow:
+    var(--elev-2),
+    inset 0 0 18px color-mix(in srgb, var(--theme-accent-purple) 14%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+
+/* --- Testimonial rail --------------------------------------------------- */
+
+/* Snap points make the arrow buttons land on a card edge instead of an
+   arbitrary offset, and give a trackpad flick the same resting positions. */
+.snap-rail {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.snap-rail::-webkit-scrollbar { display: none; }
+
+.snap-rail > * {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snap-rail { scroll-behavior: auto; }
+}
+
+/* --- Float ------------------------------------------------------------- */
+
+/* Ambient drift for the chips orbiting the phone. A CSS keyframe rather than a
+   Framer loop: six independent infinite springs would keep the main thread
+   busy for the life of the page, and nothing here is interactive. */
+@keyframes homeFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+.home-float {
+  animation: homeFloat var(--float-duration, 6s) var(--ease-soft) infinite;
+  animation-delay: var(--float-delay, 0s);
+}
+
+
 /* ==========================================================================
    8. REDUCED MOTION
    --------------------------------------------------------------------------
