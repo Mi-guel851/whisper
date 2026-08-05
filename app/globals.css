@@ -229,8 +229,14 @@
   --elev-5: 0 12px 24px rgba(38, 43, 90, 0.1), 0 40px 90px rgba(38, 43, 90, 0.16);
   --elev-rim: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
-  --theme-nav-bg:          rgba(255, 255, 255, 0.9);
-  --theme-nav-border:      rgba(22, 23, 44, 0.08);
+  /* Light glass is a bright film over a translucent white, not flat white at
+     0.9 — which is effectively opaque and killed the blur here too. The film is
+     stronger than on dark because a white surface has less contrast to spend. */
+  --theme-nav-bg:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.52)),
+    rgba(248, 249, 253, 0.55);
+  --theme-nav-solid:       #f8f9fd;
+  --theme-nav-border:      rgba(22, 23, 44, 0.09);
   --theme-nav-shadow:      0 -10px 34px rgba(38, 43, 90, 0.12);
   --theme-nav-inactive:    #6a7192;
   --theme-nav-active-text: #2b1d6b;
