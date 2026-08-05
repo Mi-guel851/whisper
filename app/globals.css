@@ -850,6 +850,25 @@ main.min-h-screen {
   initial-value: 0deg;
 }
 
+/* --- Edge-lit rim ------------------------------------------------------
+   The light travels *along the edges*. Earlier this was a conic gradient
+   painted as the card's own background with the content laid over it — which
+   works only while the inner panel is opaque enough to hide the cone. Once the
+   glass became genuinely translucent, the full rotating cone showed through the
+   card face as a spinning X.
+
+   Now the gradient lives on a masked pseudo-element: `padding` + two masks
+   composited with `exclude` punches the middle out, so only the rim ring can
+   ever paint, at any inner opacity. `::after` is the same gradient blurred into
+   a bloom just outside the rim, so the halo travels with the bright spot.
+
+   The angle animates on the parent — `--edge-angle` is registered with
+   `inherits: true`, so both pseudo-elements read one animation instead of two
+   drifting out of phase. The gradient is written out twice on purpose: routing
+   it through a shared custom property makes the frame-by-frame substitution of
+   an animated registered property ambiguous, and a rim that silently freezes is
+   worse than eight duplicated lines. */
+
 .edge-lit {
   position: relative;
   isolation: isolate;
@@ -858,6 +877,27 @@ main.min-h-screen {
   --edge-angle: 0deg;
   --edge-opacity: 0.85;
   --edge-speed: 9s;
+  /* How thick the travelling rim is. Scaled up slightly on coarse pointers
+     below, where a 1px line reads as an artifact rather than as light. */
+  --edge-width: 1.25px;
+  box-shadow: var(--elev-4);
+  animation: edgeSpin var(--edge-speed) linear infinite;
+}
+
+.edge-lit::before,
+.edge-lit::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* The rim. Sits above the inner panel so the light is never dimmed by the
+   glass it's outlining. */
+.edge-lit::before {
+  inset: 0;
+  z-index: 1;
+  padding: var(--edge-width);
   background: conic-gradient(
     from var(--edge-angle) at 50% 50%,
     transparent 0deg,
@@ -868,20 +908,37 @@ main.min-h-screen {
     transparent 255deg,
     color-mix(in srgb, var(--theme-accent-purple) calc(var(--edge-opacity) * 75%), transparent) 305deg,
     transparent 360deg);
-  box-shadow: var(--elev-4);
-  animation: edgeSpin var(--edge-speed) linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
 }
 
-.edge-lit::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
+/* The bloom. Unmasked and blurred, pushed behind the card so it reads as light
+   spilling off the rim rather than as a second outline. */
+.edge-lit::after {
+  inset: -2px;
   z-index: -1;
-  border-radius: inherit;
-  background: inherit;
-  filter: blur(14px);
-  opacity: 0.4;
-  pointer-events: none;
+  background: conic-gradient(
+    from var(--edge-angle) at 50% 50%,
+    transparent 0deg,
+    color-mix(in srgb, var(--theme-accent-from) calc(var(--edge-opacity) * 100%), transparent) 55deg,
+    color-mix(in srgb, #ffffff calc(var(--edge-opacity) * 90%), transparent) 82deg,
+    color-mix(in srgb, var(--theme-accent-pink) calc(var(--edge-opacity) * 100%), transparent) 112deg,
+    transparent 185deg,
+    transparent 255deg,
+    color-mix(in srgb, var(--theme-accent-purple) calc(var(--edge-opacity) * 75%), transparent) 305deg,
+    transparent 360deg);
+  filter: blur(16px);
+  opacity: 0.45;
+}
+
+@media (pointer: coarse) {
+  .edge-lit { --edge-width: 1.5px; }
 }
 
 .edge-lit-inner {
