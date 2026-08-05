@@ -400,34 +400,6 @@ img, svg, video, canvas {
 
 } /* end @layer base */
 
-
-/* ==========================================================================
-   4. COMPONENTS — the public class API
-   ========================================================================== */
-
-/* --- Typography -------------------------------------------------------- */
-/* Heading size was being decided per screen with raw Tailwind steps
-   (`text-4xl` on a phone-width app header, `text-2xl` next to it for the same
-   rank), which is why the app read as loud rather than expensive. These are
-   the only sizes a heading may be, chosen by ROLE:
-
-     .display-title  marketing hero — the one place a huge face is earned
-     .marketing-title a landing-page section heading
-     .page-title     an app screen's H1 ("Chats", "Discover", "Settings")
-     .page-subtitle  the muted line under it
-     .section-title  a group heading inside a screen
-     .card-title     the primary line inside a card or row
-     .stat-value     a large tabular number
-     .eyebrow        the uppercase micro-label above a section
-
-   Each steps down one notch at phone widths. Tracking comes from the scale,
-   so bigger text is optically tighter instead of Tailwind's flat 0. Weight is
-   part of the role too — these deliberately land on 800 rather than `font-black`,
-   which at display sizes reads as shouting rather than as confidence.
-
-   These are unlayered, so they beat Tailwind's `@layer utilities` regardless of
-   source order; a stray `text-4xl` left beside one can't quietly win. */
-
 .display-title {
   font-size: var(--text-4xl);
   line-height: var(--leading-4xl);
@@ -595,9 +567,6 @@ main.min-h-screen {
   transition-duration: var(--dur-instant);
 }
 
-/* For cards whose transform is driven by JS (pointer tilt). Transitions
-   box-shadow ONLY — declaring `transition: transform` here would ease every
-   frame Framer writes and make the card lag the cursor. */
 .feature-card {
   transition: box-shadow var(--dur-base) var(--ease-out-quint);
 }
@@ -608,18 +577,7 @@ main.min-h-screen {
   }
 }
 
-/* --- Back chip --------------------------------------------------------- */
 
-/* The single back affordance, used on ~20 screens. It was `text-white/70`,
-   which is a dark-theme assumption compiled into a shared component — on the
-   light canvas that's white on near-white and the control vanishes.
-
-   Glass rather than a flat fill, so it keeps its edge over a photo, a gradient
-   header, or a plain surface without needing a per-screen variant. */
-/* Composed on top of `.glass-control` (the component's class list carries both)
-   so it picks up the single gloss-and-blur recipe instead of declaring a thinner
-   copy of it — a second definition is how the glass drifted out of sync before.
-   This rule only adds what's specific to a small circular chip. */
 .back-chip {
   color: var(--bridge-text);
   box-shadow: var(--elev-2), var(--elev-rim);
@@ -652,14 +610,6 @@ main.min-h-screen {
   backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
   -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
 
-  /* The gloss is a background layer rather than a `::after`, deliberately. An
-     absolutely-positioned pseudo-element paints *above* static children, so it
-     would need every consumer to raise its own content — and this class is on
-     the nav, the composer chips, the segmented controls and more. Backgrounds
-     always paint below content, so this layers correctly everywhere for free.
-
-     The band is specular highlight: brightest at the leading edge, gone by two
-     thirds down. It's what separates a polished sheet from a frosted pane. */
   background:
     linear-gradient(
       177deg,
@@ -683,7 +633,7 @@ main.min-h-screen {
     linear-gradient(
       177deg,
       color-mix(in srgb, var(--theme-glass-sheen) 55%, transparent) 0%,
-      color-mix(in srgb, var(--theme-glass-sheen) 16%, transparent) 34%,
+      color-mix(in srgb, var(--theme-glass-sheen) 16%, transparent) 64%,
       transparent 64%
     ),
     var(--theme-nav-bg);

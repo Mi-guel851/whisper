@@ -1,24 +1,51 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ease, respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
+import { Link2, Share2, Inbox, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import SectionHeading from "./home/SectionHeading";
+import { respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
 
-const steps = [
+/**
+ * How it works.
+ *
+ * This used to be three `premium-card` panels in a row. Cards were the wrong
+ * container: a card says "here is a discrete thing", and these four items are
+ * one continuous process. Circular nodes strung along a dashed thread say
+ * *sequence* — the shape carries the meaning, so the copy doesn't have to.
+ *
+ * Dropping the card shells also removed three large surfaces from a page that
+ * already has a bento grid and a stats card above it. The section reads as a
+ * breath between two dense blocks now, which is what it's for.
+ */
+
+type Step = {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+};
+
+const STEPS: readonly Step[] = [
   {
-    number: "01",
+    icon: Link2,
     title: "Create your link",
     desc: "Sign up in seconds and get your own unique Whisper link instantly.",
   },
   {
-    number: "02",
+    icon: Share2,
     title: "Share it anywhere",
-    desc: "Drop it in your Instagram bio, TikTok, Snapchat story, wherever your audience is.",
+    desc: "Drop it in your Instagram bio, TikTok, or Snapchat story — wherever your people are.",
   },
   {
-    number: "03",
-    title: "Receive honest messages",
-    desc: "Watch anonymous messages and images roll into your inbox in real time.",
+    icon: Inbox,
+    title: "Receive messages",
+    desc: "Anonymous messages, photos and voice notes land in your inbox in real time.",
+  },
+  {
+    icon: Sparkles,
+    title: "Reply and react",
+    desc: "Answer back, react with an emoji, and share the best ones to your story.",
   },
 ];
 
@@ -30,79 +57,83 @@ export default function HowItWorks() {
       id="how-it-works"
       className="relative mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-24"
     >
-      <motion.div
-        className="mb-10 text-center sm:mb-16"
-        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.5 }}
-        transition={{ duration: reduced ? 0.2 : 0.6, ease: ease.outExpo }}
-      >
-        <h2
-          className="marketing-title"
-          style={{ color: "var(--bridge-text)" }}
-        >
-          How it works
-        </h2>
-        <p
-          className="mt-4 text-base sm:text-xl"
-          style={{ color: "var(--bridge-text-secondary)" }}
-        >
-          Three steps. Zero identity.
-        </p>
-      </motion.div>
+      <SectionHeading
+        eyebrow="Live in under a minute"
+        title="How it"
+        accent="works."
+        description="Four steps. Zero identity. Nothing to install."
+      />
 
       <motion.ol
-        className="relative grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-3"
+        className="relative grid grid-cols-1 gap-10 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-14 lg:grid-cols-4 lg:gap-8"
         variants={respectMotion(staggerContainer(0.1), reduced)}
         initial="hidden"
         whileInView="visible"
-        viewport={{ once: true, amount: 0.3 }}
+        viewport={{ once: true, amount: 0.25 }}
       >
-        {/* Connective thread. Only on the 3-across layout — stacked on mobile
-            the cards are already adjacent, and a vertical line between them
-            would collide with the numerals. */}
+        {/* The thread only exists on the 4-across layout. Stacked or two-up it
+            would run between items that aren't consecutive, which would be a
+            line that actively lies about the order.
+
+            Insets of 12.5% put each end at the centre of the first and last
+            node (half of a quarter-width column), so it joins the circles
+            rather than overshooting past them. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute left-[16.6%] right-[16.6%] top-16 hidden h-px md:block"
-          style={{
-            background:
-              "linear-gradient(90deg, transparent, var(--theme-border-strong) 15%, var(--theme-border-strong) 85%, transparent)",
-          }}
+          className="step-thread pointer-events-none absolute left-[12.5%] right-[12.5%] top-7 hidden h-px lg:block"
         />
 
-        {steps.map((step) => (
-          <motion.li
-            key={step.number}
-            variants={respectMotion(staggerItem, reduced)}
-            className="premium-card relative rounded-3xl p-6 sm:p-8"
-          >
-            {/* The numeral is the ordinal, already conveyed by <ol>, so it's
-                decorative to a screen reader. Sits on the shared stat scale
-                rather than a one-off 5xl/6xl `font-black` — an ordinal that
-                outweighs the step's own heading is bulk, not hierarchy. */}
-            <div
-              aria-hidden="true"
-              className="theme-accent-text stat-value mb-6"
+        {STEPS.map((step, index) => {
+          const Icon = step.icon;
+
+          return (
+            <motion.li
+              key={step.title}
+              variants={respectMotion(staggerItem, reduced)}
+              className="relative flex flex-col items-center text-center"
             >
-              {step.number}
-            </div>
-            <h3
-              className="mb-3 text-2xl font-bold"
-              style={{
-                color: "var(--bridge-text)",
-                letterSpacing: "var(--tracking-2xl)",
-              }}
-            >
-              {step.title}
-            </h3>
-            <p
-              className="leading-7"
-              style={{ color: "var(--bridge-text-secondary)" }}
-            >
-              {step.desc}
-            </p>
-          </motion.li>
-        ))}
+              {/* Sits above the thread so the dashes stop at the circle's edge
+                  instead of running visibly across the glass. */}
+              <div className="relative mb-5">
+                <span className="step-node">
+                  <Icon size={22} strokeWidth={2.1} />
+                </span>
+
+                {/* The ordinal is already carried by <ol> for assistive tech,
+                    so this badge is decorative — it exists to let a sighted eye
+                    count the sequence without reading it. */}
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full text-[11px] font-black"
+                  style={{
+                    color: "#ffffff",
+                    background:
+                      "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))",
+                    border: "2px solid var(--theme-bg)",
+                  }}
+                >
+                  {index + 1}
+                </span>
+              </div>
+
+              <h3
+                className="mb-2 text-lg font-bold"
+                style={{
+                  color: "var(--bridge-text)",
+                  letterSpacing: "var(--tracking-lg)",
+                }}
+              >
+                {step.title}
+              </h3>
+              <p
+                className="max-w-xs text-sm leading-6"
+                style={{ color: "var(--bridge-text-secondary)" }}
+              >
+                {step.desc}
+              </p>
+            </motion.li>
+          );
+        })}
       </motion.ol>
     </section>
   );
