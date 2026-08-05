@@ -1,6 +1,12 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useRef } from "react";
+import {
+  motion,
+  useMotionTemplate,
+  useScroll,
+  useTransform,
+} from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import PhoneMockup from "./PhoneMockup";
 import AnimatedHeading from "./AnimatedHeading";
@@ -18,18 +24,44 @@ const HEADING_SETTLE = 0.34;
 
 export default function Hero() {
   const reduced = useSafeReducedMotion();
+  const sectionRef = useRef<HTMLElement>(null);
+
+  /* Scroll-linked frosting.
+   *
+   * As the hero leaves, its contents defocus and settle back rather than just
+   * scrolling off — the same trick Apple uses to hand attention to the next
+   * section. Progress runs from "hero pinned at the top of the viewport" to
+   * "hero fully scrolled past".
+   *
+   * The blur is applied *inside* the card, not to it. `filter` on an ancestor
+   * creates a new backdrop root, which would stop `.edge-lit-inner`'s
+   * `backdrop-filter` from sampling the page behind it — the glass would go
+   * flat exactly when it's most visible.
+   */
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ["start start", "end start"],
+  });
+
+  // Blur leads, opacity trails. Fading first would just look like the section
+  // disappearing; frosting first reads as depth.
+  const blurPx = useTransform(scrollYProgress, [0, 0.72], [0, 14]);
+  const frost = useMotionTemplate`blur(${blurPx}px)`;
+  const recede = useTransform(scrollYProgress, [0, 0.92], [1, 0]);
+  const settle = useTransform(scrollYProgress, [0, 1], [1, 0.95]);
+
+  // Hooks can't be conditional, so the values are always computed and only the
+  // binding is skipped when the user has asked for less motion.
+  const scrollStyle = reduced
+    ? undefined
+    : { filter: frost, opacity: recede, scale: settle, willChange: "filter, opacity" };
 
   return (
-    <section className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center px-4 pb-16 pt-28 text-center sm:px-8 sm:pb-24 sm:pt-40">
-      <motion.div
-        className="relative z-10 w-full max-w-4xl"
-        variants={respectMotion(
-          staggerContainer(0.07, HEADING_SETTLE),
-          reduced
-        )}
-        initial="hidden"
-        animate="visible"
-      >
+    <section
+      ref={sectionRef}
+      className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center px-4 pb-16 pt-28 text-center sm:px-8 sm:pb-24 sm:pt-40"
+    >
+      <div className="relative z-10 w-full max-w-4xl">
         {/* The hero is the one card on the page that earns a bright, quick
             rim. Everything below it sweeps dimmer and slower, so the eye
             still lands here first without anything having to sit still. */}
@@ -39,6 +71,19 @@ export default function Hero() {
           speed={11}
           innerClassName="p-6 sm:p-10"
         >
+          {/* Stagger container and scroll-frost target are the same node.
+              Splitting them would put a non-variant motion component between
+              the container and its items, which collapses `staggerChildren` —
+              every item would then reveal on the same frame. */}
+          <motion.div
+            style={scrollStyle}
+            variants={respectMotion(
+              staggerContainer(0.07, HEADING_SETTLE),
+              reduced
+            )}
+            initial="hidden"
+            animate="visible"
+          >
           <motion.div
             variants={respectMotion(staggerItem, reduced)}
             className="mb-6 inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-black sm:px-5 sm:text-sm"
@@ -107,11 +152,17 @@ export default function Hero() {
           >
             Free forever · No sign-in for senders · End-to-end anonymous
           </motion.p>
+          </motion.div>
         </EdgeLitCard>
-      </motion.div>
+      </div>
 
       {/* The mockup arrives last and from further down — it's the payoff, not
-          part of the headline block. */}
+          part of the headline block.
+
+          Two wrappers on purpose: the entrance animates `opacity`, and the
+          scroll frosting drives `opacity` as a motion value. On one element the
+          entrance would take ownership of the property and the scroll fade
+          would never apply. */}
       <motion.div
         className="mt-12 w-full sm:mt-16"
         initial={reduced ? { opacity: 0 } : { opacity: 0, y: 40 }}
@@ -122,7 +173,9 @@ export default function Hero() {
           ease: ease.outExpo,
         }}
       >
-        <PhoneMockup />
+        <motion.div style={scrollStyle}>
+          <PhoneMockup />
+        </motion.div>
       </motion.div>
     </section>
   );

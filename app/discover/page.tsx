@@ -24,7 +24,7 @@ import { presenceManager } from "@/lib/realtime/presence";
 
 function WavingAnimeAvatar() {
   return (
-    <svg viewBox="0 0 96 96" className="discover-anime-avatar relative h-14 w-14" role="img" aria-label="Blonde anime avatar waving hello">
+    <svg viewBox="0 0 96 96" className="discover-anime-avatar relative h-8 w-8" role="img" aria-label="Blonde anime avatar waving hello">
       <defs>
         <linearGradient id="anime-shirt" x1="0" x2="1" y1="0" y2="1">
           <stop offset="0" stopColor="#22d3ee" />
@@ -145,7 +145,7 @@ export default function DiscoverPage() {
         <h2 className="eyebrow mt-10 mb-5">
           Explore
         </h2>
-        <section className="discover-icon-grid grid grid-cols-3 gap-x-3 gap-y-7">
+        <section className="discover-icon-grid grid grid-cols-2 gap-3 sm:grid-cols-3">
           {QUICK_LINKS.map((link) => {
             const Icon = link.icon;
             const isFriendsLink = link.href.startsWith("/friends");
@@ -154,35 +154,41 @@ export default function DiscoverPage() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="group flex min-w-0 flex-col items-center text-center [perspective:700px]"
+                className="discover-tile group relative flex min-w-0 flex-col items-center gap-2 rounded-2xl px-3 py-4 text-center"
               >
-                <div className={`discover-icon-tile relative flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/15 bg-gradient-to-br from-white/15 to-white/[0.03] text-cyan-200 shadow-[0_14px_28px_rgba(0,0,0,0.28),inset_0_1px_1px_rgba(255,255,255,0.25)] transition duration-300 [transform-style:preserve-3d] group-hover:-translate-y-2 group-hover:rotate-[6deg] group-hover:scale-110 group-hover:text-white group-active:scale-95 ${isFriendsLink ? "discover-friends-tile" : ""}`}>
-                  <span className="absolute inset-1 rounded-[18px] border border-cyan-300/10" />
+                {/* The label lives *inside* the fill, so the whole thing is one
+                    pressable object — same as the Share button on the
+                    dashboard. Previously the caption sat outside on the page
+                    background, which made the coloured part read as an icon
+                    badge rather than as a button. */}
+                <span className="discover-tile-icon relative flex h-9 w-9 items-center justify-center rounded-xl">
                   {isFriendsLink ? (
-                    <>
-                      <WavingAnimeAvatar />
-                      {onlineFriendCount > 0 && (
-                        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-[#100d18] bg-emerald-400 px-1 text-[9px] font-black text-[#062019] shadow-[0_0_12px_rgba(52,211,153,0.8)]">
-                          {onlineFriendCount}
-                        </span>
-                      )}
-                    </>
+                    <WavingAnimeAvatar />
                   ) : (
-                    <>
-                      {isFeedLink && unreadFeedCount > 0 && (
-                        <span className="absolute -right-2 -top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-[#100d18] bg-rose-500 px-1 text-[9px] font-black text-white shadow-[0_0_12px_rgba(244,63,94,0.65)]">
-                          {unreadFeedCount > 9 ? "9+" : unreadFeedCount}
-                        </span>
-                      )}
-                    <Icon size={27} strokeWidth={1.8} className="relative drop-shadow-[0_3px_3px_rgba(0,0,0,0.45)]" />
-                    </>
+                    <Icon size={17} strokeWidth={1.9} className="relative" />
                   )}
-                </div>
-                <p className="mt-3 line-clamp-2 text-xs font-semibold leading-tight text-gray-200 transition group-hover:text-cyan-200">{link.label}</p>
+
+                  {isFriendsLink && onlineFriendCount > 0 && (
+                    <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-400 px-1 text-[9px] font-black text-[#062019]">
+                      {onlineFriendCount}
+                    </span>
+                  )}
+                  {isFeedLink && unreadFeedCount > 0 && (
+                    <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                      {unreadFeedCount > 9 ? "9+" : unreadFeedCount}
+                    </span>
+                  )}
+                </span>
+
+                <span className="discover-tile-label line-clamp-2 text-[12px] font-bold leading-tight">
+                  {link.label}
+                </span>
                 {isFriendsLink && onlineFriendCount > 0 && (
-                  <p className="mt-1 text-[10px] font-bold text-emerald-400">{onlineFriendCount} active now</p>
+                  <span className="discover-tile-meta text-[10px] font-bold">
+                    {onlineFriendCount} active now
+                  </span>
                 )}
-                <p className="sr-only">{link.desc}</p>
+                <span className="sr-only">{link.desc}</span>
               </Link>
             );
           })}

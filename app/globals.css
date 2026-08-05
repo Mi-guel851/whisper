@@ -850,6 +850,36 @@ main.min-h-screen {
   initial-value: 0deg;
 }
 
+/* --- Chat doodle wallpaper --------------------------------------------- */
+
+/* The tile inherits `currentColor`, so the whole wallpaper is retuned per
+   theme from these two declarations. On dark it's a faint white scribble; on
+   light, white strokes were invisible against the canvas but still caught the
+   accent gradients underneath, which is what left grey smudges across the
+   thread — so light theme tints them with the brand purple instead and pulls
+   the opacity down, because a light canvas shows pattern far more readily. */
+.chat-doodles {
+  color: #ffffff;
+  opacity: 0.22;
+}
+
+.chat-doodles-glow {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.04), transparent 40%),
+    radial-gradient(circle at bottom right, rgba(34, 211, 238, 0.05), transparent 35%);
+}
+
+:root[data-theme="light"] .chat-doodles {
+  color: var(--theme-accent-purple);
+  opacity: 0.07;
+}
+
+:root[data-theme="light"] .chat-doodles-glow {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--theme-accent-purple) 6%, transparent), transparent 40%),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--theme-accent-pink) 5%, transparent), transparent 35%);
+}
+
 /* --- Edge-lit rim ------------------------------------------------------
    The light travels *along the edges*. Earlier this was a conic gradient
    painted as the card's own background with the content laid over it — which
@@ -1162,11 +1192,6 @@ main.min-h-screen {
   --hairline: rgba(255, 255, 255, 0.12);
 }
 
-@keyframes discoverIconFloat {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50%      { transform: translateY(-3px) rotate(1deg); }
-}
-
 @keyframes discoverHandWave {
   0%, 68%, 100% { transform: rotate(0deg) translateY(0); }
   74% { transform: rotate(18deg) translateY(-2px); }
@@ -1181,12 +1206,105 @@ main.min-h-screen {
   animation: discoverHandWave 3s var(--ease-soft) infinite;
 }
 
-.discover-icon-tile {
-  animation: discoverIconFloat 5s var(--ease-soft) infinite;
+/* --- Discover tiles ----------------------------------------------------- */
+
+/* These were white glass — `bg-white/15` over a `border-white/15` hairline —
+   which only ever worked against the dark canvas. On light that resolves to
+   white-on-white, so each entry collapsed into a bare stroked icon with no
+   button underneath it. They're filled buttons now, with the label inside the
+   fill, so a tile is one pressable object in either theme.
+
+   Colour comes from four tokens rather than literal gradients, because the two
+   themes need genuinely different treatments and a single gradient can't serve
+   both: on dark the accent is mixed *into* the canvas, so the tile reads as a
+   lit surface sitting in a dark room; on light it's mixed toward ink, because a
+   full-strength accent on a white page is the candy look this replaced. */
+.discover-tile {
+  --tile-from: color-mix(in srgb, var(--theme-accent-purple) 30%, #0b0912);
+  --tile-to: color-mix(in srgb, var(--theme-accent-pink) 17%, #0b0912);
+  --tile-glow: color-mix(in srgb, var(--theme-accent-purple) 22%, transparent);
+  --tile-hairline: rgba(255, 255, 255, 0.1);
+
+  color: #ffffff;
+  background: linear-gradient(150deg, var(--tile-from), var(--tile-to));
+  border: 1px solid var(--tile-hairline);
+  box-shadow:
+    0 8px 22px var(--tile-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform var(--dur-fast) var(--ease-out-quint),
+    box-shadow var(--dur-base) var(--ease-out-quint);
 }
 
-.discover-icon-grid > a:nth-child(3n + 2) .discover-icon-tile { animation-delay: -1.6s; }
-.discover-icon-grid > a:nth-child(3n)     .discover-icon-tile { animation-delay: -3.2s; }
+/* Every other tile leans cyan. Eleven identical rectangles read as one block;
+   alternating the hue gives the eye something to land on without introducing a
+   colour Whisper doesn't already own. The shift is deliberately small — at
+   full saturation the grid turns into a swatch chart. */
+.discover-icon-grid > a:nth-child(2n) {
+  --tile-from: color-mix(in srgb, var(--theme-accent-from) 24%, #08101a);
+  --tile-to: color-mix(in srgb, var(--theme-accent-purple) 20%, #0a0814);
+  --tile-glow: color-mix(in srgb, var(--theme-accent-from) 18%, transparent);
+}
+
+/* Light theme: the same two families, pulled toward ink instead of toward the
+   canvas. White label copy needs a dark enough field to sit on, and mixing
+   with black rather than lowering opacity keeps the hue from going chalky. */
+:root[data-theme="light"] .discover-tile {
+  --tile-from: color-mix(in srgb, var(--theme-accent-purple) 82%, #150e2e);
+  --tile-to: color-mix(in srgb, var(--theme-accent-pink) 70%, #1d0f2a);
+  --tile-glow: color-mix(in srgb, var(--theme-accent-purple) 26%, transparent);
+  --tile-hairline: rgba(255, 255, 255, 0.16);
+}
+
+:root[data-theme="light"] .discover-icon-grid > a:nth-child(2n) {
+  --tile-from: color-mix(in srgb, var(--theme-accent-from) 62%, #0b2740);
+  --tile-to: color-mix(in srgb, var(--theme-accent-purple) 72%, #171034);
+  --tile-glow: color-mix(in srgb, var(--theme-accent-from) 24%, transparent);
+}
+
+/* Hover lifts and deepens the cast shadow rather than brightening the fill —
+   the lift is what sells the press, and a brightness jump on eleven tiles at
+   once is the kind of thing that makes a grid feel restless. */
+@media (hover: hover) and (pointer: fine) {
+  .discover-tile:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 16px 32px var(--tile-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  }
+}
+
+.discover-tile:active {
+  transform: scale(0.97);
+}
+
+/* The icon well — a lighter pane of the same material, so the glyph reads as
+   sitting on the button rather than floating over it.
+
+   The old tiles bobbed on a loop. That was legible when they were small
+   badges; as eleven filled buttons it's eleven things moving at once for no
+   reason, so the motion is spent on the press instead. */
+.discover-tile-icon {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+/* Both labels sit on the fill, so they take its foreground rather than a
+   page-level text token. */
+.discover-tile-label {
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.discover-tile-meta {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* The badge punches a ring out of the fill so the count stays legible. The
+   ring samples the tile's own gradient start, not a fixed hex, so it keeps
+   working across both themes and both hue variants. */
+.discover-tile-badge {
+  border: 2px solid var(--tile-from);
+}
 
 /* --- Marketing headline ------------------------------------------------ */
 
