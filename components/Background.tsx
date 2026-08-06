@@ -11,6 +11,23 @@ import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
  * this component — and therefore reconciled it — on every frame of every
  * scroll, on every page that mounts it. Motion values write straight to the
  * style object and never touch the React tree.
+ *
+ * The blobs carry no `blur()` filter, and each is sized to the footprint its
+ * blur used to paint. `--theme-blob-N` is already a
+ * `radial-gradient(circle, <colour>, transparent 68%)` — there is no edge and no
+ * detail in that image for a blur to soften, so `blur-[180px]` was spending one
+ * of the widest blur radii the platform supports to produce a wider, dimmer copy
+ * of a gradient that can simply be authored wider. Each element grew by roughly
+ * twice its old radius to land in the same place at the same extent.
+ *
+ * To be precise about what this buys: the win is rasterization, not per-frame
+ * scrolling. Only `y` animates here, and transforming an already-rasterized
+ * layer doesn't re-run its filter — so this was never costing three blurs per
+ * frame. It was costing them whenever the layer is rasterized, which includes
+ * first paint of the landing page and every theme switch, and a 220px-radius
+ * blur over a 550px box is slow enough on mid-range mobile GPUs to be visible
+ * there. Removing it also keeps these layers well inside texture limits, where
+ * an oversized blur can tip into a software fallback and become far worse.
  */
 export default function Background() {
   const { scrollY } = useScroll();
@@ -27,8 +44,9 @@ export default function Background() {
 
   return (
     <div className="theme-bg-gradient fixed inset-0 -z-10 overflow-hidden">
+      {/* 500px + ~180px of blur spread each way ≈ 860px, centred on (90, 90). */}
       <motion.div
-        className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full blur-[180px]"
+        className="absolute -left-[340px] -top-[340px] h-[860px] w-[860px] rounded-full"
         style={{
           background: "var(--theme-blob-1)",
           y: still ?? blob1,
@@ -36,8 +54,9 @@ export default function Background() {
         }}
       />
 
+      {/* 420px + ~180px each way ≈ 780px, centred 90px off the right edge. */}
       <motion.div
-        className="absolute right-[-120px] top-[80px] h-[420px] w-[420px] rounded-full blur-[180px]"
+        className="absolute right-[-300px] top-[-100px] h-[780px] w-[780px] rounded-full"
         style={{
           background: "var(--theme-blob-2)",
           y: still ?? blob2,
@@ -47,8 +66,9 @@ export default function Background() {
         }}
       />
 
+      {/* 550px + ~220px each way ≈ 990px, centred 95px below the fold edge. */}
       <motion.div
-        className="absolute bottom-[-180px] left-1/2 h-[550px] w-[550px] rounded-full blur-[220px]"
+        className="absolute bottom-[-400px] left-1/2 h-[990px] w-[990px] rounded-full"
         style={{
           background: "var(--theme-blob-3)",
           x: "-50%",

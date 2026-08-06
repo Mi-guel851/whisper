@@ -16,6 +16,7 @@ import CountUp from "./home/CountUp";
 import { ButtonLink } from "./Button";
 import { ease, respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+import { useCoarsePointer } from "@/lib/useMediaQuery";
 
 /**
  * The headline runs its own per-word cascade, so the block-level stagger skips
@@ -57,9 +58,23 @@ export default function Hero() {
 
   // Hooks can't be conditional, so the values are always computed and only the
   // binding is skipped when the user has asked for less motion.
+  //
+  // On touch devices the blur is dropped and only opacity and scale are bound.
+  // `filter` is the one property here that cannot be composited: the GPU can
+  // fade and scale an existing layer for free, but a blur has to be re-rendered
+  // at every radius, so a scroll-linked one repaints the entire hero — text,
+  // glass panel, phone mockup — on every frame of the fold. On a mid-range
+  // Android that is the first thing a new visitor scrolls, and it stutters.
+  //
+  // The effect survives the demotion because the other two values carry it: the
+  // hero still recedes and settles away, just without the defocus. Desktop GPUs
+  // handle the blur comfortably and keep the full version.
+  const coarsePointer = useCoarsePointer();
   const scrollStyle = reduced
     ? undefined
-    : { filter: frost, opacity: recede, scale: settle, willChange: "filter, opacity" };
+    : coarsePointer
+      ? { opacity: recede, scale: settle, willChange: "opacity, transform" }
+      : { filter: frost, opacity: recede, scale: settle, willChange: "filter, opacity" };
 
   return (
     <section
