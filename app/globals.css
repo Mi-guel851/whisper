@@ -657,6 +657,36 @@ main.min-h-screen {
   transition: box-shadow var(--dur-base) var(--ease-out-quint);
 }
 
+/* --- Glass in a long list ----------------------------------------------
+ *
+ * `backdrop-filter` is priced per element, not per screen. One card is a single
+ * backdrop readback — the compositor copies the pixels behind it, blurs them,
+ * composites the result. Twelve cards in a scroller is twelve readbacks, and
+ * because they all move, all twelve are redone every frame. That is a different
+ * order of cost from a page with two or three glass panels on it, and it is the
+ * public feed's scroll budget going to an effect nobody can see moving.
+ *
+ * Opt a card out with this class when it's one of many in a scrolling list.
+ * It only takes effect on touch devices: a desktop GPU absorbs the readbacks,
+ * and that's also where a mouse can sit still long enough to study the edge.
+ *
+ * What's lost is smaller than it sounds, and it's specific to what's behind
+ * these cards. `--theme-glass` is already ~72% opaque with a gradient film over
+ * it, so only about a quarter of the backdrop was ever showing through — and
+ * that backdrop is a smooth gradient with soft ambient blobs. Blurring a smooth
+ * gradient returns approximately the same gradient; there is no text or edge
+ * back there for the blur to be doing work on. The one real loss is
+ * `saturate(180%)`, which was lifting the colour of that visible quarter, so
+ * these cards read a touch less vivid on a phone than on a desktop. That is the
+ * trade: a small static difference nobody can A/B against, for a scroll that
+ * holds frame. */
+@media (pointer: coarse) {
+  .premium-card-list-item {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .feature-card:hover {
     box-shadow: var(--elev-5), var(--elev-rim);

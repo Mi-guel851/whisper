@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Compass,
@@ -129,7 +129,18 @@ export default function DiscoverPage() {
     };
   }, []);
 
-  const onlineFriendCount = friendIds.filter((id) => onlineUserIds.includes(id)).length;
+  /* `friendIds.filter((id) => onlineUserIds.includes(id))` is a linear scan of
+     the online list for every friend, and presence pushes a new array on every
+     connect and disconnect anywhere in the app — so this ran on every render,
+     at O(friends × online). Indexing once turns the inner check into a hash
+     lookup, and the memo means a re-render that didn't touch presence doesn't
+     redo the count at all. */
+  const onlineFriendCount = useMemo(() => {
+    const online = new Set(onlineUserIds);
+    let count = 0;
+    for (const id of friendIds) if (online.has(id)) count += 1;
+    return count;
+  }, [friendIds, onlineUserIds]);
 
   return (
     <main className="min-h-screen theme-bg-gradient pb-28 text-white">

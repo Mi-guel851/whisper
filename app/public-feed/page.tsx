@@ -420,6 +420,10 @@ export default function PublicFeedPage() {
         <img
           src={generatedAvatarUrl(node.author_id)}
           alt=""
+          width={28}
+          height={28}
+          loading="lazy"
+          decoding="async"
           className="h-7 w-7 shrink-0 rounded-full border border-white/15 bg-white/10 object-cover"
         />
 
@@ -482,11 +486,15 @@ export default function PublicFeedPage() {
     const visibleComments = threadExpanded ? node.children : node.children.slice(0, 2);
 
     return (
-      <GlassPanel key={node.id} className="rounded-3xl p-4">
+      <GlassPanel key={node.id} className="premium-card-list-item rounded-3xl p-4">
         <article ref={impressionRef} data-post-id={node.id} data-author-id={node.author_id} className="flex gap-3">
           <img
             src={generatedAvatarUrl(node.author_id)}
             alt=""
+            width={40}
+            height={40}
+            loading="lazy"
+            decoding="async"
             className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-white/10 object-cover"
           />
 

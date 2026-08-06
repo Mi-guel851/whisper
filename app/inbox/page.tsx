@@ -38,6 +38,18 @@ function uniqueChannelName(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/**
+ * How long to wait for a burst of realtime events to finish before refetching.
+ *
+ * One message arriving fires a `conversations` update; a two-way exchange, a
+ * read receipt, and a delivery receipt land within a few hundred milliseconds of
+ * each other and each fired a full refresh — three queries apiece, one of them a
+ * 600-row window. Long enough to collapse a burst, short enough that the list
+ * still feels live: the row is already updated optimistically by the time this
+ * fires, so this is reconciliation, not the visible update path.
+ */
+const REFRESH_COALESCE_MS = 250;
+
 /** WhatsApp's chat-list stamp: time today, "Yesterday", a weekday, then a date. */
 function chatListTime(value: string) {
   if (!value) return "";
@@ -68,6 +80,7 @@ export default function InboxPage() {
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let unsubscribePresence: (() => void) | undefined;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const typingUnsubscribers = new Map<string, () => void>();
     const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
     let cancelled = false;
@@ -184,30 +197,63 @@ export default function InboxPage() {
         void loadPreviews(data || []);
       }
 
+      /* A refresh is three round trips: the conversation list, a 600-row preview
+         window, and an unread scan. Realtime hands us one event per row change,
+         and a single exchange produces several in quick succession — so the
+         events are collapsed into one refresh rather than run per event.
+
+         `refreshRunning` covers the case the timer can't: a burst spread wider
+         than the coalesce window, where a second refresh would otherwise start
+         while the first is still in flight and the two could land out of order.
+         The later one is deferred and re-run once, so the final state always
+         reflects the most recent event. */
+      let refreshRunning = false;
+      let refreshPending = false;
+
       async function refreshConversations() {
         if (cancelled) return;
-        const { data: fresh, error: refreshError } = await supabase
-          .from("conversations")
-          .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
-          .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-          .order("last_message_at", { ascending: false });
-
-        if (refreshError) {
-          console.error("Inbox refresh error:", refreshError);
+        if (refreshRunning) {
+          refreshPending = true;
           return;
         }
+        refreshRunning = true;
 
-        if (!cancelled) {
-          setConversations(fresh || []);
-          subscribeToTyping(fresh || []);
-          setFriendIds((current) => [
-            ...new Set([
-              ...current,
-              ...(fresh || []).map((row) => row.user_a === userId ? row.user_b : row.user_a),
-            ]),
-          ]);
-          void loadPreviews(fresh || []);
+        try {
+          const { data: fresh, error: refreshError } = await supabase
+            .from("conversations")
+            .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
+            .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+            .order("last_message_at", { ascending: false });
+
+          if (refreshError) {
+            console.error("Inbox refresh error:", refreshError);
+          } else if (!cancelled) {
+            setConversations(fresh || []);
+            subscribeToTyping(fresh || []);
+            setFriendIds((current) => [
+              ...new Set([
+                ...current,
+                ...(fresh || []).map((row) => row.user_a === userId ? row.user_b : row.user_a),
+              ]),
+            ]);
+            await loadPreviews(fresh || []);
+          }
+        } finally {
+          refreshRunning = false;
         }
+
+        if (refreshPending && !cancelled) {
+          refreshPending = false;
+          void refreshConversations();
+        }
+      }
+
+      function scheduleRefresh() {
+        if (refreshTimer) return;
+        refreshTimer = setTimeout(() => {
+          refreshTimer = null;
+          void refreshConversations();
+        }, REFRESH_COALESCE_MS);
       }
 
       channel = supabase
@@ -220,7 +266,7 @@ export default function InboxPage() {
             table: "conversations",
             filter: `user_a=eq.${userId}`,
           },
-          refreshConversations
+          scheduleRefresh
         )
         .on(
           "postgres_changes",
@@ -230,7 +276,7 @@ export default function InboxPage() {
             table: "conversations",
             filter: `user_b=eq.${userId}`,
           },
-          refreshConversations
+          scheduleRefresh
         )
         .subscribe();
     }
@@ -247,6 +293,7 @@ export default function InboxPage() {
       cancelled = true;
       subscription.unsubscribe();
       unsubscribePresence?.();
+      if (refreshTimer) clearTimeout(refreshTimer);
       typingUnsubscribers.forEach((unsubscribe) => unsubscribe());
       typingTimers.forEach((timer) => clearTimeout(timer));
       if (channel) supabase.removeChannel(channel);

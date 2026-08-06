@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Clock, MessageCircle, UserPlus, Users, X } from "lucide-react";
 import { motion } from "framer-motion";
@@ -247,6 +247,13 @@ function FriendsPageContent() {
   const friendIdSet = new Set(friends.map((friend) => friend.friend_id));
   const activeNow = onlineUserIds.filter((id) => id !== myId && !friendIdSet.has(id));
 
+  /* `onlineUserIds.includes(id)` was the per-row online check in four places,
+     each a linear scan of the online list for every row rendered. Presence
+     pushes a fresh array whenever anyone anywhere connects or disconnects, so
+     that ran on every row on every presence event — O(rows × online) per tick,
+     across four lists. One Set makes each check a hash lookup. */
+  const onlineSet = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
+
   // The count lives on the tab as a badge, not baked into the label string —
   // a label that changes width every time someone comes online re-lays out the
   // whole control mid-animation.
@@ -388,7 +395,7 @@ function FriendsPageContent() {
               }
             >
               {people.map((profile) => {
-                const online = onlineUserIds.includes(profile.id);
+                const online = onlineSet.has(profile.id);
                 return (
                   <PersonRow
                     key={profile.id}
@@ -484,8 +491,8 @@ function FriendsPageContent() {
         {/* ── Requests ── */}
         {tab === "requests" && (
           <section className="mt-6 space-y-6">
-            <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
-            <RequestList title="Sent requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineUserIds={onlineUserIds} />
+            <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
+            <RequestList title="Sent requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
           </section>
         )}
 
@@ -508,9 +515,9 @@ function FriendsPageContent() {
                   key={friend.id}
                   avatarUrl={generatedAvatarUrl(friend.friend_id)}
                   name={anonymousName(friend.friend_id)}
-                  online={onlineUserIds.includes(friend.friend_id)}
+                  online={onlineSet.has(friend.friend_id)}
                   subtitle={
-                    onlineUserIds.includes(friend.friend_id) ? <ActiveNowLabel /> : "Friend"
+                    onlineSet.has(friend.friend_id) ? <ActiveNowLabel /> : "Friend"
                   }
                   actions={
                     <Button
@@ -534,9 +541,9 @@ function FriendsPageContent() {
   );
 }
 
-function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onlineUserIds }: {
+function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onlineSet }: {
   title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing";
-  busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onlineUserIds: string[];
+  busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onlineSet: ReadonlySet<string>;
 }) {
   return (
     <div>
@@ -553,7 +560,7 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
               key={request.id}
               avatarUrl={generatedAvatarUrl(profileId)}
               name={anonymousName(profileId)}
-              online={onlineUserIds.includes(profileId)}
+              online={onlineSet.has(profileId)}
               subtitle={mode === "incoming" ? "Wants to be friends" : "Request pending"}
               actions={
                 mode === "incoming" ? (
