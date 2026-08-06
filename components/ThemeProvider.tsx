@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { themes, type ResolvedThemeId, type Theme, type ThemeId } from "@/lib/themes";
+import { supabase } from "@/lib/supabase/client";
 
 type ThemeContextType = {
   themeId: ThemeId;
@@ -33,19 +34,65 @@ function applyTheme(themeId: ThemeId) {
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeIdState] = useState<ThemeId>(() => {
-    if (typeof window === "undefined") return "system";
-    const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-    return saved && themes[saved] ? saved : "system";
-  });
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedThemeId>(() => resolveTheme(themeId));
+  const [themeId, setThemeIdState] = useState<ThemeId>("dark");
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedThemeId>("dark");
+
+  useEffect(() => {
+    let active = true;
+
+    async function initTheme() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        let selected: ThemeId = "dark";
+
+        if (session) {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("theme_preference")
+            .eq("id", session.user.id)
+            .single();
+
+          const profile = data as { theme_preference?: string } | null;
+          const profileTheme = profile?.theme_preference;
+
+          if (!error && typeof profileTheme === "string" && themes[profileTheme as ThemeId]) {
+            selected = profileTheme as ThemeId;
+          } else {
+            const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
+            if (saved && themes[saved]) selected = saved;
+          }
+        }
+
+        if (!active) return;
+
+        setThemeIdState(selected);
+        setResolvedTheme(resolveTheme(selected));
+        applyTheme(selected);
+      } catch {
+        setThemeIdState("dark");
+        setResolvedTheme("dark");
+        applyTheme("dark");
+      }
+    }
+
+    initTheme();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia(MEDIA_QUERY);
 
     function handleSystemThemeChange() {
-      setResolvedTheme(resolveTheme(themeId));
-      applyTheme(themeId);
+      if (themeId === "system") {
+        setResolvedTheme(resolveTheme(themeId));
+        applyTheme(themeId);
+      }
     }
 
     handleSystemThemeChange();
@@ -53,11 +100,21 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     return () => media.removeEventListener("change", handleSystemThemeChange);
   }, [themeId]);
 
-  const setThemeId = useCallback((id: ThemeId) => {
+  const setThemeId = useCallback(async (id: ThemeId) => {
     setThemeIdState(id);
     localStorage.setItem(STORAGE_KEY, id);
     setResolvedTheme(resolveTheme(id));
     applyTheme(id);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    await supabase
+      .from("profiles")
+      .update({ theme_preference: id })
+      .eq("id", session.user.id);
   }, []);
 
   const toggleTheme = useCallback(() => {

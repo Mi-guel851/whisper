@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 import { enablePushNotifications } from "@/lib/push";
 import { useToast } from "@/components/ToastProvider";
 import Button from "./Button";
+import NotificationBell from "./NotificationBell";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -140,17 +141,20 @@ export default function DashboardHeader() {
           on a light canvas. `Button` carries the theme-aware variants, the
           press spring, and the ripple, so the toggle presses like every other
           control instead of being the one dead target on the screen. */}
-      <Button
-        variant={pushEnabled ? "primary" : "secondary"}
-        size="sm"
-        className="shrink-0 rounded-full"
-        onClick={handleNotifyClick}
-        loading={loading}
-        aria-pressed={pushEnabled}
-        icon={<Bell size={15} fill={pushEnabled ? "currentColor" : "none"} />}
-      >
-        {pushEnabled ? "On" : "Notify"}
-      </Button>
+      <div className="flex items-center gap-2">
+        <NotificationBell />
+        <Button
+          variant={pushEnabled ? "primary" : "secondary"}
+          size="sm"
+          className="shrink-0 rounded-full"
+          onClick={handleNotifyClick}
+          loading={loading}
+          aria-pressed={pushEnabled}
+          icon={<Bell size={15} fill={pushEnabled ? "currentColor" : "none"} />}
+        >
+          {pushEnabled ? "On" : "Notify"}
+        </Button>
+      </div>
     </div>
   );
 }

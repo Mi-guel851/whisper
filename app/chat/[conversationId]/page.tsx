@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import GlassPanel from "@/components/GlassPanel";
-import { UNLOCK_CHAT_COST, SEND_IMAGE_COST } from "@/lib/coins";
+import { UNLOCK_CHAT_COST, SEND_IMAGE_COST, SEND_VOICE_COST } from "@/lib/coins";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { typingManager } from "@/lib/realtime/typing";
 import { presenceManager } from "@/lib/realtime/presence";
@@ -16,7 +16,7 @@ import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
-  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy,
+  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy, Mic, Play,
 } from "lucide-react";
 
 interface SecureScreenPlugin {
@@ -33,8 +33,10 @@ type Message = {
   created_at: string;
   reply_to_id: string | null;
   image_path: string | null;
+  audio_path: string | null;
   is_view_once: boolean;
   image_viewed_at: string | null;
+  audio_viewed_at: string | null;
   delivered_at: string | null;
   read_at: string | null;
 };
@@ -102,6 +104,9 @@ function MessageBubble({
   cancelPress,
   onSwipeReply,
   onViewPhoto,
+  onPlayAudio,
+  audioLoadingId,
+  playingAudioId,
   viewingPhotoId,
   onDelete,
   onCopy,
@@ -127,6 +132,9 @@ function MessageBubble({
   cancelPress: () => void;
   onSwipeReply: (msg: Message) => void;
   onViewPhoto: (msg: Message) => void;
+  onPlayAudio: (msg: Message) => void;
+  audioLoadingId: string | null;
+  playingAudioId: string | null;
   viewingPhotoId: string | null;
   onDelete: (msg: Message) => void;
   onCopy: (msg: Message) => void;
@@ -142,11 +150,14 @@ function MessageBubble({
 }) {
   const x = useMotionValue(0);
   const replyIconOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
-  const isPhotoMessage = msg.is_view_once;
 
   // WhatsApp squares off the corner only on the last bubble of a run, so a group
   // reads as one block with a single tail.
   const tailCorner = isGroupEnd ? (isMe ? "rounded-br-sm" : "rounded-bl-sm") : "";
+
+  const isPhotoMessage = Boolean(msg.image_path);
+  const isAudioMessage = Boolean(msg.audio_path);
+  const isMediaMessage = msg.is_view_once && (isPhotoMessage || isAudioMessage);
 
   return (
     <div
@@ -207,30 +218,59 @@ function MessageBubble({
               </button>
             )}
 
-            {isPhotoMessage ? (
+            {isMediaMessage ? (
               <div>
-                {msg.image_viewed_at ? (
-                  <p className="chat-meta flex items-center gap-2 text-sm italic">
-                    <Eye size={14} /> Photo viewed
-                  </p>
-                ) : isMe ? (
-                  <p className="chat-meta flex items-center gap-2 text-sm">
-                    <ImagePlus size={14} /> Photo sent (view once)
-                  </p>
-                ) : (
-                  <button
-                    onClick={() => onViewPhoto(msg)}
-                    disabled={viewingPhotoId === msg.id}
-                    className="flex items-center gap-2 text-sm font-bold text-[var(--theme-accent-purple)] disabled:opacity-60"
-                  >
-                    {viewingPhotoId === msg.id ? (
-                      <Loader2 size={14} className="animate-spin" />
+                {isPhotoMessage ? (
+                  <>
+                    {msg.image_viewed_at ? (
+                      <p className="chat-meta flex items-center gap-2 text-sm italic">
+                        <Eye size={14} /> Photo viewed
+                      </p>
+                    ) : isMe ? (
+                      <p className="chat-meta flex items-center gap-2 text-sm">
+                        <ImagePlus size={14} /> Photo sent (view once)
+                      </p>
                     ) : (
-                      <ImagePlus size={14} />
+                      <button
+                        onClick={() => onViewPhoto(msg)}
+                        disabled={viewingPhotoId === msg.id}
+                        className="flex items-center gap-2 text-sm font-bold text-[var(--theme-accent-purple)] disabled:opacity-60"
+                      >
+                        {viewingPhotoId === msg.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <ImagePlus size={14} />
+                        )}
+                        {viewingPhotoId === msg.id ? "Loading..." : "Tap to view photo (once)"}
+                      </button>
                     )}
-                    {viewingPhotoId === msg.id ? "Loading..." : "Tap to view photo (once)"}
-                  </button>
-                )}
+                  </>
+                ) : isAudioMessage ? (
+                  <>
+                    {msg.audio_viewed_at ? (
+                      <p className="chat-meta flex items-center gap-2 text-sm italic">
+                        <Play size={14} /> Voice note played
+                      </p>
+                    ) : isMe ? (
+                      <p className="chat-meta flex items-center gap-2 text-sm">
+                        <Play size={14} /> Voice note sent (view once)
+                      </p>
+                    ) : (
+                      <button
+                        onClick={() => onPlayAudio(msg)}
+                        disabled={audioLoadingId === msg.id || playingAudioId === msg.id}
+                        className="flex items-center gap-2 text-sm font-bold text-[var(--theme-accent-purple)] disabled:opacity-60"
+                      >
+                        {audioLoadingId === msg.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                        {audioLoadingId === msg.id ? "Loading..." : playingAudioId === msg.id ? "Playing..." : "Play voice note (once)"}
+                      </button>
+                    )}
+                  </>
+                ) : null}
                 {msg.content && (
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{msg.content}</p>
                 )}
@@ -360,6 +400,11 @@ export default function ChatPage() {
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null);
   const [viewingPhotoId, setViewingPhotoId] = useState<string | null>(null);
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const [photoModalCaption, setPhotoModalCaption] = useState<string | null>(null);
@@ -383,6 +428,10 @@ export default function ChatPage() {
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
@@ -710,6 +759,18 @@ export default function ChatPage() {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
   }, [pendingPhoto]);
 
+  useEffect(() => {
+    return () => {
+      audioPlayerRef.current?.pause();
+      audioPlayerRef.current = null;
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current = null;
+    };
+  }, []);
+
   async function sendMessage() {
     setShowEmojiPicker(false);
     setShowAttachSheet(false);
@@ -841,7 +902,10 @@ export default function ChatPage() {
         image_path: path,
         is_view_once: true,
       });
-      if (insertError) { showToast(insertError.message); return; }
+      if (insertError) {
+        showToast(insertError.message);
+        return;
+      }
 
       await supabase.from("conversations").update({
         last_message_at: new Date().toISOString(),
@@ -881,6 +945,155 @@ export default function ChatPage() {
       showToast("Something went wrong loading the photo.");
     } finally {
       setViewingPhotoId(null);
+    }
+  }
+
+  function formatTimer(seconds: number) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }
+
+  async function startRecording() {
+    if (!chatUnlocked) {
+      showToast(isFriendConversation
+        ? "You need 40 coins to unlock this conversation."
+        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRecordingError("Audio recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      setRecording(true);
+      setRecordingSeconds(0);
+      setRecordingError(null);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+        stream.getTracks().forEach((track) => track.stop());
+        setRecording(false);
+        setRecordingSeconds(0);
+        await sendVoiceNote(blob);
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((current) => current + 1);
+      }, 1000);
+    } catch (error) {
+      console.error("Recording failed", error);
+      setRecordingError("Unable to access microphone.");
+      setRecording(false);
+    }
+  }
+
+  function stopRecording() {
+    if (!mediaRecorderRef.current) return;
+    mediaRecorderRef.current.stop();
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }
+
+  async function sendVoiceNote(blob: Blob) {
+    if (!myId) return;
+    setUploadingPhoto(true);
+    try {
+      const path = `${conversationId}/${crypto.randomUUID()}.webm`;
+      const { error: uploadError } = await supabase.storage.from("view-once-photos").upload(path, blob, { contentType: blob.type });
+      if (uploadError) {
+        showToast(uploadError.message);
+        return;
+      }
+
+      const { error: spendError } = await supabase.rpc("spend_coins_for_voice_note", { target_conversation_id: conversationId });
+      if (spendError) {
+        await supabase.storage.from("view-once-photos").remove([path]);
+        showToast(spendError.message);
+        return;
+      }
+
+      const caption = input.trim();
+      const replyId = replyingTo?.id || null;
+      const { error: insertError } = await supabase.from("direct_messages").insert({
+        conversation_id: conversationId,
+        sender_id: myId,
+        content: caption || null,
+        reply_to_id: replyId,
+        audio_path: path,
+        is_view_once: true,
+      });
+
+      if (insertError) {
+        showToast(insertError.message);
+        return;
+      }
+
+      await supabase.from("conversations").update({
+        last_message_at: new Date().toISOString(),
+        last_message_sender_id: myId,
+      }).eq("id", conversationId);
+
+      setInput("");
+      setReplyingTo(null);
+      showToast("Voice note sent.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handlePlayAudio(msg: Message) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session || !msg.audio_path) return;
+
+    setAudioLoadingId(msg.id);
+    try {
+      const res = await fetch("/api/audio/view", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ messageId: msg.id }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Couldn't play voice note.");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      audioPlayerRef.current?.pause();
+      audioPlayerRef.current = new Audio(url);
+      audioPlayerRef.current.onended = () => {
+        URL.revokeObjectURL(url);
+        setPlayingAudioId(null);
+      };
+      await audioPlayerRef.current.play();
+      setPlayingAudioId(msg.id);
+      setMessages((prev) => prev.map((m) =>
+        m.id === msg.id ? { ...m, audio_viewed_at: new Date().toISOString(), audio_path: null } : m
+      ));
+    } catch (error) {
+      console.error(error);
+      showToast("Could not play voice note.");
+    } finally {
+      setAudioLoadingId(null);
     }
   }
 
@@ -1196,6 +1409,9 @@ export default function ChatPage() {
                       cancelPress={cancelPress}
                       onSwipeReply={setReplyingTo}
                       onViewPhoto={handleViewPhoto}
+                      onPlayAudio={handlePlayAudio}
+                      audioLoadingId={audioLoadingId}
+                      playingAudioId={playingAudioId}
                       viewingPhotoId={viewingPhotoId}
                       onDelete={(target) => setDeleteConfirm(target)}
                       onCopy={copyMessage}
@@ -1368,6 +1584,20 @@ export default function ChatPage() {
             >
               <Paperclip size={19} />
             </button>
+            <button
+              type="button"
+              onClick={() => { if (recording) stopRecording(); else startRecording(); }}
+              disabled={uploadingPhoto}
+              title={recording ? "Stop recording" : `Record voice note (${SEND_VOICE_COST} coins)`}
+              className={`chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${recording ? "bg-rose-500/20 text-rose-400" : ""}`}
+              aria-pressed={recording}
+            >
+              {recording ? <X size={18} /> : <Mic size={18} />}
+            </button>
+            <div className="flex min-w-[64px] flex-col items-start justify-center text-[10px] leading-none text-[var(--theme-text-secondary)]">
+              {recording ? <span>{formatTimer(recordingSeconds)}</span> : <span className="whitespace-nowrap">{`Voice ${SEND_VOICE_COST}`}</span>}
+              {recordingError && <span className="text-rose-400">{recordingError}</span>}
+            </div>
             <textarea
               ref={textareaRef}
               value={input}

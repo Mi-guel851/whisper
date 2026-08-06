@@ -3,26 +3,13 @@
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 
-/**
- * The one back affordance for the whole app.
- *
- * It used to be an arrow plus the word "Back" painted in `text-white/70`, which
- * is a dark-theme assumption baked into a component used on every screen — on
- * the light canvas that resolves to white-on-white and the control disappears.
- * It now reads from the glass tokens, so it picks up whichever theme is active
- * instead of fighting it.
- *
- * The shape is the circular chevron the profile header already used. A round
- * glass chip is self-contained: it stays legible over a photo, a gradient, or a
- * plain canvas, which a bare text link does not.
- */
 export default function BackButton({
   label,
   className = "mb-6",
 }: {
-  /** Optional wordmark or screen title rendered beside the chip. */
+  
   label?: string;
-  /** Defaults to the bottom margin every screen previously baked in. */
+ 
   className?: string;
 }) {
   const router = useRouter();

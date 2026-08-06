@@ -5,6 +5,7 @@ import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
 import ThemeProvider from "@/components/ThemeProvider";
+import NotificationProvider from "@/components/NotificationProvider";
 import PushNotificationsProvider from "@/components/PushNotificationsProvider";
 import ClickHaptics from "@/components/ClickHaptics";
 import AppUrlHandler from "@/components/AppUrlHandler";
@@ -34,10 +35,8 @@ export default function RootLayout({
       <body>
         <Script id="theme-init" strategy="beforeInteractive">{`
           try {
-            const saved = localStorage.getItem("whisper-theme") || "system";
-            const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-            const resolved = saved === "system" ? (systemDark ? "dark" : "light") : saved;
-            document.documentElement.dataset.themePreference = saved;
+            const resolved = "dark";
+            document.documentElement.dataset.themePreference = "dark";
             document.documentElement.dataset.theme = resolved;
             document.documentElement.style.colorScheme = resolved;
           } catch {}
@@ -61,9 +60,11 @@ export default function RootLayout({
         <ClickHaptics />
         <ThemeProvider>
           <ToastProvider>
-            <PushNotificationsProvider>
-              {children}
-            </PushNotificationsProvider>
+            <NotificationProvider>
+              <PushNotificationsProvider>
+                {children}
+              </PushNotificationsProvider>
+            </NotificationProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>

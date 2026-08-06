@@ -74,10 +74,11 @@ export default function Hero() {
         initial="hidden"
         animate="visible"
       >
-        <motion.div
-          variants={respectMotion(staggerItem, reduced)}
-          className="home-pill mb-6"
-        >
+        <div className="glass-control rounded-[2.5rem] border border-white/10 p-8 lg:p-10">
+          <motion.div
+            variants={respectMotion(staggerItem, reduced)}
+            className="home-pill mb-6"
+          >
           {/* Two-layer dot: a solid core with a slower halo behind it, so the
               "live" signal reads without the whole pill pulsing. */}
           <span className="relative flex h-2 w-2 shrink-0">
@@ -96,6 +97,7 @@ export default function Hero() {
           </span>
           100% Anonymous. Always.
         </motion.div>
+        </div>
 
         <AnimatedHeading className="mx-auto max-w-[15ch] lg:mx-0" />
 
