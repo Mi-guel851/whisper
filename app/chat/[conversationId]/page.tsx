@@ -13,6 +13,7 @@ import { typingManager } from "@/lib/realtime/typing";
 import { presenceManager } from "@/lib/realtime/presence";
 import { useToast } from "@/components/ToastProvider";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
+import { useEventCallback } from "@/lib/useEventCallback";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
@@ -1085,7 +1086,7 @@ export default function ChatPage() {
     }
   }
 
-  async function handlePlayAudio(msg: Message) {
+  const handlePlayAudio = useEventCallback(async (msg: Message) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session || !msg.audio_path) return;
 
@@ -1125,7 +1126,7 @@ export default function ChatPage() {
     } finally {
       setAudioLoadingId(null);
     }
-  }
+  });
 
   function closePhotoModal() {
     if (Capacitor.isNativePlatform()) { try { SecureScreen.disable(); } catch (e) {} }
@@ -1211,7 +1212,7 @@ export default function ChatPage() {
    * Android WebView the Capacitor shell runs in, so this falls back to the
    * old execCommand path rather than throwing on those devices.
    */
-  async function copyMessage(msg: Message) {
+  const copyMessage = useEventCallback(async (msg: Message) => {
     const text = msg.content?.trim();
     if (!text) {
       showToast("Nothing to copy.");
@@ -1239,7 +1240,7 @@ export default function ChatPage() {
       showToast("Couldn't copy that message.", { variant: "error" });
     }
     setActionMenuFor(null);
-  }
+  });
 
   /* `useCallback` on both halves of the long-press because they are handed to
      every bubble. As plain functions they were re-created on each render, which

@@ -1,19 +1,5 @@
 import GlassPanel from "@/components/GlassPanel";
 
-/**
- * Placeholder chat list, shown while the inbox resolves its session and first
- * query.
- *
- * It replaced a centered `Loading...`, and the reason is perceived speed rather
- * than decoration: the text sat in the middle of an empty screen and then the
- * real list appeared somewhere else, so every visit read as a jump. These rows
- * are laid out at the same 12px avatar / two-line body rhythm as the real
- * `ChatRow`, so the arriving content lands on top of shapes that are already in
- * the right place.
- *
- * No client directive and no props: it renders identically on the server and is
- * pure markup, so it costs nothing to include and can be streamed.
- */
 export default function InboxSkeleton({ rows = 7 }: { rows?: number }) {
   return (
     <GlassPanel className="overflow-hidden rounded-3xl">
