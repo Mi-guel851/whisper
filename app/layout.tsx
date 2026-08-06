@@ -41,7 +41,11 @@ export default function RootLayout({
             document.documentElement.style.colorScheme = resolved;
           } catch {}
         `}</Script>
-        <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
+        {/* Paystack's inline.js is NOT loaded here. `window.PaystackPop` is read
+            in exactly one place — app/premium/page.tsx — so mounting the script
+            in the root layout meant every one of the app's ~48 routes fetched,
+            parsed and executed a third-party payment SDK that all but one of
+            them never calls. It now loads on /premium itself. */}
         {/* Departure feedback for navigations. The arrival fade lives in
             app/template.tsx; between them a route change is never silent.
             `showSpinner` off — the bar alone is enough, and the corner spinner

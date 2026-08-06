@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import FriendsHeader from "@/components/FriendsHeader";
-import MessageTicks from "@/components/MessageTicks";
+import ChatRow from "@/components/inbox/ChatRow";
+import InboxSkeleton from "@/components/inbox/InboxSkeleton";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { presenceManager } from "@/lib/realtime/presence";
-import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { typingManager } from "@/lib/realtime/typing";
 import { Search, X } from "lucide-react";
 
@@ -288,20 +288,41 @@ export default function InboxPage() {
     });
   }, [conversations, myId, previews, query]);
 
-  function openConversation(c: ConversationRow) {
+  /* Sets for O(1) lookup inside the map. The arrays come from state and change
+     often (presence, typing), but the check `array.includes(id)` is O(n) and
+     runs once per row. Converting to a Set outside the map means the list pays
+     the conversion cost once rather than once per row. */
+  const onlineSet = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
+  const typingSet = useMemo(() => new Set(typingConversationIds), [typingConversationIds]);
+
+  /* Bound once so every `ChatRow` can share one function reference — an arrow
+     created inside the map would be a new identity per row per render, which
+     defeats the memo.
+
+     It takes an id rather than the row, and both state updates are functional
+     updaters, so `conversations` is deliberately NOT a dependency. Depending on
+     it would give this callback a new identity on every realtime refresh and
+     re-render the entire list for a change to one row's timestamp. */
+  const handleOpenConversation = useCallback((id: string) => {
+    const now = new Date().toISOString();
+
     setConversations((prev) =>
       prev.map((row) =>
-        row.id === c.id
+        row.id === id
           ? {
               ...row,
-              user_a_last_read_at: row.user_a === myId ? new Date().toISOString() : row.user_a_last_read_at,
-              user_b_last_read_at: row.user_b === myId ? new Date().toISOString() : row.user_b_last_read_at,
+              user_a_last_read_at: row.user_a === myId ? now : row.user_a_last_read_at,
+              user_b_last_read_at: row.user_b === myId ? now : row.user_b_last_read_at,
             }
           : row
       )
     );
-    setUnreadCounts((prev) => ({ ...prev, [c.id]: 0 }));
-    router.push(`/chat/${c.id}`);
+    setUnreadCounts((prev) => ({ ...prev, [id]: 0 }));
+    router.push(`/chat/${id}`);
+  }, [myId, router]);
+
+  function openConversation(c: ConversationRow) {
+    handleOpenConversation(c.id);
   }
 
   async function openFriend(friendId: string) {
@@ -360,14 +381,12 @@ export default function InboxPage() {
     if (created) router.push(`/chat/${created.id}`);
   }
 
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center theme-bg-gradient text-white">
-        <p className="text-gray-400">Loading...</p>
-      </main>
-    );
-  }
-
+  /* The loading state keeps the page shell — heading, search, friends strip —
+     and swaps only the list for its skeleton. The previous version replaced the
+     entire screen with a centered "Loading...", so arriving at the inbox meant
+     watching the layout appear twice: once as bare text, then again as the real
+     thing somewhere else entirely. Holding the chrome still and filling in the
+     list is what makes the same wait read as fast. */
   return (
     <main className="min-h-screen theme-bg-gradient text-white">
       <div className="max-w-2xl mx-auto px-4 py-8 pb-28 sm:px-6">
@@ -402,7 +421,9 @@ export default function InboxPage() {
           onSelect={openFriend}
         />
 
-        {conversations.length === 0 ? (
+        {loading ? (
+          <InboxSkeleton />
+        ) : conversations.length === 0 ? (
           <GlassPanel className="rounded-3xl p-10 text-center">
             <p className="text-xl">No conversations yet.</p>
             <p className="mt-2 text-sm text-gray-400">
@@ -419,63 +440,33 @@ export default function InboxPage() {
               {filtered.map((c) => {
                 const unread = isUnread(c);
                 const unreadCount = unreadCounts[c.id] || 0;
-                const active = onlineUserIds.includes(otherUserId(c));
-                const typing = typingConversationIds.includes(c.id);
+                const other = otherUserId(c);
+                const active = onlineSet.has(other);
+                const typing = typingSet.has(c.id);
                 const preview = previews[c.id];
                 const sentByMe = preview ? preview.sender_id === myId : false;
 
+                /* Everything the row needs is flattened to a primitive here.
+                   Passing the conversation object plus the previews map would
+                   hand every row a reference that changes whenever any row's
+                   data changes, and the memo would never hit. */
                 return (
-                  <li key={c.id}>
-                    <button
-                      onClick={() => openConversation(c)}
-                      className="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.05]"
-                    >
-                      <div className="relative h-12 w-12 shrink-0">
-                        <img
-                          src={generatedAvatarUrl(otherUserId(c))}
-                          alt=""
-                          className="h-12 w-12 rounded-full border border-white/15 bg-white/10 object-cover p-0.5"
-                          loading="lazy"
-                        />
-                        <span
-                          className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#100d18] ${
-                            active ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-gray-600"
-                          }`}
-                          aria-label={active ? "Active now" : "Offline"}
-                        />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline gap-2">
-                          <p className={`min-w-0 flex-1 truncate text-[15px] ${unread ? "font-bold text-white" : "font-semibold text-gray-200"}`}>
-                            {labelFor(c)}
-                          </p>
-                          <span className={`shrink-0 text-[11px] ${unread ? "font-bold text-emerald-400" : "text-gray-500"}`}>
-                            {chatListTime(c.last_message_at)}
-                          </span>
-                        </div>
-
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          {/* Your own last message carries its ticks, like WhatsApp. */}
-                          {!typing && sentByMe && preview && !preview.is_view_once && (
-                            <MessageTicks deliveredAt={preview.delivered_at} readAt={preview.read_at} />
-                          )}
-                          <p
-                            className={`min-w-0 flex-1 truncate text-[13px] ${
-                              typing ? "font-semibold text-emerald-400" : unread ? "text-gray-200" : "text-gray-500"
-                            }`}
-                          >
-                            {typing ? "typing..." : previewText(c)}
-                          </p>
-                          {unreadCount > 0 && (
-                            <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-black text-black">
-                              {unreadCount > 99 ? "99+" : unreadCount}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  </li>
+                  <ChatRow
+                    key={c.id}
+                    conversationId={c.id}
+                    avatarUserId={other}
+                    label={labelFor(c)}
+                    timestamp={chatListTime(c.last_message_at)}
+                    previewText={previewText(c)}
+                    unread={unread}
+                    unreadCount={unreadCount}
+                    active={active}
+                    typing={typing}
+                    showTicks={!typing && sentByMe && !!preview && !preview.is_view_once}
+                    deliveredAt={preview?.delivered_at ?? null}
+                    readAt={preview?.read_at ?? null}
+                    onOpen={handleOpenConversation}
+                  />
                 );
               })}
             </ul>

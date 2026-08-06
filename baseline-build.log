@@ -1,0 +1,85 @@
+﻿
+> whisper@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 66s
+  Running TypeScript ...
+  Finished TypeScript in 22.6s ...
+  Collecting page data using 3 workers ...
+node.exe : ⚠ Using edge runtime on a page currently disables static generation for that page
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (⚠ Using edge ru...n for that page:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Generating static pages using 3 workers (0/45) ...
+⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using 
+"http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using 
+"http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+  Generating static pages using 3 workers (11/45) 
+  Generating static pages using 3 workers (22/45) 
+  Generating static pages using 3 workers (33/45) 
+✓ Generating static pages using 3 workers (45/45) in 2.8s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /active
+├ ○ /activity-log
+├ ○ /admin
+├ ○ /admin/grant-coins
+├ ○ /analytics
+├ ƒ /api/admin/verify-pin
+├ ƒ /api/audio/view
+├ ƒ /api/coins/reply
+├ ƒ /api/currency/rates
+├ ƒ /api/og/u/[username]
+├ ƒ /api/paystack/verify
+├ ƒ /api/photos/view
+├ ƒ /api/reset-with-phrase
+├ ƒ /api/send-push
+├ ƒ /api/set-recovery-phrase
+├ ○ /appearance
+├ ○ /blocked-keywords
+├ ○ /blocklist
+├ ƒ /chat/[conversationId]
+├ ○ /community-guidelines
+├ ○ /complete-profile
+├ ○ /contact-support
+├ ○ /dashboard
+├ ○ /discover
+├ ○ /favorites
+├ ○ /feedback
+├ ○ /forgot-password
+├ ○ /friends
+├ ○ /help-center
+├ ○ /icon.png
+├ ○ /inbox
+├ ○ /login
+├ ○ /notifications
+├ ƒ /notify-message
+├ ƒ /opengraph-image
+├ ○ /pinned-messages
+├ ○ /premium
+├ ○ /privacy
+├ ○ /profile
+├ ○ /public-feed
+├ ○ /saved-messages
+├ ○ /settings
+├ ○ /setup
+├ ○ /signup
+├ ○ /terms
+├ ƒ /u/[username]
+└ ƒ /u/-/opengraph-image
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

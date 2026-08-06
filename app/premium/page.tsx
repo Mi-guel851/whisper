@@ -1,6 +1,7 @@
 "use client";
 
 import WhisperCoinIcon from "@/components/WhisperCoinIcon";
+import Script from "next/script";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -208,6 +209,12 @@ export default function PremiumPage() {
 
   return (
     <main className="relative min-h-screen w-full overflow-x-clip theme-bg-gradient pb-32 text-white">
+      {/* The one route that calls `window.PaystackPop`, so the one route that
+          loads it. `lazyOnload` keeps it off the critical path — the SDK is only
+          needed once the user picks a package, which is several taps away, and
+          `buyCoins` already guards on `!window.PaystackPop` with a toast. */}
+      <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
+
       <div className="pointer-events-none absolute -top-24 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-purple-500/20 blur-[110px]" />
       <div className="pointer-events-none absolute right-[-80px] top-48 h-72 w-72 rounded-full bg-pink-500/20 blur-[110px]" />
 

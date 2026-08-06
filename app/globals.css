@@ -143,7 +143,7 @@
      chrome — rather than a black bar. */
   --theme-nav-bg:
     linear-gradient(155deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)),
-    rgba(14, 14, 20, 0.78);
+    rgba(13, 13, 19, 0.94);
   /* Solid stand-in for the places that need the nav's colour as a plain colour.
      `border-color` can't take a gradient, and the presence dot punches its ring
      out of the nav — so it reads from this rather than from the film. */
@@ -351,7 +351,21 @@ button, a, input, textarea, select {
   -webkit-tap-highlight-color: transparent;
 }
 
-button, a {
+/* The single largest source of "the buttons feel slow" on mobile, and it is not
+   JavaScript at all.
+ *
+ * A touch browser that permits double-tap-to-zoom cannot know whether a tap is
+ * a click or the first half of a zoom, so it holds the `click` event for up to
+ * ~300ms waiting for a second tap. Every button in the app was paying that,
+ * invisibly — the handler was instant, the *dispatch* was late, and no amount
+ * of optimizing the React side would have moved it.
+ *
+ * `manipulation` opts out of double-tap-to-zoom (keeping pan and pinch-zoom),
+ * which lets the browser dispatch on touch-end immediately. Declared on the
+ * root so it inherits to everything: the previous rule named only `button, a`,
+ * which left `[role="button"]` rows, labels, summaries, and every form control
+ * still waiting out the delay. Pinch-zoom on the page as a whole is unaffected. */
+html {
   touch-action: manipulation;
 }
 
@@ -476,9 +490,36 @@ img, svg, video, canvas {
 
 /* --- Page canvas ------------------------------------------------------- */
 
-.theme-bg-gradient,
-body,
-main.min-h-screen {
+/* The canvas is painted once, by a fixed layer, and never repainted on scroll.
+ *
+ * This used to be `background-attachment: fixed` declared on all three of
+ * `body`, `.theme-bg-gradient` and `main.min-h-screen`. Two costs came out of
+ * that, and together they were the largest scroll expense in the app on Android:
+ *
+ *  1. `background-attachment: fixed` cannot ride the compositor. The background
+ *     has to hold still while the content moves, so the pixels under the
+ *     viewport differ every frame and the engine repaints them on the main
+ *     thread — Chrome reports it as a reason for falling off threaded scrolling
+ *     outright. What got repainted was three `color-mix()` radial gradients plus
+ *     a linear gradient, at viewport size, per frame.
+ *  2. Nearly every screen is `<main class="min-h-screen theme-bg-gradient">`,
+ *     which matches two of those selectors while `body` matches the third — so
+ *     the same four-layer stack was rasterized twice to produce an image where
+ *     the top copy completely hid the bottom one.
+ *
+ * A `position: fixed` pseudo-element gets the same visual result for free: it is
+ * promoted, it is composited, and it simply doesn't participate in scrolling, so
+ * there is nothing to repaint. `inset: 0` matches the viewport the way the fixed
+ * attachment did, and negative `z-index` keeps it behind page content while
+ * still sitting above the body's own background. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  /* Behind Background.tsx, which is its own fixed `-z-10` layer carrying the
+     drifting blobs and the grid. Anything above -10 here would cover them. */
+  z-index: -20;
+  pointer-events: none;
   background:
     radial-gradient(ellipse 60rem 40rem at 8% -8%,
       color-mix(in srgb, var(--theme-accent-purple) 16%, transparent), transparent 70%),
@@ -487,7 +528,21 @@ main.min-h-screen {
     radial-gradient(ellipse 55rem 40rem at 50% 108%,
       color-mix(in srgb, var(--theme-accent-pink) 10%, transparent), transparent 70%),
     linear-gradient(180deg, var(--theme-bg) 0%, var(--theme-surface) 100%);
-  background-attachment: fixed;
+}
+
+/* Solid base only. It shows through the fixed layer's transparent regions and
+   is what the overscroll area and the browser canvas take their color from. */
+body {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+/* Transparent, so the one fixed layer above shows through instead of every
+   screen rasterizing its own copy. The color declaration is what these
+   selectors were actually still needed for. */
+.theme-bg-gradient,
+main.min-h-screen {
+  background: transparent;
   color: var(--theme-text);
 }
 
@@ -522,8 +577,23 @@ main.min-h-screen {
   background: var(--theme-glass);
   border: 1px solid var(--theme-glass-border);
   box-shadow: var(--elev-3), var(--elev-rim);
-  backdrop-filter: blur(40px) saturate(200%) brightness(1.04);
-  -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.04);
+  /* 20px and two filter ops, down from 40px and three.
+
+     This selector is the most-repeated expensive declaration in the app: it
+     matches every card, and the inbox, notifications and discover feeds put a
+     dozen or more on screen at once. Each one is an independent backdrop
+     readback — the compositor copies the pixels behind that card, blurs them,
+     and composites the result — and it redoes all of them every frame the list
+     moves. That is the inbox scroll cost on mid-range Android, not the rows.
+
+     The look is preserved because of what's actually behind these cards: the
+     app background is a smooth gradient with soft ambient blobs. Blurring a
+     smooth gradient converges fast — by ~20px there is no further detail left
+     to destroy, so the extra 20px was buying an identical image at double the
+     sample count. `brightness(1.04)` went the same way: a third pass over the
+     same pixels for a lift the --theme-glass film can carry itself. */
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 .liquid-glass-strong,
@@ -554,7 +624,23 @@ main.min-h-screen {
 .premium-card-interactive {
   transition: transform var(--dur-base) var(--ease-out-quint),
               box-shadow var(--dur-base) var(--ease-out-quint);
-  will-change: transform;
+  /* No `will-change: transform` here, deliberately.
+
+     It used to be, and it was costing on two fronts. `will-change` is a standing
+     promise, not a hint for the duration of the hover: every card carrying this
+     class got its own GPU layer for its whole lifetime, whether or not anyone
+     ever pointed at it. A feed of these is a feed of permanent layers, and on a
+     mid-range Android GPU that runs out of headroom and starts evicting and
+     re-uploading — which is slower than never having promoted at all.
+
+     It also silently broke glass: `will-change: transform` makes an element a
+     backdrop root, so any `backdrop-filter` on a descendant had nothing to
+     sample and quietly flattened.
+
+     Nothing is lost by removing it. The animated pair is transform *and*
+     box-shadow, and box-shadow can't be composited — the frame needs a repaint
+     regardless, so the promoted layer was never buying the smooth path it
+     looked like it was buying. */
 }
 
 .premium-card-interactive:hover {
@@ -607,8 +693,18 @@ main.min-h-screen {
   position: relative;
   border: 1px solid var(--theme-glass-border);
   box-shadow: var(--elev-3), var(--elev-rim);
-  backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
-  -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
+  /* 22px, not 40px, and no `brightness()`.
+     Floating chrome sits over scrolling content, so the compositor re-reads the
+     region behind it and re-blurs on every frame of every scroll. That cost
+     scales with the radius, and a third filter op in the chain is a third pass
+     over the same pixels. On mid-range Android this single declaration was the
+     most expensive thing on screen while scrolling.
+
+     The look survives the cut because the film underneath now carries the
+     opacity (see --theme-nav-bg): past ~20px the blur is already a wash, so the
+     extra 18px was paying full price for a difference nobody can point to. */
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
 
   background:
     linear-gradient(

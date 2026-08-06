@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -35,7 +35,6 @@ export default function BottomNavigation() {
     const { data: convos } = await supabase
       .from("conversations")
       .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
-      .select("user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
       .or(`user_a.eq.${uid},user_b.eq.${uid}`);
 
     if (!convos) {
@@ -45,9 +44,7 @@ export default function BottomNavigation() {
 
     const unread = convos.filter((c) => {
       if (!c.last_message_at) return false;
-      if (c.last_message_sender_id === uid) return false; // you sent it — not unread for you
-      if (!c.last_message_at) return false;
-      if (c.last_message_sender_id === uid) return false; // you sent it — not unread for you
+      if (c.last_message_sender_id === uid) return false;
       const lastRead = c.user_a === uid ? c.user_a_last_read_at : c.user_b_last_read_at;
       if (!lastRead) return true;
       return new Date(c.last_message_at) > new Date(lastRead);
@@ -77,7 +74,6 @@ export default function BottomNavigation() {
       if (!session || cancelled) return;
 
       setMyId(session.user.id);
-      await presenceManager.connect(session.user.id);
       await presenceManager.connect(session.user.id);
       await loadUnreadWhispers(session.user.id);
       await loadUnreadFeed(session.user.id);
@@ -156,11 +152,29 @@ export default function BottomNavigation() {
 
     run();
 
+    /* Two filtered handlers, not one unfiltered subscription.
+     *
+     * `conversations` with no filter means the server fans out every row change
+     * in the table — every message anyone in the app sends — to every connected
+     * client, and each one of those woke a full refetch here. On mobile that is
+     * a socket that never goes quiet: constant radio wakeups, constant queries,
+     * and battery drain proportional to total app traffic rather than to your
+     * own conversations.
+     *
+     * Realtime filters are single-column, so an `or(user_a, user_b)` filter
+     * isn't expressible — but two handlers on the same channel are, and the
+     * union is exactly the rows this badge cares about. Both point at the same
+     * `run`, so the behaviour is identical; only the volume changes. */
     const channel = supabase
       .channel(uniqueChannelName(`bottomnav-chat-unread-${myId}`))
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "conversations" },
+        { event: "*", schema: "public", table: "conversations", filter: `user_a=eq.${myId}` },
+        () => run()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversations", filter: `user_b=eq.${myId}` },
         () => run()
       )
       .subscribe();
@@ -193,14 +207,22 @@ export default function BottomNavigation() {
   }, [myId, loadUnreadWhispers, loadUnreadChats, loadUnreadFeed]);
 
 
-  const nav = [
-    { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined, onClick: undefined },
-    { href: "/discover", icon: Compass, label: "Discover", showPresenceDot: true, badge: unreadFeed, onClick: undefined },
-    { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats, onClick: undefined },
-    { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers, onClick: undefined },
-    { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined, onClick: undefined },
-    { href: "/premium", icon: Gem, label: "Coins", showPresenceDot: false, badge: undefined, onClick: undefined },
-  ];
+  /* Memoized so the six items keep their identity across the renders that don't
+     concern them. This component re-renders on five separate pieces of state
+     (three badges, presence, and the id), and a fresh array each time meant a
+     fresh object per item — enough to defeat any memoization downstream and to
+     re-run the map's work on a presence blip that changed one green dot. */
+  const nav = useMemo(
+    () => [
+      { href: "/dashboard", icon: House, label: "Home", showPresenceDot: false, badge: undefined as number | undefined },
+      { href: "/discover", icon: Compass, label: "Discover", showPresenceDot: true, badge: unreadFeed },
+      { href: "/inbox", icon: MessageCircle, label: "Inbox", showPresenceDot: false, badge: unreadChats },
+      { href: "/notifications", icon: null, label: "Whispers", showPresenceDot: false, badge: unreadWhispers },
+      { href: "/profile", icon: User, label: "Profile", showPresenceDot: false, badge: undefined as number | undefined },
+      { href: "/premium", icon: Gem, label: "Coins", showPresenceDot: false, badge: undefined as number | undefined },
+    ],
+    [unreadFeed, unreadChats, unreadWhispers]
+  );
 
   return (
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 px-3 pb-3 sm:px-4 sm:pb-4">
@@ -226,7 +248,6 @@ export default function BottomNavigation() {
             <Link
               key={item.href}
               href={item.href}
-              onClick={item.onClick}
               className="group relative flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1.5 py-1.5 text-[10px] font-bold transition duration-300 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-95"
             >
               <div

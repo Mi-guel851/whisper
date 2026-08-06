@@ -41,7 +41,9 @@ export default function Home() {
       <Background />
       <Navbar />
       <Hero />
+      <StatsStrip />
       <Features />
+      <Testimonials />
       <HowItWorks />
       <ClosingCTA />
       <Footer />

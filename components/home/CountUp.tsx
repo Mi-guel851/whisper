@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { animate, useInView } from "framer-motion";
 import { ease } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
@@ -27,6 +27,13 @@ type CountUpProps = {
  *    with JS disabled, and would read as 0 to a screen reader that walks the
  *    tree before the observer fires.
  */
+function format(value: number, decimals: number) {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
 export default function CountUp({
   to,
   decimals = 0,
@@ -37,32 +44,44 @@ export default function CountUp({
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.6 });
   const reduced = useSafeReducedMotion();
-  const [display, setDisplay] = useState(to);
 
+  /* The frames are written straight to the text node, not through state.
+   *
+   * A 1.5s count at 60fps is ~90 ticks. Held in state, each one is a React
+   * render, a reconcile and a commit for a string that nothing else on the page
+   * depends on — and on the home page four of these run at once. Writing
+   * `textContent` skips all of it and is what a `motion` component does
+   * internally for a style value; there's just no motion component for text.
+   *
+   * The markup below still renders the *final* value, so the server output, the
+   * no-JS output and the accessibility tree are all correct without this effect
+   * ever running. */
   useEffect(() => {
-    if (!inView || reduced) return;
+    const node = ref.current;
+    if (!node || !inView || reduced) return;
 
-    setDisplay(0);
     const controls = animate(0, to, {
       // Long enough to read as counting, short enough that the eye isn't
       // waiting on it — the number is supporting evidence, not the headline.
       duration: 1.5,
       ease: ease.outExpo,
-      onUpdate: (value) => setDisplay(value),
+      onUpdate: (value) => {
+        node.textContent = `${prefix}${format(value, decimals)}${suffix}`;
+      },
     });
 
-    return () => controls.stop();
-  }, [inView, reduced, to]);
-
-  const formatted = display.toLocaleString("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+    return () => {
+      controls.stop();
+      // Interrupted mid-count (unmount, or a `to` that changes) the node would
+      // otherwise keep whichever partial number it happened to be showing.
+      node.textContent = `${prefix}${format(to, decimals)}${suffix}`;
+    };
+  }, [inView, reduced, to, decimals, prefix, suffix]);
 
   return (
     <span ref={ref} className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
       {prefix}
-      {formatted}
+      {format(to, decimals)}
       {suffix}
     </span>
   );

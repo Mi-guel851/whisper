@@ -3,7 +3,7 @@
 import ChatDoodleBackground from "@/components/ChatDoodleBackground";
 import MessageTicks from "@/components/MessageTicks";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import GlassPanel from "@/components/GlassPanel";
@@ -91,12 +91,27 @@ function sameDay(a: string, b: string) {
   return new Date(a).toDateString() === new Date(b).toDateString();
 }
 
-function MessageBubble({
+/**
+ * One chat bubble.
+ *
+ * Memoized, and the prop surface is shaped around that. The list re-renders
+ * constantly for reasons no individual bubble cares about — the other side
+ * typing, a presence blip, a delivery receipt, every keystroke in the composer —
+ * and each bubble is not cheap to rebuild: it owns a Framer Motion drag
+ * recognizer, a `useMotionValue` and a `useTransform`. Rebuilding six hundred of
+ * those to show a "typing..." caption is what made long threads stutter.
+ *
+ * Note `isActionMenuOpen` rather than the `actionMenuFor` id it replaced.
+ * Passing the raw id handed every bubble a value that changed whenever any
+ * menu opened, so all of them re-rendered to update one. The boolean changes
+ * for exactly the two bubbles involved.
+ */
+const MessageBubble = memo(function MessageBubbleBase({
   msg,
   isMe,
   repliedMsg,
   msgReactions,
-  actionMenuFor,
+  isActionMenuOpen,
   setActionMenuFor,
   toggleReaction,
   setReplyingTo,
@@ -124,7 +139,7 @@ function MessageBubble({
   isMe: boolean;
   repliedMsg: Message | null;
   msgReactions: Record<string, number>;
-  actionMenuFor: string | null;
+  isActionMenuOpen: boolean;
   setActionMenuFor: (id: string | null) => void;
   toggleReaction: (messageId: string, emoji: string) => void;
   setReplyingTo: (msg: Message | null) => void;
@@ -306,7 +321,7 @@ function MessageBubble({
           </div>
         )}
 
-        {!isPhotoMessage && actionMenuFor === msg.id && (
+        {!isPhotoMessage && isActionMenuOpen && (
           <div className={`absolute z-20 -top-16 ${isMe ? "right-0" : "left-0"}`}>
             <div className="chat-chrome flex items-center gap-1 rounded-full border px-2 py-2 shadow-xl">
               {EMOJIS.map((emoji) => (
@@ -370,7 +385,7 @@ function MessageBubble({
       </div>
     </div>
   );
-}
+});
 
 export default function ChatPage() {
   const params = useParams();
@@ -717,6 +732,12 @@ export default function ChatPage() {
 
   useEffect(() => { setActiveHit(0); }, [searchQuery]);
 
+  /* Membership as a Set. `searchHits.includes(id)` inside the render map is a
+     linear scan per bubble — O(n²) across the thread, and it ran on every
+     render whether or not a search was open. Empty in the common case, so the
+     lookup is free when nobody is searching. */
+  const searchHitSet = useMemo(() => new Set(searchHits), [searchHits]);
+
   useEffect(() => {
     const target = searchHits[activeHit];
     if (!target) return;
@@ -807,7 +828,16 @@ export default function ChatPage() {
     else setMessages((prev) => prev.filter((m) => m.id !== msg.id));
   }
 
-  async function togglePin(msg: Message) {
+  /* `useEventCallback` on the four handlers below, and only those four.
+   *
+   * They are what gets passed down to every `MessageBubble`, so their identity
+   * is what decides whether the memo actually holds. Each one reads several
+   * pieces of page state — pins, coins, the playing-audio id, the conversation —
+   * so a plain `useCallback` would list half the component in its dependency
+   * array and change identity constantly, re-rendering the whole thread to
+   * open one photo. Everything else in this file stays a plain function; it
+   * isn't handed to the list and doesn't need the indirection. */
+  const togglePin = useEventCallback(async (msg: Message) => {
     const alreadyPinned = pinnedMessageIds.has(msg.id);
     if (alreadyPinned) {
       await supabase.from("pinned_messages").delete()
@@ -825,7 +855,7 @@ export default function ChatPage() {
         showToast("Message pinned.");
       }
     }
-  }
+  });
 
   function triggerPhotoPicker() {
     if (!chatUnlocked) {
@@ -921,7 +951,7 @@ export default function ChatPage() {
     }
   }
 
-  async function handleViewPhoto(msg: Message) {
+  const handleViewPhoto = useEventCallback(async (msg: Message) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setViewingPhotoId(msg.id);
@@ -946,7 +976,7 @@ export default function ChatPage() {
     } finally {
       setViewingPhotoId(null);
     }
-  }
+  });
 
   function formatTimer(seconds: number) {
     const mins = Math.floor(seconds / 60);
@@ -1104,23 +1134,34 @@ export default function ChatPage() {
     setPhotoModalCaption(null);
   }
 
-  async function toggleReaction(messageId: string, emoji: string) {
+  /* Wrapped, and deliberately not dependent on `reactions`.
+   *
+   * Handed to every bubble, so its identity decides whether the memo holds. The
+   * obvious version closes over `reactions` to find the existing entry, which
+   * gives it a new identity every time anyone reacts to anything — re-rendering
+   * the whole thread to toggle one emoji. Reading the current value inside the
+   * functional updater gets the same answer from state React already has, and
+   * leaves this callback stable for the life of the conversation. */
+  const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
     setActionMenuFor(null);
-    const existing = reactions.find((r) => r.message_id === messageId && r.user_id === myId);
-    if (existing && existing.emoji === emoji) {
+
+    let wasSameEmoji = false;
+    setReactions((prev) => {
+      const existing = prev.find((r) => r.message_id === messageId && r.user_id === myId);
+      wasSameEmoji = existing?.emoji === emoji;
+      const withoutMine = prev.filter((r) => !(r.message_id === messageId && r.user_id === myId));
+      return wasSameEmoji ? withoutMine : [...withoutMine, { message_id: messageId, user_id: myId, emoji }];
+    });
+
+    if (wasSameEmoji) {
       await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", myId);
-      setReactions((prev) => prev.filter((r) => !(r.message_id === messageId && r.user_id === myId)));
     } else {
       await supabase.from("message_reactions").upsert(
         { message_id: messageId, user_id: myId, emoji },
         { onConflict: "message_id,user_id" }
       );
-      setReactions((prev) => [
-        ...prev.filter((r) => !(r.message_id === messageId && r.user_id === myId)),
-        { message_id: messageId, user_id: myId, emoji },
-      ]);
     }
-  }
+  }, [myId]);
 
   async function unlockChat() {
     setUnlocking(true);
@@ -1130,18 +1171,38 @@ export default function ChatPage() {
     setUnlocking(false);
   }
 
-  function getReactionsFor(messageId: string) {
-    const grouped: Record<string, number> = {};
-    reactions.filter((r) => r.message_id === messageId).forEach((r) => {
-      grouped[r.emoji] = (grouped[r.emoji] || 0) + 1;
-    });
-    return grouped;
-  }
+  /* Both of these used to be per-message helper functions called from inside the
+     render map, and both were linear scans — `reactions.filter(...)` over every
+     reaction, and `messages.find(...)` over every message, once per bubble. In a
+     600-message thread that is two O(n²) passes on every single render, and the
+     chat re-renders on typing, presence, delivery receipts and every incoming
+     message. Indexing once and looking up per bubble makes it O(n).
 
-  function getRepliedMessage(replyToId: string | null) {
-    if (!replyToId) return null;
-    return messages.find((m) => m.id === replyToId) || null;
-  }
+     The stable object identity matters as much as the complexity here: the old
+     `getReactionsFor` returned a freshly-built object on every call, so passing
+     its result as a prop guaranteed a re-render of every bubble no matter what
+     else was memoized. These entries only change identity when `reactions`
+     itself changes. */
+  const reactionsByMessage = useMemo(() => {
+    const grouped = new Map<string, Record<string, number>>();
+    for (const reaction of reactions) {
+      const existing = grouped.get(reaction.message_id);
+      if (existing) existing[reaction.emoji] = (existing[reaction.emoji] || 0) + 1;
+      else grouped.set(reaction.message_id, { [reaction.emoji]: 1 });
+    }
+    return grouped;
+  }, [reactions]);
+
+  const messagesById = useMemo(() => {
+    const index = new Map<string, Message>();
+    for (const message of messages) index.set(message.id, message);
+    return index;
+  }, [messages]);
+
+  /* Shared empty object so a message with no reactions gets the *same* reference
+     every render rather than a new `{}` — the one case that would otherwise slip
+     past the memo for the majority of bubbles in a thread. */
+  const NO_REACTIONS = useMemo(() => ({}) as Record<string, number>, []);
 
   /**
    * Copy a message body to the clipboard.
@@ -1180,20 +1241,28 @@ export default function ChatPage() {
     setActionMenuFor(null);
   }
 
-  function startPress(messageId: string) {
+  /* `useCallback` on both halves of the long-press because they are handed to
+     every bubble. As plain functions they were re-created on each render, which
+     alone would have been enough to invalidate a memoized bubble on every
+     keystroke in the composer. Neither closes over anything that changes, so
+     the empty dependency list is honest. */
+  const startPress = useCallback((messageId: string) => {
     pressTimer.current = setTimeout(() => {
       // Haptic at the moment the menu commits, so the press has a felt
       // threshold rather than the menu just appearing.
       navigator.vibrate?.(18);
       setActionMenuFor(messageId);
     }, 450);
-  }
+  }, []);
 
-  function cancelPress() {
+  const cancelPress = useCallback(() => {
     if (pressTimer.current) clearTimeout(pressTimer.current);
-  }
+  }, []);
 
-  const pinnedMessages = messages.filter((m) => pinnedMessageIds.has(m.id));
+  const pinnedMessages = useMemo(
+    () => messages.filter((m) => pinnedMessageIds.has(m.id)),
+    [messages, pinnedMessageIds]
+  );
 
   // The pin the bar is currently showing. Clamped rather than stored as an id so
   // unpinning the visible one falls through to a neighbour instead of blanking
@@ -1399,9 +1468,9 @@ export default function ChatPage() {
                     <MessageBubble
                       msg={msg}
                       isMe={msg.sender_id === myId}
-                      repliedMsg={getRepliedMessage(msg.reply_to_id)}
-                      msgReactions={getReactionsFor(msg.id)}
-                      actionMenuFor={actionMenuFor}
+                      repliedMsg={msg.reply_to_id ? messagesById.get(msg.reply_to_id) ?? null : null}
+                      msgReactions={reactionsByMessage.get(msg.id) ?? NO_REACTIONS}
+                      isActionMenuOpen={actionMenuFor === msg.id}
                       setActionMenuFor={setActionMenuFor}
                       toggleReaction={toggleReaction}
                       setReplyingTo={setReplyingTo}
@@ -1413,13 +1482,13 @@ export default function ChatPage() {
                       audioLoadingId={audioLoadingId}
                       playingAudioId={playingAudioId}
                       viewingPhotoId={viewingPhotoId}
-                      onDelete={(target) => setDeleteConfirm(target)}
+                      onDelete={setDeleteConfirm}
                       onCopy={copyMessage}
                       onPin={togglePin}
                       isPinned={pinnedMessageIds.has(msg.id)}
                       isGroupStart={isGroupStart}
                       isGroupEnd={isGroupEnd}
-                      isSearchHit={searchHits.includes(msg.id)}
+                      isSearchHit={searchHitSet.has(msg.id)}
                       isActiveHit={searchHits[activeHit] === msg.id}
                       isHighlighted={highlightedId === msg.id}
                       onJumpToQuote={jumpToMessage}
