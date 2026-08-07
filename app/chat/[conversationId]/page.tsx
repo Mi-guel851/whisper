@@ -14,10 +14,13 @@ import { presenceManager } from "@/lib/realtime/presence";
 import { useToast } from "@/components/ToastProvider";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { useEventCallback } from "@/lib/useEventCallback";
+import VoiceRecorder from "@/components/chat/VoiceRecorder";
+import VoicePlayer from "@/components/chat/VoicePlayer";
+import type { VoiceRecording } from "@/lib/useVoiceRecorder";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
-  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy, Mic, Play,
+  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy,
 } from "lucide-react";
 
 interface SecureScreenPlugin {
@@ -35,6 +38,9 @@ type Message = {
   reply_to_id: string | null;
   image_path: string | null;
   audio_path: string | null;
+  audio_duration_ms: number | null;
+  audio_waveform: number[] | null;
+  audio_mime: string | null;
   is_view_once: boolean;
   image_viewed_at: string | null;
   audio_viewed_at: string | null;
@@ -121,8 +127,8 @@ const MessageBubble = memo(function MessageBubbleBase({
   onSwipeReply,
   onViewPhoto,
   onPlayAudio,
-  audioLoadingId,
-  playingAudioId,
+  isAudioLoading,
+  isAudioPlaying,
   viewingPhotoId,
   onDelete,
   onCopy,
@@ -149,8 +155,8 @@ const MessageBubble = memo(function MessageBubbleBase({
   onSwipeReply: (msg: Message) => void;
   onViewPhoto: (msg: Message) => void;
   onPlayAudio: (msg: Message) => void;
-  audioLoadingId: string | null;
-  playingAudioId: string | null;
+  isAudioLoading: boolean;
+  isAudioPlaying: boolean;
   viewingPhotoId: string | null;
   onDelete: (msg: Message) => void;
   onCopy: (msg: Message) => void;
@@ -172,8 +178,11 @@ const MessageBubble = memo(function MessageBubbleBase({
   const tailCorner = isGroupEnd ? (isMe ? "rounded-br-sm" : "rounded-bl-sm") : "";
 
   const isPhotoMessage = Boolean(msg.image_path);
-  const isAudioMessage = Boolean(msg.audio_path);
-  const isMediaMessage = msg.is_view_once && (isPhotoMessage || isAudioMessage);
+  /* `audio_viewed_at` matters as much as `audio_path` here: playing a view-once
+     note nulls the path server-side, and without the second check the bubble
+     would fall through to the plain-text branch and render as empty. */
+  const isAudioMessage = Boolean(msg.audio_path) || Boolean(msg.audio_viewed_at);
+  const isMediaMessage = isAudioMessage || (msg.is_view_once && isPhotoMessage);
 
   return (
     <div
@@ -236,7 +245,20 @@ const MessageBubble = memo(function MessageBubbleBase({
 
             {isMediaMessage ? (
               <div>
-                {isPhotoMessage ? (
+                {isAudioMessage ? (
+                  <VoicePlayer
+                    messageId={msg.id}
+                    audioPath={msg.audio_path}
+                    durationMs={msg.audio_duration_ms}
+                    waveform={msg.audio_waveform}
+                    isMe={isMe}
+                    isViewOnce={msg.is_view_once}
+                    viewedAt={msg.audio_viewed_at}
+                    onPlayViewOnce={() => onPlayAudio(msg)}
+                    viewOnceLoading={isAudioLoading}
+                    viewOncePlaying={isAudioPlaying}
+                  />
+                ) : isPhotoMessage ? (
                   <>
                     {msg.image_viewed_at ? (
                       <p className="chat-meta flex items-center gap-2 text-sm italic">
@@ -258,31 +280,6 @@ const MessageBubble = memo(function MessageBubbleBase({
                           <ImagePlus size={14} />
                         )}
                         {viewingPhotoId === msg.id ? "Loading..." : "Tap to view photo (once)"}
-                      </button>
-                    )}
-                  </>
-                ) : isAudioMessage ? (
-                  <>
-                    {msg.audio_viewed_at ? (
-                      <p className="chat-meta flex items-center gap-2 text-sm italic">
-                        <Play size={14} /> Voice note played
-                      </p>
-                    ) : isMe ? (
-                      <p className="chat-meta flex items-center gap-2 text-sm">
-                        <Play size={14} /> Voice note sent (view once)
-                      </p>
-                    ) : (
-                      <button
-                        onClick={() => onPlayAudio(msg)}
-                        disabled={audioLoadingId === msg.id || playingAudioId === msg.id}
-                        className="flex items-center gap-2 text-sm font-bold text-[var(--theme-accent-purple)] disabled:opacity-60"
-                      >
-                        {audioLoadingId === msg.id ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <Play size={14} />
-                        )}
-                        {audioLoadingId === msg.id ? "Loading..." : playingAudioId === msg.id ? "Playing..." : "Play voice note (once)"}
                       </button>
                     )}
                   </>
@@ -416,9 +413,9 @@ export default function ChatPage() {
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [recordingError, setRecordingError] = useState<string | null>(null);
+  /* Whether the next voice note self-destructs after one listen. Lives here
+     rather than in the recorder so the choice survives a discarded take. */
+  const [viewOnceVoice, setViewOnceVoice] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null);
   const [viewingPhotoId, setViewingPhotoId] = useState<string | null>(null);
@@ -444,9 +441,6 @@ export default function ChatPage() {
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -552,6 +546,11 @@ export default function ChatPage() {
       setMessages(fetchedMsgs);
       messagesRef.current = fetchedMsgs;
 
+      /* Pins can carry an expiry. Sweeping on open is what makes "pin for 24h"
+         mean anything without a scheduled job — the next person to open the
+         thread clears what has lapsed, and the fetch below then reflects it. */
+      await supabase.rpc("sweep_expired_pins", { target_conversation_id: conversationId });
+
       const { data: pins } = await supabase
         .from("pinned_messages").select("message_id")
         .eq("conversation_id", conversationId);
@@ -613,6 +612,30 @@ export default function ChatPage() {
           (payload) => {
             const deleted = payload.old as { id: string };
             setMessages((prev) => prev.filter((m) => m.id !== deleted.id));
+          }
+        )
+        /* Without these two, a pin only appeared for whoever tapped it — the
+           other participant kept the stale bar until they reloaded, which is
+           half of what "pinned messages don't take effect" looked like. */
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "pinned_messages", filter: `conversation_id=eq.${conversationId}` },
+          (payload) => {
+            const pinned = payload.new as { message_id: string };
+            setPinnedMessageIds((prev) => new Set([...prev, pinned.message_id]));
+          }
+        )
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "pinned_messages" },
+          (payload) => {
+            /* DELETE payloads carry only the replica identity, so there is no
+               conversation_id to filter on — dropping an id the set never held
+               is a no-op anyway. */
+            const unpinned = payload.old as { message_id?: string };
+            if (!unpinned.message_id) return;
+            setPinnedMessageIds((prev) => {
+              if (!prev.has(unpinned.message_id!)) return prev;
+              const next = new Set(prev);
+              next.delete(unpinned.message_id!);
+              return next;
+            });
           }
         )
         .subscribe();
@@ -783,13 +806,10 @@ export default function ChatPage() {
 
   useEffect(() => {
     return () => {
+      /* The recorder owns its own stream and tears it down on unmount; only
+         the view-once playback element is this component's to clean up. */
       audioPlayerRef.current?.pause();
       audioPlayerRef.current = null;
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-      if (mediaRecorderRef.current?.state === "recording") {
-        mediaRecorderRef.current.stop();
-      }
-      mediaRecorderRef.current = null;
     };
   }, []);
 
@@ -841,8 +861,9 @@ export default function ChatPage() {
   const togglePin = useEventCallback(async (msg: Message) => {
     const alreadyPinned = pinnedMessageIds.has(msg.id);
     if (alreadyPinned) {
-      await supabase.from("pinned_messages").delete()
+      const { error } = await supabase.from("pinned_messages").delete()
         .eq("conversation_id", conversationId).eq("message_id", msg.id);
+      if (error) { showToast(error.message); return; }
       setPinnedMessageIds((prev) => { const s = new Set(prev); s.delete(msg.id); return s; });
       showToast("Message unpinned.");
     } else {
@@ -851,10 +872,13 @@ export default function ChatPage() {
         message_id: msg.id,
         pinned_by: myId,
       });
-      if (!error) {
-        setPinnedMessageIds((prev) => new Set([...prev, msg.id]));
-        showToast("Message pinned.");
-      }
+      /* This used to be `if (!error)` with no else, which is why pinning read
+         as a silent no-op: the table had RLS enabled and no policies, so every
+         insert was rejected and the rejection was discarded. Surfacing it means
+         a future policy gap is visible instead of invisible. */
+      if (error) { showToast(error.message); return; }
+      setPinnedMessageIds((prev) => new Set([...prev, msg.id]));
+      showToast("Message pinned.");
     }
   });
 
@@ -979,112 +1003,60 @@ export default function ChatPage() {
     }
   });
 
-  function formatTimer(seconds: number) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  }
-
-  async function startRecording() {
-    if (!chatUnlocked) {
-      showToast(isFriendConversation
-        ? "You need 40 coins to unlock this conversation."
-        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setRecordingError("Audio recording is not supported in this browser.");
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      recordingChunksRef.current = [];
-      setRecording(true);
-      setRecordingSeconds(0);
-      setRecordingError(null);
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
-      };
-
-      recorder.onstop = async () => {
-        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
-        stream.getTracks().forEach((track) => track.stop());
-        setRecording(false);
-        setRecordingSeconds(0);
-        await sendVoiceNote(blob);
-      };
-
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((current) => current + 1);
-      }, 1000);
-    } catch (error) {
-      console.error("Recording failed", error);
-      setRecordingError("Unable to access microphone.");
-      setRecording(false);
-    }
-  }
-
-  function stopRecording() {
-    if (!mediaRecorderRef.current) return;
-    mediaRecorderRef.current.stop();
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  }
-
-  async function sendVoiceNote(blob: Blob) {
+  /**
+   * Uploads a finished recording and sends it.
+   *
+   * Two things changed from the version this replaces. The object is stored
+   * with the container the browser actually produced — `recording.mimeType`
+   * rather than a hardcoded `audio/webm` — because WebKit writes MP4 and a
+   * mislabelled object is served with a `Content-Type` no decoder will accept.
+   * And the spend and the insert now happen inside one `send_voice_note`
+   * transaction: the old code deducted 20 coins in one round trip and inserted
+   * the message in another, so a failure between them charged for a note that
+   * never arrived.
+   */
+  const handleVoiceNote = useEventCallback(async (recording: VoiceRecording) => {
     if (!myId) return;
     setUploadingPhoto(true);
+
+    const path = `${conversationId}/${crypto.randomUUID()}.${recording.extension}`;
     try {
-      const path = `${conversationId}/${crypto.randomUUID()}.webm`;
-      const { error: uploadError } = await supabase.storage.from("view-once-photos").upload(path, blob, { contentType: blob.type });
+      const { error: uploadError } = await supabase.storage
+        .from("voice-messages")
+        .upload(path, recording.blob, { contentType: recording.mimeType, upsert: false });
+
       if (uploadError) {
         showToast(uploadError.message);
         return;
       }
 
-      const { error: spendError } = await supabase.rpc("spend_coins_for_voice_note", { target_conversation_id: conversationId });
-      if (spendError) {
-        await supabase.storage.from("view-once-photos").remove([path]);
-        showToast(spendError.message);
-        return;
-      }
-
-      const caption = input.trim();
-      const replyId = replyingTo?.id || null;
-      const { error: insertError } = await supabase.from("direct_messages").insert({
-        conversation_id: conversationId,
-        sender_id: myId,
-        content: caption || null,
-        reply_to_id: replyId,
-        audio_path: path,
-        is_view_once: true,
+      const { error: sendError } = await supabase.rpc("send_voice_note", {
+        target_conversation_id: conversationId,
+        storage_path: path,
+        duration_ms: Math.round(recording.durationMs),
+        waveform: recording.waveform,
+        mime_type: recording.mimeType,
+        caption: input.trim() || null,
+        reply_to: replyingTo?.id ?? null,
+        view_once: viewOnceVoice,
       });
 
-      if (insertError) {
-        showToast(insertError.message);
+      if (sendError) {
+        /* The note never landed, so the object is orphaned — remove it rather
+           than leave storage accruing files no row points at. */
+        await supabase.storage.from("voice-messages").remove([path]);
+        showToast(sendError.message);
         return;
       }
-
-      await supabase.from("conversations").update({
-        last_message_at: new Date().toISOString(),
-        last_message_sender_id: myId,
-      }).eq("id", conversationId);
 
       setInput("");
       setReplyingTo(null);
-      showToast("Voice note sent.");
+      setViewOnceVoice(false);
+      showToast(viewOnceVoice ? "Voice note sent — plays once." : "Voice note sent.");
     } finally {
       setUploadingPhoto(false);
     }
-  }
+  });
 
   const handlePlayAudio = useEventCallback(async (msg: Message) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1480,8 +1452,8 @@ export default function ChatPage() {
                       onSwipeReply={setReplyingTo}
                       onViewPhoto={handleViewPhoto}
                       onPlayAudio={handlePlayAudio}
-                      audioLoadingId={audioLoadingId}
-                      playingAudioId={playingAudioId}
+                      isAudioLoading={audioLoadingId === msg.id}
+                      isAudioPlaying={playingAudioId === msg.id}
                       viewingPhotoId={viewingPhotoId}
                       onDelete={setDeleteConfirm}
                       onCopy={copyMessage}
@@ -1632,7 +1604,7 @@ export default function ChatPage() {
 
         {/* Input form */}
         <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-3 pt-2 md:px-6">
-          <div className="chat-field flex items-end gap-1.5 rounded-2xl p-1.5">
+          <div className="chat-field relative flex items-end gap-1.5 rounded-2xl p-1.5">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
             <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected} />
             <button
@@ -1654,20 +1626,22 @@ export default function ChatPage() {
             >
               <Paperclip size={19} />
             </button>
-            <button
-              type="button"
-              onClick={() => { if (recording) stopRecording(); else startRecording(); }}
-              disabled={uploadingPhoto}
-              title={recording ? "Stop recording" : `Record voice note (${SEND_VOICE_COST} coins)`}
-              className={`chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${recording ? "bg-rose-500/20 text-rose-400" : ""}`}
-              aria-pressed={recording}
-            >
-              {recording ? <X size={18} /> : <Mic size={18} />}
-            </button>
-            <div className="flex min-w-[64px] flex-col items-start justify-center text-[10px] leading-none text-[var(--theme-text-secondary)]">
-              {recording ? <span>{formatTimer(recordingSeconds)}</span> : <span className="whitespace-nowrap">{`Voice ${SEND_VOICE_COST}`}</span>}
-              {recordingError && <span className="text-rose-400">{recordingError}</span>}
-            </div>
+            {/* Hold to record, slide left to cancel, slide up to lock. The
+                recording bar it raises covers this whole row — hence `relative`
+                on the field — so the composer is replaced while recording
+                rather than growing a permanent timer beside the mic. */}
+            <VoiceRecorder
+              canRecord={chatUnlocked}
+              cost={SEND_VOICE_COST}
+              busy={uploadingPhoto}
+              onBlocked={() => showToast(isFriendConversation
+                ? "You need 40 coins to unlock this conversation."
+                : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
+              onSend={handleVoiceNote}
+              onError={showToast}
+              viewOnce={viewOnceVoice}
+              onToggleViewOnce={() => setViewOnceVoice((current) => !current)}
+            />
             <textarea
               ref={textareaRef}
               value={input}
