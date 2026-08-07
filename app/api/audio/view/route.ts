@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     const { data: message, error: msgError } = await supabaseAdmin
       .from("direct_messages")
-      .select("id, conversation_id, sender_id, audio_path, is_view_once, audio_viewed_at")
+      .select("id, conversation_id, sender_id, audio_path, audio_mime, is_view_once, audio_viewed_at")
       .eq("id", messageId)
       .single();
 
@@ -60,11 +60,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "You can't listen to your own voice note" }, { status: 403 });
     }
 
-    const { data: fileData, error: downloadError } = await supabaseAdmin.storage
-      .from("view-once-photos")
-      .download(message.audio_path);
+    /* Notes recorded before the dedicated audio bucket existed were uploaded
+       into the photo bucket. Both are searched, and whichever one holds the
+       object is the one the delete targets — otherwise playing a legacy note
+       would 404, or worse, null the row while leaving the file behind. */
+    const BUCKETS = ["voice-messages", "view-once-photos"] as const;
+    let bucket: string | null = null;
+    let fileData: Blob | null = null;
 
-    if (downloadError || !fileData) {
+    for (const candidate of BUCKETS) {
+      const { data, error } = await supabaseAdmin.storage
+        .from(candidate)
+        .download(message.audio_path);
+      if (!error && data) { bucket = candidate; fileData = data; break; }
+    }
+
+    if (!fileData || !bucket) {
       return NextResponse.json({ error: "Audio unavailable" }, { status: 404 });
     }
 
@@ -73,13 +84,16 @@ export async function POST(req: NextRequest) {
       .update({ audio_viewed_at: new Date().toISOString(), audio_path: null })
       .eq("id", messageId);
 
-    await supabaseAdmin.storage.from("view-once-photos").remove([message.audio_path]);
+    await supabaseAdmin.storage.from(bucket).remove([message.audio_path]);
 
     const arrayBuffer = await fileData.arrayBuffer();
     return new NextResponse(arrayBuffer, {
       status: 200,
       headers: {
-        "Content-Type": fileData.type || "audio/webm",
+        /* The recorded container is authoritative. `fileData.type` is whatever
+           storage reports and the hardcoded webm fallback was wrong on every
+           WebKit client, where MediaRecorder writes MP4. */
+        "Content-Type": message.audio_mime || fileData.type || "audio/webm",
         "Cache-Control": "no-store",
       },
     });

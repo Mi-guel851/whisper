@@ -1155,6 +1155,122 @@ main.min-h-screen {
   }
 }
 
+/* --- Voice notes -------------------------------------------------------- */
+
+/* The recording bar sits on `position: absolute; inset: 0` over the composer,
+   so it must be fully opaque — a translucent surface would show the textarea
+   and the icon row straight through the timer. It reads as the composer
+   *becoming* the recorder rather than a panel floating above one. */
+.chat-recording-bar {
+  background: var(--chat-field);
+  color: var(--chat-bubble-text);
+  animation: chat-recording-in 160ms var(--ease-soft) both;
+}
+
+:root[data-theme="dark"] .chat-recording-bar {
+  /* `--chat-field` is a 5% white wash on dark, which is transparent by design
+     for the resting composer but useless as a cover. Compositing it over the
+     chrome colour keeps the same hue and makes it solid. */
+  background: color-mix(in srgb, var(--chat-field) 100%, var(--chat-canvas));
+}
+
+@keyframes chat-recording-in {
+  from { opacity: 0; transform: scale(0.985); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* The one thing on screen that must read as "live". A pulse rather than a
+   static dot, because a red dot that doesn't move looks like an error state. */
+.chat-recording-dot {
+  background: #f43f5e;
+  box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.55);
+  animation: chat-recording-pulse 1.4s var(--ease-soft) infinite;
+}
+
+@keyframes chat-recording-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.5); opacity: 1; }
+  70%  { box-shadow: 0 0 0 7px rgba(244, 63, 94, 0); opacity: 0.85; }
+  100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); opacity: 1; }
+}
+
+/* Live level bars. Heights are set per-frame from the analyser, so the only
+   transition here is the smoothing between two samples — without it the meter
+   strobes at the 10Hz sample rate instead of reading as a level. */
+.chat-recording-level {
+  background: linear-gradient(180deg, var(--theme-accent-from), var(--theme-accent-to));
+  transition: height 90ms linear;
+}
+
+/* The lock rail that rises above the mic mid-gesture. */
+.chat-recording-lock {
+  background: var(--chat-chip);
+  border: 1px solid var(--chat-chrome-bd);
+  color: var(--chat-icon);
+  box-shadow: var(--chat-bubble-shadow);
+}
+
+.chat-recording-chevron {
+  animation: chat-recording-hint 1.3s var(--ease-soft) infinite;
+}
+
+@keyframes chat-recording-hint {
+  0%, 100% { transform: translateY(0);    opacity: 0.45; }
+  50%      { transform: translateY(-3px); opacity: 1; }
+}
+
+/* The mic itself while it is the thing being held. */
+.chat-recording-mic {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--theme-accent-purple) 70%, transparent);
+}
+
+.chat-recording-once-on {
+  background: color-mix(in srgb, var(--theme-accent-purple) 22%, transparent);
+  color: var(--theme-accent-purple);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-recording-bar,
+  .chat-recording-dot,
+  .chat-recording-chevron {
+    animation: none;
+  }
+  /* The dot still has to read as live without pulsing. */
+  .chat-recording-dot { box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.25); }
+  .chat-recording-level { transition: none; }
+}
+
+/* Playback. The play control borrows the accent gradient on the outgoing side
+   and stays neutral on the incoming one, matching how the bubbles themselves
+   differentiate sender from receiver. */
+.chat-voice-play {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+}
+
+.chat-voice-once {
+  background: color-mix(in srgb, var(--theme-accent-purple) 18%, transparent);
+  color: var(--theme-accent-purple);
+}
+
+/* Unplayed waveform: present but recessive, so the played portion is what the
+   eye tracks while scrubbing. */
+.chat-voice-bar {
+  background: color-mix(in srgb, var(--chat-meta) 55%, transparent);
+  transition: background-color 120ms linear;
+}
+
+.chat-voice-bar-on {
+  background: var(--theme-accent-purple);
+  transition: background-color 120ms linear;
+}
+
+.chat-voice-speed {
+  background: color-mix(in srgb, var(--chat-meta) 20%, transparent);
+  color: var(--chat-meta);
+}
+
 /* --- Chat doodle wallpaper --------------------------------------------- */
 
 /* The tile inherits `currentColor`, so the whole wallpaper is retuned per
