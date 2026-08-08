@@ -1059,6 +1059,10 @@ main.min-h-screen {
   --chat-chrome:         rgba(13, 13, 19, 0.82);
   --chat-chrome-bd:      rgba(255, 255, 255, 0.08);
   --chat-field:          rgba(255, 255, 255, 0.05);
+  /* The recording bar covers the composer outright, so unlike `--chat-field`
+     — a 5% wash, deliberately translucent at rest — it has to be opaque or
+     the textarea reads straight through the timer. */
+  --chat-recording-bg:   #1a1a24;
   --chat-icon:           #9797aa;
   --chat-icon-hover:     rgba(255, 255, 255, 0.09);
   --chat-chip:           rgba(18, 18, 26, 0.88);
@@ -1081,6 +1085,7 @@ main.min-h-screen {
   --chat-chrome:         rgba(255, 255, 255, 0.86);
   --chat-chrome-bd:      rgba(22, 23, 44, 0.08);
   --chat-field:          #ffffff;
+  --chat-recording-bg:   #ffffff;
   --chat-icon:           #5f6684;
   --chat-icon-hover:     rgba(22, 23, 44, 0.06);
   --chat-chip:           rgba(255, 255, 255, 0.92);
@@ -1162,16 +1167,9 @@ main.min-h-screen {
    and the icon row straight through the timer. It reads as the composer
    *becoming* the recorder rather than a panel floating above one. */
 .chat-recording-bar {
-  background: var(--chat-field);
+  background: var(--chat-recording-bg);
   color: var(--chat-bubble-text);
   animation: chat-recording-in 160ms var(--ease-soft) both;
-}
-
-:root[data-theme="dark"] .chat-recording-bar {
-  /* `--chat-field` is a 5% white wash on dark, which is transparent by design
-     for the resting composer but useless as a cover. Compositing it over the
-     chrome colour keeps the same hue and makes it solid. */
-  background: color-mix(in srgb, var(--chat-field) 100%, var(--chat-canvas));
 }
 
 @keyframes chat-recording-in {
@@ -1241,12 +1239,17 @@ main.min-h-screen {
   .chat-recording-level { transition: none; }
 }
 
-/* Playback. The play control borrows the accent gradient on the outgoing side
-   and stays neutral on the incoming one, matching how the bubbles themselves
-   differentiate sender from receiver. */
+/* Playback. The play control carries the full accent gradient on your own
+   notes and a tinted, lower-contrast fill on theirs — the same way the bubbles
+   themselves separate sender from receiver, so a thread reads at a glance. */
 .chat-voice-play {
   background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
   color: var(--theme-accent-contrast);
+}
+
+.chat-voice-play-in {
+  background: color-mix(in srgb, var(--theme-accent-purple) 20%, transparent);
+  color: var(--theme-accent-purple);
 }
 
 .chat-voice-once {

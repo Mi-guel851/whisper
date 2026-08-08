@@ -233,7 +233,7 @@ function VoicePlayerBase({
         type="button"
         onClick={() => void togglePlayback()}
         disabled={loading || !audioPath}
-        className="chat-voice-play flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-60"
+        className={`${isMe ? "chat-voice-play" : "chat-voice-play-in"} flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-60`}
         aria-label={playing ? "Pause voice note" : "Play voice note"}
       >
         {loading ? (

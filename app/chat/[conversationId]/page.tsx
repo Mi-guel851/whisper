@@ -62,6 +62,16 @@ type PendingPhoto = {
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const SWIPE_THRESHOLD = 80;
 
+/* Pin lifetimes. `null` means it stays until someone removes it — the rest are
+   swept on next open by `sweep_expired_pins`. WhatsApp offers three; the fourth
+   exists because Whisper threads are often kept as a record. */
+const PIN_DURATIONS: { label: string; hours: number | null }[] = [
+  { label: "24 hours", hours: 24 },
+  { label: "7 days", hours: 24 * 7 },
+  { label: "30 days", hours: 24 * 30 },
+  { label: "until I remove it", hours: null },
+];
+
 /** WhatsApp's picker, trimmed to a single scrollable grid. */
 const EMOJI_PICKER = [
   "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊",
@@ -394,6 +404,8 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
+  /** The message awaiting a pin duration, if the picker is open. */
+  const [pinDurationFor, setPinDurationFor] = useState<Message | null>(null);
   // Which pin the top bar is showing, and the message flashed after any jump
   // (pin bar, reply tap). Monotonic counter rather than an index so it never
   // needs resetting when the pin list changes length.
@@ -859,27 +871,39 @@ export default function ChatPage() {
    * open one photo. Everything else in this file stays a plain function; it
    * isn't handed to the list and doesn't need the indirection. */
   const togglePin = useEventCallback(async (msg: Message) => {
-    const alreadyPinned = pinnedMessageIds.has(msg.id);
-    if (alreadyPinned) {
-      const { error } = await supabase.from("pinned_messages").delete()
-        .eq("conversation_id", conversationId).eq("message_id", msg.id);
-      if (error) { showToast(error.message); return; }
-      setPinnedMessageIds((prev) => { const s = new Set(prev); s.delete(msg.id); return s; });
-      showToast("Message unpinned.");
-    } else {
-      const { error } = await supabase.from("pinned_messages").insert({
-        conversation_id: conversationId,
-        message_id: msg.id,
-        pinned_by: myId,
-      });
-      /* This used to be `if (!error)` with no else, which is why pinning read
-         as a silent no-op: the table had RLS enabled and no policies, so every
-         insert was rejected and the rejection was discarded. Surfacing it means
-         a future policy gap is visible instead of invisible. */
-      if (error) { showToast(error.message); return; }
-      setPinnedMessageIds((prev) => new Set([...prev, msg.id]));
-      showToast("Message pinned.");
+    if (!pinnedMessageIds.has(msg.id)) {
+      /* Pinning asks how long first. A pin with no expiry is a pin you have to
+         remember to clean up, which is why WhatsApp made the duration part of
+         the action rather than a setting somewhere else. */
+      setPinDurationFor(msg);
+      return;
     }
+    const { error } = await supabase.from("pinned_messages").delete()
+      .eq("conversation_id", conversationId).eq("message_id", msg.id);
+    if (error) { showToast(error.message); return; }
+    setPinnedMessageIds((prev) => { const s = new Set(prev); s.delete(msg.id); return s; });
+    showToast("Message unpinned.");
+  });
+
+  const confirmPin = useEventCallback(async (msg: Message, durationHours: number | null) => {
+    setPinDurationFor(null);
+    const expiresAt = durationHours === null
+      ? null
+      : new Date(Date.now() + durationHours * 3600_000).toISOString();
+
+    const { error } = await supabase.from("pinned_messages").insert({
+      conversation_id: conversationId,
+      message_id: msg.id,
+      pinned_by: myId,
+      expires_at: expiresAt,
+    });
+    /* This used to be `if (!error)` with no else, which is why pinning read as
+       a silent no-op: the table had RLS enabled and no policies, so every
+       insert was rejected and the rejection was discarded. Surfacing it means
+       a future policy gap is visible instead of invisible. */
+    if (error) { showToast(error.message); return; }
+    setPinnedMessageIds((prev) => new Set([...prev, msg.id]));
+    showToast(durationHours === null ? "Message pinned." : `Pinned for ${PIN_DURATIONS.find((d) => d.hours === durationHours)?.label ?? "a while"}.`);
   });
 
   function triggerPhotoPicker() {
@@ -1671,6 +1695,49 @@ export default function ChatPage() {
           </div>
         </form>
       </div>
+
+      {/* Pin duration. A sheet rather than a centred dialog: it's a choice, not
+          a confirmation, and it drops from the bar it affects. */}
+      {pinDurationFor && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+          onClick={() => setPinDurationFor(null)}
+        >
+          <GlassPanel
+            strong
+            className="w-full max-w-sm rounded-t-3xl p-5 sm:rounded-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center gap-2">
+              <Pin size={16} style={{ color: "var(--theme-warning)" }} />
+              <h2 className="text-base font-black">Pin this message</h2>
+            </div>
+            <p className="mb-4 truncate text-sm text-[var(--theme-text-muted)]">
+              {pinDurationFor.content || (pinDurationFor.audio_path || pinDurationFor.audio_viewed_at ? "🎙️ Voice note" : "📷 Photo")}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {PIN_DURATIONS.map((duration) => (
+                <button
+                  key={duration.label}
+                  type="button"
+                  onClick={() => confirmPin(pinDurationFor, duration.hours)}
+                  className="glass-control flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-semibold"
+                >
+                  <span className="capitalize">{duration.label}</span>
+                  {duration.hours === null && <PinOff size={14} className="opacity-50" />}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPinDurationFor(null)}
+              className="mt-3 w-full rounded-xl py-2.5 text-sm font-bold text-[var(--theme-text-muted)]"
+            >
+              Cancel
+            </button>
+          </GlassPanel>
+        </div>
+      )}
 
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

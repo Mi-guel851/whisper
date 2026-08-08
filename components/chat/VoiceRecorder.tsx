@@ -75,19 +75,9 @@ function VoiceRecorderBase({
   viewOnce,
   onToggleViewOnce,
 }: VoiceRecorderProps) {
-  const { status, isRecording, elapsedMs, peaks, error, clearError, start, stop, cancel } =
-    useVoiceRecorder();
-
   const [locked, setLocked] = useState(false);
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
-
-  /* The cancel hint fades as the finger travels toward the threshold, and the
-     trash icon comes up to meet it — the gesture tells you how far you have
-     left before it commits. */
-  const hintOpacity = useTransform(dragX, [-CANCEL_DISTANCE, -8, 0], [0, 1, 1]);
-  const trashScale = useTransform(dragX, [-CANCEL_DISTANCE, 0], [1.35, 1]);
-  const lockProgress = useTransform(dragY, [-LOCK_DISTANCE, 0], [1, 0]);
 
   const pointerIdRef = useRef<number | null>(null);
   const originRef = useRef({ x: 0, y: 0 });
@@ -103,6 +93,41 @@ function VoiceRecorderBase({
     animate(dragY, 0, { duration: 0.18 });
   }, [dragX, dragY]);
 
+  /**
+   * Everything that happens once a take is in hand, whichever way it ended.
+   * A recording that hits the five-minute ceiling stops itself rather than
+   * being stopped, so it arrives here instead of through `finish()` — without
+   * this path a long note would simply vanish at the cap.
+   */
+  const deliver = useCallback(
+    (recording: VoiceRecording | null) => {
+      setLocked(false);
+      lockedRef.current = false;
+      resetGesture();
+      if (!recording) return;
+
+      /* A tap that happened to land on the mic isn't a voice note. Discarding
+         below the floor is what stops the thread filling with 200ms clips. */
+      if (recording.durationMs < MIN_RECORDING_MS) {
+        onError("Hold the mic to record a voice note.");
+        return;
+      }
+      vibrate(12);
+      onSend(recording);
+    },
+    [resetGesture, onSend, onError]
+  );
+
+  const { status, isRecording, elapsedMs, peaks, error, clearError, start, stop, cancel } =
+    useVoiceRecorder({ onAutoStop: deliver });
+
+  /* The cancel hint fades as the finger travels toward the threshold, and the
+     trash icon comes up to meet it — the gesture tells you how far you have
+     left before it commits. */
+  const hintOpacity = useTransform(dragX, [-CANCEL_DISTANCE, -8, 0], [0, 1, 1]);
+  const trashScale = useTransform(dragX, [-CANCEL_DISTANCE, 0], [1.35, 1]);
+  const lockProgress = useTransform(dragY, [-LOCK_DISTANCE, 0], [1, 0]);
+
   useEffect(() => {
     if (error) {
       onError(error);
@@ -114,21 +139,8 @@ function VoiceRecorderBase({
   }, [error, onError, clearError, resetGesture]);
 
   const finish = useCallback(async () => {
-    const recording = await stop();
-    setLocked(false);
-    lockedRef.current = false;
-    resetGesture();
-    if (!recording) return;
-
-    /* A tap that happened to land on the mic isn't a voice note. Discarding
-       below the floor is what stops the thread filling with 200ms clips. */
-    if (recording.durationMs < MIN_RECORDING_MS) {
-      onError("Hold the mic to record a voice note.");
-      return;
-    }
-    vibrate(12);
-    onSend(recording);
-  }, [stop, resetGesture, onSend, onError]);
+    deliver(await stop());
+  }, [stop, deliver]);
 
   const abort = useCallback(() => {
     cancelledRef.current = true;

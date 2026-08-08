@@ -345,3 +345,10 @@ begin
   alter publication supabase_realtime add table public.message_reactions;
 exception when duplicate_object then null;
 end $$;
+
+-- A DELETE broadcast carries only the replica identity, which defaults to the
+-- primary key. Both clients key off `message_id`, not the row id, so without
+-- this an unpin (or a removed reaction) arrives with nothing usable in it and
+-- the other side keeps showing something that is gone.
+alter table public.pinned_messages replica identity full;
+alter table public.message_reactions replica identity full;
