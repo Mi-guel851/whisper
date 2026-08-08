@@ -1702,7 +1702,7 @@ export default function ChatPage() {
                 type="submit"
                 disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
                 aria-label={pendingPhoto ? `Send photo for ${SEND_IMAGE_COST} coins` : "Send message"}
-                className={`chat-send-circle flex h-[52px] shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-[52px]"}`}
+                className={`chat-send-circle chat-send-circle-press flex h-[52px] shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-[52px]"}`}
               >
                 {pendingPhoto ? (
                   uploadingPhoto ? <Loader2 size={18} className="animate-spin" /> : (

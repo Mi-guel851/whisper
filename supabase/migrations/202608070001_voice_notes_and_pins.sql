@@ -236,6 +236,15 @@ where id = 'view-once-photos';
 --
 -- `spend_coins_for_voice_note` is kept below for backward compatibility with any
 -- client still calling it directly.
+--
+-- `view_once` is accepted but ignored: every voice note is view-once. A note is
+-- the sender's real voice, which in an anonymous app is the one thing that
+-- cannot be taken back once it has been stored, so it is never stored past its
+-- first play — `/api/audio/view` deletes the object and nulls `audio_path`, and
+-- that path only runs for rows flagged `is_view_once`. Forcing it here rather
+-- than trusting the caller means a client bug, an old build, or someone calling
+-- the RPC directly cannot produce a permanently retrievable recording. The
+-- parameter stays so existing callers don't break on a signature change.
 create or replace function public.send_voice_note(
   target_conversation_id uuid,
   storage_path text,
@@ -244,7 +253,7 @@ create or replace function public.send_voice_note(
   mime_type text,
   caption text default null,
   reply_to uuid default null,
-  view_once boolean default false
+  view_once boolean default true
 )
 returns public.direct_messages
 language plpgsql security definer set search_path = public as $$
@@ -288,7 +297,7 @@ begin
   )
   values (
     target_conversation_id, auth.uid(), nullif(trim(coalesce(caption, '')), ''), reply_to,
-    storage_path, duration_ms, waveform, mime_type, coalesce(view_once, false)
+    storage_path, duration_ms, waveform, mime_type, true
   )
   returning * into inserted;
 

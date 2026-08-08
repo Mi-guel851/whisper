@@ -1142,16 +1142,23 @@ main.min-h-screen {
 
 /* The commit circle beside the composer pill — send when there's a draft, mic
    when there isn't. One class for both so the swap is an icon change on a
-   stable shape rather than two buttons trading places, and so the press
-   feedback is identical whichever one you're looking at. */
+   stable shape rather than two buttons trading places. */
 .chat-send-circle {
   background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
   color: var(--theme-accent-contrast);
   box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--theme-accent-purple) 75%, transparent);
-  transition: transform var(--dur-fast) var(--ease-soft), box-shadow var(--dur-fast) var(--ease-soft);
 }
 
-.chat-send-circle:active:not(:disabled) {
+/* Press feedback is a separate class rather than part of the circle above,
+   because the mic wears the same look but has its transform driven by Framer
+   Motion for the whole drag. A CSS transition on transform there would
+   interpolate every pointermove, putting 170ms between the finger and the
+   button — the one place in the app where latency is most obvious. */
+.chat-send-circle-press {
+  transition: transform var(--dur-fast) var(--ease-soft);
+}
+
+.chat-send-circle-press:active:not(:disabled) {
   transform: scale(0.94);
 }
 
@@ -1318,7 +1325,7 @@ main.min-h-screen {
   .chat-recording-level { transition: none; }
   /* Press feedback stays — it's confirmation of a tap, not decoration — but
      nothing travels or scales on its own. */
-  .chat-send-circle,
+  .chat-send-circle-press,
   .chat-recording-trash,
   .chat-recording-pause,
   .chat-recording-send {
