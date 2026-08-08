@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabase/client";
+import { getCachedSession } from "@/lib/supabase/session";
 import { presenceManager } from "@/lib/realtime/presence";
 
 import DashboardHeader from "@/components/DashboardHeader";
@@ -21,23 +22,29 @@ export default function DashboardPage() {
   const [showTerms, setShowTerms] = useState(false);
 
   useEffect(() => {
-    let stopPresence: (() => void) | undefined;
-
     async function init() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const session = await getCachedSession();
 
       if (!session) {
         router.push("/login");
         return;
       }
 
-      await presenceManager.connect(session.user.id);
-
-      stopPresence = () => {
-        presenceManager.disconnect();
-      };
+      /* Not awaited, and deliberately never disconnected here.
+       *
+       * `presenceManager` is a process-wide singleton shared by the dashboard,
+       * inbox, discover, friends, chat and the nav badge store. Tearing it down
+       * in this component's cleanup meant that leaving the home tab — which is
+       * on the path of most navigations — dropped the channel for all of them,
+       * so the next page had to pay a full WebSocket subscribe and `track()`
+       * before it could show a single online dot. It also raced the incoming
+       * page's `connect()`, since unmount and mount effects interleave.
+       *
+       * Presence is session-scoped, not page-scoped. It connects once and stays
+       * up; `disconnect()` belongs to sign-out. Not awaiting it here matters
+       * too: the profile check below is what actually gates this screen, and it
+       * has no reason to queue behind a handshake. */
+      void presenceManager.connect(session.user.id);
 
       const { data: profile } = await supabase
         .from("profiles")
@@ -60,10 +67,6 @@ export default function DashboardPage() {
     }
 
     init();
-
-    return () => {
-      stopPresence?.();
-    };
   }, [router]);
 
   if (checking) {

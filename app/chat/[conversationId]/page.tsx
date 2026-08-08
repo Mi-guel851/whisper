@@ -90,6 +90,40 @@ function bubbleTime(value: string) {
   return new Date(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * Turn a Supabase storage/RPC failure into something the sender can act on.
+ *
+ * Every one of these means the same thing in practice — the voice-note
+ * migration (`202608070001_voice_notes_and_pins.sql`) hasn't been applied to
+ * this project, so the bucket, the policies or the `send_voice_note` function
+ * is missing. Passing the raw string through showed people a toast reading
+ * "Bucket not found", which is accurate, unfixable by them, and looks like the
+ * app is broken rather than unprovisioned.
+ */
+function describeVoiceNoteFailure(message: string) {
+  const text = message.toLowerCase();
+
+  if (text.includes("bucket not found") || text.includes("bucket")) {
+    return "Voice notes aren't set up on this server yet. (Storage bucket missing.)";
+  }
+  if (text.includes("send_voice_note") || text.includes("pgrst202") || text.includes("could not find the function")) {
+    return "Voice notes aren't set up on this server yet. (Database function missing.)";
+  }
+  if (text.includes("row-level security") || text.includes("violates")) {
+    return "You don't have permission to send a voice note in this chat.";
+  }
+  if (text.includes("mime") || text.includes("content type") || text.includes("invalid_mime_type")) {
+    return "This device recorded a format the server doesn't accept yet.";
+  }
+  if (text.includes("payload too large") || text.includes("size")) {
+    return "That voice note is too long to upload.";
+  }
+  if (text.includes("coins")) {
+    return message; // Already a human sentence from the RPC.
+  }
+  return message;
+}
+
 /** Label for the sticky date separator: Today / Yesterday / a full date. */
 function dayLabel(value: string) {
   const date = new Date(value);
@@ -1051,7 +1085,7 @@ export default function ChatPage() {
         .upload(path, recording.blob, { contentType: recording.mimeType, upsert: false });
 
       if (uploadError) {
-        showToast(uploadError.message);
+        showToast(describeVoiceNoteFailure(uploadError.message));
         return;
       }
 
@@ -1076,7 +1110,7 @@ export default function ChatPage() {
         /* The note never landed, so the object is orphaned — remove it rather
            than leave storage accruing files no row points at. */
         await supabase.storage.from("voice-messages").remove([path]);
-        showToast(sendError.message);
+        showToast(describeVoiceNoteFailure(sendError.message));
         return;
       }
 

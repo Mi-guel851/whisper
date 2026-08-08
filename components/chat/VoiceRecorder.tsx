@@ -154,9 +154,10 @@ function VoiceRecorderBase({
   }, [error, onError, clearError, resetGesture]);
 
   /* Read through a ref so a parent passing an inline arrow doesn't re-fire this
-     on every render — it should announce transitions, not renders. */
+     on every render — it should announce transitions, not renders. Mirrors the
+     `onAutoStopRef` pattern in useVoiceRecorder. */
   const onRecordingChangeRef = useRef(onRecordingChange);
-  onRecordingChangeRef.current = onRecordingChange;
+  useEffect(() => { onRecordingChangeRef.current = onRecordingChange; }, [onRecordingChange]);
   useEffect(() => {
     onRecordingChangeRef.current?.(isRecording);
   }, [isRecording]);
