@@ -25,9 +25,48 @@ function resolveTheme(themeId: ThemeId): ResolvedThemeId {
   return themeId === "system" ? getSystemTheme() : themeId;
 }
 
-function applyTheme(themeId: ThemeId) {
+/**
+ * Whatever the pre-paint script in app/layout.tsx already read. Reading it
+ * again here rather than defaulting to "dark" is what stops React state from
+ * disagreeing with the DOM for the length of a session fetch — the old code
+ * only consulted storage for signed-in users, so a logged-out user's choice
+ * was applied at paint and then thrown away a moment later.
+ */
+function readStoredTheme(): ThemeId {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && stored in themes) return stored as ThemeId;
+  } catch {
+    /* Storage can throw outright in private mode. Fall through to the default. */
+  }
+  return "dark";
+}
+
+/** Matches --dur-base in globals.css, plus a little slack for the last frame. */
+const THEME_TRANSITION_MS = 320;
+let themeChangeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function applyTheme(themeId: ThemeId, options: { animate?: boolean } = {}) {
+  const { animate = true } = options;
   const resolved = resolveTheme(themeId);
   const root = document.documentElement;
+
+  /* globals.css transitions colours only while this attribute is present. It's
+     scoped this way because the alternative — a standing transition on `*` —
+     is paid on every style recalculation in the app for the sake of about
+     200ms twice a session, and it fights Framer Motion for transform.
+     Skipped on the first apply: there is nothing to cross-fade from, and
+     animating the initial paint would reintroduce the flash it's meant to
+     prevent. */
+  if (animate && root.dataset.theme !== resolved) {
+    root.dataset.themeChanging = "";
+    if (themeChangeTimer) clearTimeout(themeChangeTimer);
+    themeChangeTimer = setTimeout(() => {
+      delete root.dataset.themeChanging;
+      themeChangeTimer = null;
+    }, THEME_TRANSITION_MS);
+  }
+
   root.dataset.themePreference = themeId;
   root.dataset.theme = resolved;
   root.style.colorScheme = resolved;
@@ -41,12 +80,14 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     let active = true;
 
     async function initTheme() {
+      /* Start from what the pre-paint script already applied, so the common
+         case is a no-op rather than a visible correction. */
+      let selected: ThemeId = readStoredTheme();
+
       try {
         const {
           data: { session },
         } = await supabase.auth.getSession();
-
-        let selected: ThemeId = "dark";
 
         if (session) {
           const { data, error } = await supabase
@@ -58,24 +99,25 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
           const profile = data as { theme_preference?: string } | null;
           const profileTheme = profile?.theme_preference;
 
+          /* The account's preference wins when it has one — following the user
+             across devices is the reason it's stored server-side at all. Mirror
+             it back into storage so the *next* first paint is right without
+             waiting on the network. */
           if (!error && typeof profileTheme === "string" && themes[profileTheme as ThemeId]) {
             selected = profileTheme as ThemeId;
-          } else {
-            const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-            if (saved && themes[saved]) selected = saved;
+            try { localStorage.setItem(STORAGE_KEY, selected); } catch { /* private mode */ }
           }
         }
-
-        if (!active) return;
-
-        setThemeIdState(selected);
-        setResolvedTheme(resolveTheme(selected));
-        applyTheme(selected);
       } catch {
-        setThemeIdState("dark");
-        setResolvedTheme("dark");
-        applyTheme("dark");
+        /* Offline, or auth is unreachable. The stored preference stands — it is
+           a better answer than forcing dark on someone who chose light. */
       }
+
+      if (!active) return;
+
+      setThemeIdState(selected);
+      setResolvedTheme(resolveTheme(selected));
+      applyTheme(selected, { animate: false });
     }
 
     initTheme();
@@ -102,9 +144,11 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
 
   const setThemeId = useCallback(async (id: ThemeId) => {
     setThemeIdState(id);
-    localStorage.setItem(STORAGE_KEY, id);
     setResolvedTheme(resolveTheme(id));
     applyTheme(id);
+    /* After the visual change, not before: storage throws in private mode, and
+       an unguarded write here meant the theme silently refused to switch. */
+    try { localStorage.setItem(STORAGE_KEY, id); } catch { /* private mode */ }
 
     const {
       data: { session },

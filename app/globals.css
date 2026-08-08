@@ -1063,6 +1063,17 @@ main.min-h-screen {
      — a 5% wash, deliberately translucent at rest — it has to be opaque or
      the textarea reads straight through the timer. */
   --chat-recording-bg:   #1a1a24;
+  /* Controls inside the recording panel. A separate token from `--chat-field`
+     because the panel is already an opaque raised surface — a 5% wash that
+     reads correctly against the canvas disappears against it. */
+  --chat-ctrl:           rgba(255, 255, 255, 0.07);
+  --chat-ctrl-text:      #d8d8e4;
+  --chat-danger:         #f4566d;
+  --chat-danger-soft:    rgba(244, 63, 94, 0.16);
+  /* Cast upward, because the panel overhangs the thread above it rather than
+     the chrome below it. Heavier in dark, where the fill is close enough to
+     the canvas that only the shadow separates them. */
+  --chat-panel-shadow:   0 -2px 28px -8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.3);
   --chat-icon:           #9797aa;
   --chat-icon-hover:     rgba(255, 255, 255, 0.09);
   --chat-chip:           rgba(18, 18, 26, 0.88);
@@ -1086,6 +1097,11 @@ main.min-h-screen {
   --chat-chrome-bd:      rgba(22, 23, 44, 0.08);
   --chat-field:          #ffffff;
   --chat-recording-bg:   #ffffff;
+  --chat-ctrl:           rgba(22, 23, 44, 0.055);
+  --chat-ctrl-text:      #3c4262;
+  --chat-danger:         #e11d48;
+  --chat-danger-soft:    rgba(225, 29, 72, 0.10);
+  --chat-panel-shadow:   0 -2px 26px -10px rgba(38, 43, 90, 0.35), 0 1px 2px rgba(38, 43, 90, 0.1);
   --chat-icon:           #5f6684;
   --chat-icon-hover:     rgba(22, 23, 44, 0.06);
   --chat-chip:           rgba(255, 255, 255, 0.92);
@@ -1123,6 +1139,22 @@ main.min-h-screen {
 .chat-icon      { color: var(--chat-icon); }
 .chat-icon:hover:not(:disabled) { background: var(--chat-icon-hover); }
 .chat-field     { background: var(--chat-field); border: 1px solid var(--chat-chrome-bd); }
+
+/* The commit circle beside the composer pill — send when there's a draft, mic
+   when there isn't. One class for both so the swap is an icon change on a
+   stable shape rather than two buttons trading places, and so the press
+   feedback is identical whichever one you're looking at. */
+.chat-send-circle {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--theme-accent-purple) 75%, transparent);
+  transition: transform var(--dur-fast) var(--ease-soft), box-shadow var(--dur-fast) var(--ease-soft);
+}
+
+.chat-send-circle:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
 .chat-day-chip  { background: var(--chat-chip); color: var(--chat-chip-text); border: 1px solid var(--chat-chrome-bd); }
 
 /* The quoted message inside a reply bubble. */
@@ -1223,10 +1255,57 @@ main.min-h-screen {
   box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--theme-accent-purple) 70%, transparent);
 }
 
+/* The "once" badge in the recording panel. Stating the outcome, not offering
+   it — every voice note is view-once, so this is a label, not a control. */
 .chat-recording-once-on {
   background: color-mix(in srgb, var(--theme-accent-purple) 22%, transparent);
   color: var(--theme-accent-purple);
 }
+
+/* --- The locked recording panel ----------------------------------------- */
+
+/* Two rows, so it's taller than the composer it replaces and overhangs the
+   thread. That overhang is the reason for the shadow and the opaque fill: it
+   has to read as a surface sitting *on* the conversation, not a hole cut into
+   it. It grows from the bottom edge, which is where the composer was — the
+   panel is the composer expanding, not a sheet arriving from elsewhere. */
+.chat-recording-panel {
+  background: var(--chat-recording-bg);
+  border: 1px solid var(--chat-chrome-bd);
+  color: var(--chat-bubble-text);
+  box-shadow: var(--chat-panel-shadow);
+}
+
+/* Discard. Tinted rather than filled: it's destructive, so it has to be
+   legible as such at a glance, but it sits next to the send button and a solid
+   red block would out-shout the thing you actually came here to press. */
+.chat-recording-trash {
+  background: var(--chat-danger-soft);
+  color: var(--chat-danger);
+  transition: transform var(--dur-fast) var(--ease-soft), background var(--dur-fast) var(--ease-soft);
+}
+
+.chat-recording-trash:active { transform: scale(0.93); }
+
+/* Pause/resume takes the full middle because it's the control you reach for
+   without looking — the one that has to be hittable while you're still
+   talking. Neutral fill keeps the accent reserved for send. */
+.chat-recording-pause {
+  background: var(--chat-ctrl);
+  color: var(--chat-ctrl-text);
+  transition: transform var(--dur-fast) var(--ease-soft), background var(--dur-fast) var(--ease-soft);
+}
+
+.chat-recording-pause:active { transform: scale(0.97); }
+
+.chat-recording-send {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--theme-accent-purple) 75%, transparent);
+  transition: transform var(--dur-fast) var(--ease-soft);
+}
+
+.chat-recording-send:active:not(:disabled) { transform: scale(0.93); }
 
 @media (prefers-reduced-motion: reduce) {
   .chat-recording-bar,
@@ -1237,6 +1316,14 @@ main.min-h-screen {
   /* The dot still has to read as live without pulsing. */
   .chat-recording-dot { box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.25); }
   .chat-recording-level { transition: none; }
+  /* Press feedback stays — it's confirmation of a tap, not decoration — but
+     nothing travels or scales on its own. */
+  .chat-send-circle,
+  .chat-recording-trash,
+  .chat-recording-pause,
+  .chat-recording-send {
+    transition: none;
+  }
 }
 
 /* Playback. The play control carries the full accent gradient on your own

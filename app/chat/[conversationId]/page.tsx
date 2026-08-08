@@ -425,9 +425,9 @@ export default function ChatPage() {
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  /* Whether the next voice note self-destructs after one listen. Lives here
-     rather than in the recorder so the choice survives a discarded take. */
-  const [viewOnceVoice, setViewOnceVoice] = useState(false);
+  /* Mirrors the recorder's own state up here so the composer can hold the
+     mic/send swap still for the duration of a take. */
+  const [recordingVoice, setRecordingVoice] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null);
   const [viewingPhotoId, setViewingPhotoId] = useState<string | null>(null);
@@ -887,6 +887,7 @@ export default function ChatPage() {
 
   const confirmPin = useEventCallback(async (msg: Message, durationHours: number | null) => {
     setPinDurationFor(null);
+    if (!myId) return;
     const expiresAt = durationHours === null
       ? null
       : new Date(Date.now() + durationHours * 3600_000).toISOString();
@@ -1062,7 +1063,13 @@ export default function ChatPage() {
         mime_type: recording.mimeType,
         caption: input.trim() || null,
         reply_to: replyingTo?.id ?? null,
-        view_once: viewOnceVoice,
+        /* Always. A voice note is the sender's actual voice, which is the one
+           thing in an anonymous app that can't be taken back once it's stored —
+           so it isn't stored. `/api/audio/view` deletes the object and nulls
+           `audio_path` on the first play, exactly as view-once photos work, and
+           that path only runs for rows flagged here. Making this a choice meant
+           the safe behaviour was the one you had to remember to pick. */
+        view_once: true,
       });
 
       if (sendError) {
@@ -1075,8 +1082,7 @@ export default function ChatPage() {
 
       setInput("");
       setReplyingTo(null);
-      setViewOnceVoice(false);
-      showToast(viewOnceVoice ? "Voice note sent — plays once." : "Voice note sent.");
+      showToast("Voice note sent — plays once.");
     } finally {
       setUploadingPhoto(false);
     }
@@ -1628,70 +1634,98 @@ export default function ChatPage() {
 
         {/* Input form */}
         <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-3 pt-2 md:px-6">
-          <div className="chat-field relative flex items-end gap-1.5 rounded-2xl p-1.5">
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
-            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected} />
-            <button
-              type="button"
-              onClick={() => { setShowEmojiPicker((open) => !open); setShowAttachSheet(false); }}
-              className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition"
-              aria-label="Emoji"
-              aria-expanded={showEmojiPicker}
-            >
-              <Smile size={20} />
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowAttachSheet((open) => !open); setShowEmojiPicker(false); }}
-              disabled={uploadingPhoto}
-              title={`Attach an image (${SEND_IMAGE_COST} coins)`}
-              className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60"
-              aria-expanded={showAttachSheet}
-            >
-              <Paperclip size={19} />
-            </button>
-            {/* Hold to record, slide left to cancel, slide up to lock. The
-                recording bar it raises covers this whole row — hence `relative`
-                on the field — so the composer is replaced while recording
-                rather than growing a permanent timer beside the mic. */}
-            <VoiceRecorder
-              canRecord={chatUnlocked}
-              cost={SEND_VOICE_COST}
-              busy={uploadingPhoto}
-              onBlocked={() => showToast(isFriendConversation
-                ? "You need 40 coins to unlock this conversation."
-                : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
-              onSend={handleVoiceNote}
-              onError={showToast}
-              viewOnce={viewOnceVoice}
-              onToggleViewOnce={() => setViewOnceVoice((current) => !current)}
-            />
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message anonymously..." : "Unlock chat to send messages"}
-              disabled={!chatUnlocked}
-              rows={1}
-              className="max-h-40 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : (input.trim().length === 0))}
-              className={`mb-1 flex h-10 items-center justify-center rounded-full shadow-lg disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-10"}`}
-              style={{
-                background: "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))",
-                color: "var(--theme-accent-contrast)",
-              }}
-            >
-              {pendingPhoto ? (
-                uploadingPhoto ? <Loader2 size={16} className="animate-spin" /> : (
-                  <><Coins size={16} /><span className="text-sm font-black">{SEND_IMAGE_COST}</span></>
-                )
-              ) : (
-                <Send size={16} />
-              )}
-            </button>
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected} />
+
+          {/* Two elements, not one: the pill holds everything that acts on the
+              draft, and the circle beside it is the single commit control. That
+              split is what lets the mic and the send button be the same button
+              in two states rather than two buttons competing for the corner.
+              `relative` is load-bearing — the recorder's bar and panel are
+              absolutely positioned over this row, so recording replaces the
+              pill and the circle together. */}
+          <div className="relative flex items-end gap-2">
+            <div className="chat-field flex min-w-0 flex-1 items-end gap-0.5 rounded-[26px] p-1">
+              <button
+                type="button"
+                onClick={() => { setShowEmojiPicker((open) => !open); setShowAttachSheet(false); }}
+                className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition"
+                aria-label="Emoji"
+                aria-expanded={showEmojiPicker}
+              >
+                <Smile size={21} />
+              </button>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message" : "Unlock chat to send messages"}
+                disabled={!chatUnlocked}
+                rows={1}
+                className="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {/* Paperclip keeps opening the sheet — gallery, and anything added
+                  later. Camera skips it, because reaching for the camera is
+                  already an unambiguous choice. */}
+              <button
+                type="button"
+                onClick={() => { setShowAttachSheet((open) => !open); setShowEmojiPicker(false); }}
+                disabled={uploadingPhoto}
+                title={`Attach an image (${SEND_IMAGE_COST} coins)`}
+                aria-label="Attach"
+                className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60"
+                aria-expanded={showAttachSheet}
+              >
+                <Paperclip size={20} />
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowEmojiPicker(false); setShowAttachSheet(false); triggerCameraPicker(); }}
+                disabled={uploadingPhoto}
+                title={`Take a photo (${SEND_IMAGE_COST} coins)`}
+                aria-label="Camera"
+                className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60"
+              >
+                <Camera size={20} />
+              </button>
+            </div>
+
+            {/* One slot, two meanings. With a draft it commits; empty, it's the
+                mic. Swapping in place rather than showing both is what keeps a
+                voice note one press away without a permanent second button.
+                While a take is in flight the swap is suspended outright — the
+                textarea underneath the panel can still hold focus on desktop,
+                and a stray keystroke unmounting the recorder would end the
+                recording rather than just change a button. */}
+            {!recordingVoice && (input.trim().length > 0 || pendingPhoto) ? (
+              <button
+                type="submit"
+                disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)}
+                aria-label={pendingPhoto ? `Send photo for ${SEND_IMAGE_COST} coins` : "Send message"}
+                className={`chat-send-circle flex h-[52px] shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-[52px]"}`}
+              >
+                {pendingPhoto ? (
+                  uploadingPhoto ? <Loader2 size={18} className="animate-spin" /> : (
+                    <><Coins size={17} /><span className="text-sm font-black">{SEND_IMAGE_COST}</span></>
+                  )
+                ) : (
+                  <Send size={19} />
+                )}
+              </button>
+            ) : (
+              /* Hold to record, slide left to cancel, slide up to lock. */
+              <VoiceRecorder
+                canRecord={chatUnlocked}
+                cost={SEND_VOICE_COST}
+                busy={uploadingPhoto}
+                onBlocked={() => showToast(isFriendConversation
+                  ? "You need 40 coins to unlock this conversation."
+                  : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
+                onSend={handleVoiceNote}
+                onError={showToast}
+                onRecordingChange={setRecordingVoice}
+              />
+            )}
           </div>
         </form>
       </div>

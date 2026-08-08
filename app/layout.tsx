@@ -33,10 +33,24 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body>
+        {/* Runs before first paint, which is the whole point: the stored
+            preference has to be on <html> before the browser paints, or a
+            light-theme user watches a dark screen repaint itself after
+            hydration. This used to hardcode "dark" and ignore the preference
+            entirely, so that flash happened on every single load.
+
+            Kept deliberately dependency-free and inline — an import here would
+            be a network round trip in front of the first paint. It mirrors
+            STORAGE_KEY and the media query in components/ThemeProvider.tsx;
+            the two must stay in step. */}
         <Script id="theme-init" strategy="beforeInteractive">{`
           try {
-            const resolved = "dark";
-            document.documentElement.dataset.themePreference = "dark";
+            var stored = localStorage.getItem("whisper-theme");
+            var pref = (stored === "light" || stored === "dark" || stored === "system") ? stored : "dark";
+            var resolved = pref === "system"
+              ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+              : pref;
+            document.documentElement.dataset.themePreference = pref;
             document.documentElement.dataset.theme = resolved;
             document.documentElement.style.colorScheme = resolved;
           } catch {}

@@ -38,7 +38,7 @@ export type VoiceRecording = {
   waveform: number[];
 };
 
-export type RecorderStatus = "idle" | "starting" | "recording" | "finishing";
+export type RecorderStatus = "idle" | "starting" | "recording" | "paused" | "finishing";
 
 /** Peaks are sampled at this cadence and stored at the same resolution. */
 const SAMPLE_INTERVAL_MS = 100;
@@ -121,6 +121,21 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
   const chunksRef = useRef<BlobPart[]>([]);
   const peaksRef = useRef<number[]>([]);
   const startedAtRef = useRef(0);
+
+  /**
+   * When the current pause began, or 0 while running. Elapsed time is measured
+   * against `startedAtRef`, so a pause has to be subtracted somewhere: on
+   * resume the start is rolled forward by the paused span, and while still
+   * paused this ref stands in for "now". Both readers go through
+   * `elapsedSince()` so the timer and the stored duration can't disagree.
+   */
+  const pausedAtRef = useRef(0);
+
+  /** Audio actually captured so far, excluding any time spent paused. */
+  const elapsedSince = useCallback(
+    () => (pausedAtRef.current || Date.now()) - startedAtRef.current,
+    []
+  );
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -205,6 +220,7 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
     peaksRef.current = [];
     discardRef.current = false;
     startedAtRef.current = Date.now();
+    pausedAtRef.current = 0;
 
     setPeaks([]);
     setElapsedMs(0);
@@ -214,7 +230,7 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
     };
 
     recorder.onstop = () => {
-      const durationMs = Date.now() - startedAtRef.current;
+      const durationMs = elapsedSince();
       /* `recorder.mimeType` is the container the browser actually produced.
          Reading it before teardown matters — the recorder reference is cleared
          there. */
@@ -281,7 +297,10 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
         const buffer = new Uint8Array(analyser.frequencyBinCount);
         sampleTimerRef.current = setInterval(() => {
           const node = analyserRef.current;
-          if (!node) return;
+          /* Paused: the mic is still open and the analyser still reports room
+             tone, so sampling here would draw a flat line of noise into the
+             middle of the waveform for however long the pause lasted. */
+          if (!node || pausedAtRef.current) return;
           node.getByteTimeDomainData(buffer);
 
           /* Peak deviation from the 128 midpoint, scaled so ordinary speech
@@ -302,7 +321,8 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
     }
 
     tickTimerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startedAtRef.current;
+      if (pausedAtRef.current) return;   // timer holds while paused
+      const elapsed = elapsedSince();
       setElapsedMs(elapsed);
       if (elapsed >= MAX_RECORDING_MS && recorderRef.current?.state === "recording") {
         setStatus("finishing");
@@ -312,7 +332,7 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
 
     setStatus("recording");
     return true;
-  }, [status, teardown]);
+  }, [status, teardown, elapsedSince]);
 
   /** Stops and resolves with the recording, or `null` if it was discarded. */
   const stop = useCallback((): Promise<VoiceRecording | null> => {
@@ -354,11 +374,50 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
     }
   }, [teardown]);
 
+  /**
+   * Pause and resume keep the stream and the recorder alive — only capture
+   * stops. Releasing the mic instead would drop the track, and re-acquiring it
+   * on resume re-prompts for permission on some platforms and produces a second
+   * file that would then have to be concatenated. `MediaRecorder.pause()` is
+   * supported everywhere `MediaRecorder` itself is, so a failure here is a
+   * genuine oddity: leave the state alone rather than lie about it.
+   */
+  const pause = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "recording") return;
+    try {
+      recorder.pause();
+    } catch {
+      return;
+    }
+    pausedAtRef.current = Date.now();
+    setElapsedMs(elapsedSince());
+    setStatus("paused");
+  }, [elapsedSince]);
+
+  const resume = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "paused") return;
+    try {
+      recorder.resume();
+    } catch {
+      return;
+    }
+    /* Roll the start forward by the paused span so elapsed keeps measuring
+       audio captured, not wall-clock since the first press. */
+    if (pausedAtRef.current) startedAtRef.current += Date.now() - pausedAtRef.current;
+    pausedAtRef.current = 0;
+    setStatus("recording");
+  }, []);
+
   const clearError = useCallback(() => setError(null), []);
 
   return {
     status,
-    isRecording: status === "recording" || status === "finishing",
+    /* Paused counts as recording for the UI's purposes: the panel stays up and
+       the composer stays hidden. Only the capture is suspended. */
+    isRecording: status === "recording" || status === "paused" || status === "finishing",
+    isPaused: status === "paused",
     elapsedMs,
     peaks,
     error,
@@ -366,6 +425,8 @@ export function useVoiceRecorder({ onAutoStop }: UseVoiceRecorderOptions = {}) {
     start,
     stop,
     cancel,
+    pause,
+    resume,
   };
 }
 
