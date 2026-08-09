@@ -494,7 +494,6 @@ export default function ChatPage() {
 
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
@@ -856,15 +855,6 @@ export default function ChatPage() {
   useEffect(() => {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
   }, [pendingPhoto]);
-
-  useEffect(() => {
-    return () => {
-      /* The recorder owns its own stream and tears it down on unmount; only
-         the view-once playback element is this component's to clean up. */
-      audioPlayerRef.current?.pause();
-      audioPlayerRef.current = null;
-    };
-  }, []);
 
   async function sendMessage() {
     setShowEmojiPicker(false);

@@ -23,7 +23,15 @@ export default function AppUrlHandler() {
 
         const url = new URL(urlStr);
 
-        // Check both hash (Supabase default) and search params
+        // 1. Handle Navigation/Pathnames (from Notifications)
+        const path = url.pathname; // e.g., /chat/some-id or /inbox
+        if (path && path !== "/" && !path.includes("complete-profile")) {
+          console.log("[deeplink] Navigating to:", path);
+          router.push(path);
+          return;
+        }
+
+        // 2. Handle Auth Tokens (Supabase/Google)
         const hash = url.hash.substring(1);
         const searchParams = url.searchParams;
 

@@ -12,6 +12,7 @@ import android.os.Vibrator;
 import androidx.core.app.NotificationCompat;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import java.util.Map;
 
 public class FCMMessagingService extends FirebaseMessagingService {
 
@@ -33,10 +34,21 @@ public class FCMMessagingService extends FirebaseMessagingService {
         if (remoteMessage.getNotification() != null) {
             String title = remoteMessage.getNotification().getTitle();
             String body = remoteMessage.getNotification().getBody();
-            String type = remoteMessage.getData().get("type"); // whisper, message, friend_request, feed
-            String conversationId = remoteMessage.getData().get("conversationId");
+            Map<String, String> data = remoteMessage.getData();
+            String type = data.get("type"); // whisper, message, friend_request, feed
+            String conversationId = data.get("conversationId");
 
             sendNotification(title, body, type, conversationId, pattern);
+        } else if (remoteMessage.getData().size() > 0) {
+            Map<String, String> data = remoteMessage.getData();
+            String title = data.get("title");
+            String body = data.get("body");
+            String type = data.get("type");
+            String conversationId = data.get("conversationId");
+            
+            if (title != null && body != null) {
+                sendNotification(title, body, type, conversationId, pattern);
+            }
         }
     }
 
@@ -81,7 +93,7 @@ public class FCMMessagingService extends FirebaseMessagingService {
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (notificationManager != null) {
-            notificationManager.notify(0, notificationBuilder.build());
+            notificationManager.notify((int) System.currentTimeMillis(), notificationBuilder.build());
         }
     }
 
@@ -93,6 +105,7 @@ public class FCMMessagingService extends FirebaseMessagingService {
             NotificationChannel channel = new NotificationChannel(channelId, name, importance);
             channel.setDescription(description);
             channel.enableVibration(true);
+            channel.setVibrationPattern(new long[]{0, 250, 150, 250});
             
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager != null) {

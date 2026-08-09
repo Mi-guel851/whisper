@@ -2,30 +2,36 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Heart, MessageCircle, Send, Sparkles, Trash2 } from "lucide-react";
+import { Send, Sparkles } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import FeedPostCard from "@/components/feed/FeedPostCard";
+import type { FeedController } from "@/components/feed/types";
 import { supabase } from "@/lib/supabase/client";
-import { generatedAvatarUrl } from "@/lib/generatedAvatar";
-import { anonymousDisplayName } from "@/lib/anonymousIdentity";
 import { useToast } from "@/components/ToastProvider";
-
-type FeedPost = {
-  id: string;
-  author_id: string;
-  body: string;
-  whisper_link: string;
-  created_at: string;
-  expires_at: string;
-  parent_post_id?: string | null;
-  view_count?: number | null;
-};
-type FeedLike = { post_id: string; user_id: string };
-type FeedPostNode = FeedPost & { children: FeedPostNode[] };
+import {
+  buildPostTree,
+  stripLinks,
+  upsertPost,
+  type FeedLike,
+  type FeedPost,
+} from "@/lib/feed";
 
 const REPLY_COST = 2;
+
+/**
+ * Columns beyond the original feed schema, newest migration first.
+ *
+ * Each entry is dropped in turn if the server rejects the select, so a database
+ * that hasn't had a migration applied yet degrades one feature at a time
+ * instead of falling all the way back to the bare table. That ordering matters:
+ * `parent_post_id` is what tells a reply from a post, and losing it is what
+ * used to make every reply reappear as its own top-level entry.
+ */
+const BASE_COLUMNS = "id,author_id,body,whisper_link,created_at,expires_at";
+const OPTIONAL_COLUMNS = ["view_count", "parent_post_id"] as const;
 
 const SUGGESTED_POST = "Hi everyone! I have a little time to talk. Send me an anonymous Whisper and let’s see where the conversation goes.";
 const AI_SUGGESTIONS = [
@@ -41,64 +47,34 @@ const AI_SUGGESTIONS = [
   "I am collecting honest opinions. Tell me one thing you think more people should talk about.",
 ];
 
-function stripLinks(value: string) {
-  return value.replace(/(?:https?:\/\/|www\.)\S+/gi, "").replace(/\b[a-z0-9-]+\.(?:com|net|org|app|io|co)\S*/gi, "").replace(/[ \t]{2,}/g, " ").trim();
-}
+/**
+ * Fetches the live feed, shedding optional columns until the server accepts.
+ *
+ * Returns the rows plus whether threading survived, so the caller can say so
+ * rather than silently rendering a flat feed that looks like a bug.
+ */
+async function fetchFeedPosts(): Promise<{ rows: FeedPost[]; threaded: boolean }> {
+  for (let dropped = 0; dropped <= OPTIONAL_COLUMNS.length; dropped += 1) {
+    const optional = OPTIONAL_COLUMNS.slice(0, OPTIONAL_COLUMNS.length - dropped);
+    const columns = [BASE_COLUMNS, ...optional].join(",");
 
-/** Compact relative time, Twitter style: 45s, 12m, 5h, 3d. */
-function timeAgo(value: string) {
-  const seconds = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
+    const { data, error } = await supabase
+      .from("public_feed_posts")
+      .select(columns)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false });
 
-function compactCount(value: number) {
-  if (value < 1000) return String(value);
-  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0).replace(/\.0$/, "")}K`;
-  return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-}
-
-function buildPostTree(postList: FeedPost[]): FeedPostNode[] {
-  const newestFirst = [...postList].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const nodes = new Map<string, FeedPostNode>();
-
-  for (const post of newestFirst) {
-    nodes.set(post.id, { ...post, children: [] });
-  }
-
-  const roots: FeedPostNode[] = [];
-  for (const post of newestFirst) {
-    const node = nodes.get(post.id);
-    if (!node) continue;
-
-    if (post.parent_post_id && nodes.has(post.parent_post_id)) {
-      nodes.get(post.parent_post_id)!.children.push(node);
-    } else {
-      roots.push(node);
+    if (!error) {
+      return {
+        rows: (data || []) as unknown as FeedPost[],
+        threaded: optional.includes("parent_post_id"),
+      };
     }
+
+    console.warn(`Public feed select failed with [${columns}]:`, error.message);
   }
 
-  // Replies read oldest-first, like a comment thread.
-  for (const node of nodes.values()) {
-    node.children.reverse();
-  }
-
-  return roots;
-}
-
-/** Total descendants, so a root post can report its whole thread size. */
-function countDescendants(node: FeedPostNode): number {
-  return node.children.reduce((total, child) => total + 1 + countDescendants(child), 0);
-}
-
-function upsertPost(current: FeedPost[], incoming: FeedPost) {
-  return current.some((item) => item.id === incoming.id)
-    ? current.map((item) => (item.id === incoming.id ? incoming : item))
-    : [incoming, ...current];
+  return { rows: [], threaded: false };
 }
 
 export default function PublicFeedPage() {
@@ -120,6 +96,12 @@ export default function PublicFeedPage() {
 
   const cleanBody = stripLinks(body);
   const ownLink = username ? `/u/${username}` : "";
+
+  /* A synchronous mirror of `likes`, so a tap can read the current like state
+     without waiting for a render. Realtime updates and the initial load land in
+     state first and are copied across by the effect below. */
+  const likesRef = useRef<FeedLike[]>([]);
+  useEffect(() => { likesRef.current = likes; }, [likes]);
 
   // Impressions are batched: seen ids collect here and flush on a timer so a fast
   // scroll doesn't fire one request per card.
@@ -213,40 +195,17 @@ export default function PublicFeedPage() {
       setMyId(uid);
 
       const { data: profile } = await supabase.from("profiles").select("username").eq("id", uid).single();
-
-      // Try fetching posts including parent_post_id and view_count. If either column
-      // doesn't exist yet, fall back to the original selector.
-      let postRows: FeedPost[] | null = null;
-      try {
-        const { data: rows, error: fetchError } = await supabase
-          .from("public_feed_posts")
-          .select("id,author_id,body,whisper_link,created_at,expires_at,parent_post_id,view_count")
-          .gt("expires_at", new Date().toISOString())
-          .order("created_at", { ascending: false });
-
-        if (fetchError) {
-          console.warn("Public feed fetch column error, falling back:", fetchError);
-          const { data: fallbackRows, error: fallbackError } = await supabase
-            .from("public_feed_posts")
-            .select("id,author_id,body,whisper_link,created_at,expires_at")
-            .gt("expires_at", new Date().toISOString())
-            .order("created_at", { ascending: false });
-          if (fallbackError) console.error("Public feed fetch fallback error:", fallbackError);
-          postRows = (fallbackRows || []) as FeedPost[];
-        } else {
-          postRows = (rows || []) as FeedPost[];
-        }
-      } catch (error) {
-        console.error("Public feed fetch unexpected error:", error);
-        postRows = [];
-      }
+      const { rows, threaded } = await fetchFeedPosts();
 
       if (cancelled) return;
 
       setUsername(profile?.username || "");
-      setPosts(postRows || []);
+      setPosts(rows);
+      if (!threaded) {
+        showToast("Replies are showing as separate posts until the feed migration is applied.");
+      }
 
-      const ids = (postRows || []).map((post) => post.id);
+      const ids = rows.map((post) => post.id);
       if (ids.length) {
         const { data: likeRows } = await supabase.from("public_feed_likes").select("post_id,user_id").in("post_id", ids);
         if (!cancelled) setLikes((likeRows || []) as FeedLike[]);
@@ -279,6 +238,25 @@ export default function PublicFeedPage() {
 
     init();
     return () => { cancelled = true; if (channel) supabase.removeChannel(channel); };
+    // showToast is stable from the provider; init must run exactly once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Posts expire 24 hours after they're written, and the row that carries that
+   * deadline is only re-read on mount. Without a sweep, a tab left open
+   * overnight keeps rendering posts the server would already refuse to return.
+   */
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setPosts((current) => {
+        const live = current.filter((post) => new Date(post.expires_at).getTime() > now);
+        return live.length === current.length ? current : live;
+      });
+    }, 60_000);
+
+    return () => clearInterval(timer);
   }, []);
 
   const likesByPost = useMemo(
@@ -292,37 +270,66 @@ export default function PublicFeedPage() {
     if (!myId || !ownLink || !cleanBody || posting) return;
 
     setPosting(true);
+    /* Only the base columns are read back. PostgREST runs insert-and-return as
+       one statement, so naming a column the database doesn't have yet fails the
+       whole insert — asking for `parent_post_id` here would make posting
+       impossible on an unmigrated database rather than merely unthreaded. The
+       optional columns aren't needed anyway: a new root post has no parent and
+       no views. */
     const { data, error } = await supabase
       .from("public_feed_posts")
       .insert({ author_id: myId, body: cleanBody, whisper_link: ownLink })
-      .select("id,author_id,body,whisper_link,created_at,expires_at,parent_post_id,view_count")
+      .select(BASE_COLUMNS)
       .single();
 
     if (error) showToast(error.message);
     else if (data) {
-      setPosts((current) => upsertPost(current, data as FeedPost));
+      setPosts((current) => upsertPost(current, data as unknown as FeedPost));
       setBody("");
-      showToast("Posted to Public Feed.");
+      showToast("Posted — your whisper is live for 24 hours.");
     }
     setPosting(false);
   }
 
-  async function toggleLike(postId: string) {
+  /**
+   * Toggles a like.
+   *
+   * The liked/unliked decision is read from a ref rather than from inside the
+   * state updater. React doesn't promise to run an updater synchronously, so a
+   * flag assigned in there can still be false on the next line — which would
+   * send an insert for a like that already exists on every second tap. The ref
+   * is also advanced here, so a double tap resolves in the right direction
+   * instead of both taps reading the same pre-tap value.
+   */
+  const toggleLike = useCallback(async (postId: string) => {
     if (!myId) return;
 
-    const liked = (likesByPost[postId] || []).some((like) => like.user_id === myId);
-    setLikes((current) =>
-      liked
-        ? current.filter((like) => !(like.post_id === postId && like.user_id === myId))
-        : [...current, { post_id: postId, user_id: myId }]
-    );
+    const mine = (like: FeedLike) => like.post_id === postId && like.user_id === myId;
+    const wasLiked = likesRef.current.some(mine);
 
-    const result = liked
+    likesRef.current = wasLiked
+      ? likesRef.current.filter((like) => !mine(like))
+      : [...likesRef.current, { post_id: postId, user_id: myId }];
+
+    setLikes((current) => {
+      if (wasLiked) return current.filter((like) => !mine(like));
+      return current.some(mine) ? current : [...current, { post_id: postId, user_id: myId }];
+    });
+
+    const result = wasLiked
       ? await supabase.from("public_feed_likes").delete().eq("post_id", postId).eq("user_id", myId)
       : await supabase.from("public_feed_likes").insert({ post_id: postId, user_id: myId });
 
-    if (result.error) showToast(result.error.message);
-  }
+    if (result.error) {
+      showToast(result.error.message);
+      /* The optimistic flip has to be undone in both places or the button
+         disagrees with the server until the next mount. */
+      likesRef.current = wasLiked
+        ? [...likesRef.current, { post_id: postId, user_id: myId }]
+        : likesRef.current.filter((like) => !mine(like));
+      setLikes(likesRef.current);
+    }
+  }, [myId, showToast]);
 
   async function deletePost(postId: string) {
     const { error } = await supabase.from("public_feed_posts").delete().eq("id", postId).eq("author_id", myId);
@@ -354,7 +361,7 @@ export default function PublicFeedPage() {
         if (json.post) setPosts((current) => upsertPost(current, json.post as FeedPost));
         setReplyTextMap((map) => ({ ...map, [postId]: "" }));
         setReplyOpen((map) => ({ ...map, [postId]: false }));
-        // Make sure the new comment is visible even on a long thread.
+        // Make sure the new reply is visible even on a long thread.
         setExpandedThreads((map) => ({ ...map, [postId]: true }));
       }
     } catch (error) {
@@ -365,234 +372,77 @@ export default function PublicFeedPage() {
     }
   }
 
-  function toggleReplyBox(postId: string) {
-    setReplyOpen((map) => ({ ...map, [postId]: !map[postId] }));
-  }
-
-  if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center theme-bg-gradient text-white">
-        <p className="text-gray-400">Loading feed...</p>
-      </main>
-    );
-  }
-
   /**
-   * The inline composer shared by root posts and comments. Deliberately a render
-   * helper rather than a nested component — a nested component would be a new type
-   * on every render, remounting the textarea and losing focus on each keystroke.
+   * Shares a post outward. The author's Whisper link is what makes the share
+   * actionable — a quote with no way to answer it is just a screenshot.
    */
-  function renderReplyComposer(postId: string, compact: boolean) {
-    const sending = Boolean(replySendingMap[postId]);
-    return (
-      <div className={compact ? "mt-2 flex items-end gap-2" : "mt-3 flex items-end gap-2"}>
-        <textarea
-          value={replyTextMap[postId] || ""}
-          onChange={(event) => setReplyTextMap((map) => ({ ...map, [postId]: event.target.value }))}
-          placeholder={`Write a reply (${REPLY_COST} coins)`}
-          rows={1}
-          className="min-h-[38px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[13px] text-white outline-none placeholder:text-gray-500 focus:border-cyan-300/40"
-        />
-        <button
-          type="button"
-          onClick={() => setPendingReply(postId)}
-          disabled={sending || !(replyTextMap[postId] || "").trim()}
-          className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 text-white disabled:opacity-40"
-          aria-label={`Send reply (${REPLY_COST} coins)`}
-        >
-          <Send size={15} />
-        </button>
-      </div>
-    );
-  }
+  const sharePost = useCallback(async (postId: string, postBody: string, whisperLink: string) => {
+    const url = whisperLink ? `${window.location.origin}${whisperLink}` : window.location.href;
+    const text = `"${postBody}" — on Whisper 👻`;
 
-  /** Compact Facebook/Instagram-style comment, nestable to any depth. */
-  function renderComment(node: FeedPostNode, depth: number) {
-    const commentLikes = likesByPost[node.id] || [];
-    const liked = commentLikes.some((like) => like.user_id === myId);
-    const childCount = node.children.length;
-    const expanded = Boolean(expandedThreads[node.id]);
-    // Show a couple of nested answers inline; the rest hide behind a "view more" link.
-    const visibleChildren = expanded ? node.children : node.children.slice(0, 1);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Whisper", text, url });
+        return;
+      } catch {
+        // Cancelled by the user, or unsupported for this payload — fall through.
+      }
+    }
 
-    return (
-      <div key={node.id} className="flex gap-2">
-        <img
-          src={generatedAvatarUrl(node.author_id)}
-          alt=""
-          width={28}
-          height={28}
-          loading="lazy"
-          decoding="async"
-          className="h-7 w-7 shrink-0 rounded-full border border-white/15 bg-white/10 object-cover"
-        />
+    try {
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      showToast("Copied to your clipboard.");
+    } catch {
+      showToast("Couldn't share this post.");
+    }
+  }, [showToast]);
 
-        <div className="min-w-0 flex-1">
-          <div className="inline-block max-w-full rounded-2xl bg-white/[0.07] px-3 py-2">
-            <p className="truncate text-[12px] font-bold text-gray-200">{anonymousDisplayName(node.author_id)}</p>
-            <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-gray-300">{node.body}</p>
-          </div>
+  const toggleReplyBox = useCallback((postId: string) => {
+    setReplyOpen((map) => ({ ...map, [postId]: !map[postId] }));
+  }, []);
 
-          <div className="mt-1 flex items-center gap-3 pl-3 text-[11px] font-semibold text-gray-500">
-            <span className="font-normal">{timeAgo(node.created_at)}</span>
-            <button
-              type="button"
-              onClick={() => toggleLike(node.id)}
-              className={liked ? "text-rose-400" : "hover:text-gray-300"}
-            >
-              Like{commentLikes.length > 0 ? ` ${compactCount(commentLikes.length)}` : ""}
-            </button>
-            <button type="button" onClick={() => toggleReplyBox(node.id)} className="hover:text-gray-300">
-              Reply
-            </button>
-            {node.author_id === myId && (
-              <button type="button" onClick={() => setDeleteTarget(node.id)} className="hover:text-rose-400">
-                Delete
-              </button>
-            )}
-          </div>
+  const setReplyText = useCallback((postId: string, value: string) => {
+    setReplyTextMap((map) => ({ ...map, [postId]: value }));
+  }, []);
 
-          {replyOpen[node.id] && renderReplyComposer(node.id, true)}
+  const expandThread = useCallback((postId: string) => {
+    setExpandedThreads((map) => ({ ...map, [postId]: true }));
+  }, []);
 
-          {childCount > 0 && (
-            // Indent stops growing after a few levels so deep threads stay readable on phones.
-            <div className={`mt-3 space-y-3 ${depth < 3 ? "border-l border-white/10 pl-3" : ""}`}>
-              {visibleChildren.map((child) => renderComment(child, depth + 1))}
+  const requestSend = useCallback((postId: string) => setPendingReply(postId), []);
+  const requestDelete = useCallback((postId: string) => setDeleteTarget(postId), []);
 
-              {!expanded && childCount > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setExpandedThreads((map) => ({ ...map, [node.id]: true }))}
-                  className="text-[11px] font-semibold text-gray-500 hover:text-gray-300"
-                >
-                  View {compactCount(childCount - 1)} more {childCount - 1 === 1 ? "reply" : "replies"}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  /** Root post: Twitter-style card with an impressions/engagements row. */
-  function renderPost(node: FeedPostNode) {
-    const postLikes = likesByPost[node.id] || [];
-    const liked = postLikes.some((like) => like.user_id === myId);
-    const replyCount = countDescendants(node);
-    const impressions = node.view_count ?? 0;
-    const engagements = postLikes.length + replyCount;
-    const threadExpanded = Boolean(expandedThreads[node.id]);
-    const visibleComments = threadExpanded ? node.children : node.children.slice(0, 2);
-
-    return (
-      <GlassPanel key={node.id} className="premium-card-list-item rounded-3xl p-4">
-        <article ref={impressionRef} data-post-id={node.id} data-author-id={node.author_id} className="flex gap-3">
-          <img
-            src={generatedAvatarUrl(node.author_id)}
-            alt=""
-            width={40}
-            height={40}
-            loading="lazy"
-            decoding="async"
-            className="h-10 w-10 shrink-0 rounded-full border border-white/15 bg-white/10 object-cover"
-          />
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-sm">
-              <span className="truncate font-bold text-white">{anonymousDisplayName(node.author_id)}</span>
-              <span className="text-gray-600">·</span>
-              <span className="shrink-0 text-gray-500">{timeAgo(node.created_at)}</span>
-              {node.author_id === myId && (
-                <button
-                  type="button"
-                  onClick={() => setDeleteTarget(node.id)}
-                  className="ml-auto shrink-0 rounded-full p-1.5 text-gray-500 hover:bg-rose-500/10 hover:text-rose-400"
-                  aria-label="Delete post"
-                >
-                  <Trash2 size={15} />
-                </button>
-              )}
-            </div>
-
-            <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-6 text-gray-200">{node.body}</p>
-
-            <Link
-              href={node.whisper_link || "/"}
-              className="mt-3 block truncate rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-[13px] font-semibold text-cyan-200 hover:bg-cyan-300/20"
-            >
-              Send me an anonymous Whisper
-            </Link>
-
-            <div className="mt-3 flex items-center justify-between gap-2 text-gray-500">
-              <button
-                type="button"
-                onClick={() => toggleReplyBox(node.id)}
-                className="group flex items-center gap-1.5 text-[13px] transition hover:text-cyan-300"
-              >
-                <span className="rounded-full p-1.5 transition group-hover:bg-cyan-400/10">
-                  <MessageCircle size={16} />
-                </span>
-                {replyCount > 0 && compactCount(replyCount)}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => toggleLike(node.id)}
-                className={`group flex items-center gap-1.5 text-[13px] transition hover:text-rose-400 ${liked ? "text-rose-400" : ""}`}
-              >
-                <span className="rounded-full p-1.5 transition group-hover:bg-rose-500/10">
-                  <Heart size={16} fill={liked ? "currentColor" : "none"} />
-                </span>
-                {postLikes.length > 0 && compactCount(postLikes.length)}
-              </button>
-
-              <span className="flex items-center gap-1.5 text-[13px]" title={`${impressions} impressions`}>
-                <span className="p-1.5">
-                  <BarChart3 size={16} />
-                </span>
-                {compactCount(impressions)}
-              </span>
-
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-                {compactCount(engagements)} engagements
-              </span>
-            </div>
-
-            {replyOpen[node.id] && renderReplyComposer(node.id, false)}
-
-            {node.children.length > 0 && (
-              <div className="mt-4 space-y-3 border-t border-white/10 pt-3">
-                {visibleComments.map((child) => renderComment(child, 1))}
-
-                {!threadExpanded && node.children.length > 2 && (
-                  <button
-                    type="button"
-                    onClick={() => setExpandedThreads((map) => ({ ...map, [node.id]: true }))}
-                    className="text-[12px] font-semibold text-gray-500 hover:text-gray-300"
-                  >
-                    View all {compactCount(replyCount)} replies
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </article>
-      </GlassPanel>
-    );
-  }
+  const controller: FeedController = useMemo(() => ({
+    myId,
+    replyCost: REPLY_COST,
+    likesByPost,
+    replyOpen,
+    replyText: replyTextMap,
+    replySending: replySendingMap,
+    expanded: expandedThreads,
+    onToggleLike: toggleLike,
+    onToggleReplyBox: toggleReplyBox,
+    onReplyTextChange: setReplyText,
+    onRequestSend: requestSend,
+    onExpand: expandThread,
+    onRequestDelete: requestDelete,
+    onShare: sharePost,
+  }), [
+    myId, likesByPost, replyOpen, replyTextMap, replySendingMap, expandedThreads,
+    toggleLike, toggleReplyBox, setReplyText, requestSend, expandThread, requestDelete, sharePost,
+  ]);
 
   return (
-    <main className="min-h-screen theme-bg-gradient px-4 pb-28 pt-10 text-white">
+    <main className="min-h-screen theme-bg-gradient px-4 pb-28 pt-10">
       <div className="mx-auto max-w-xl">
         <BackButton />
 
         <div className="mb-7 mt-5">
           <h1 className="page-title">Public Feed</h1>
-          <p className="page-subtitle mt-1">Real thoughts from the Whisper community.</p>
+          <p className="page-subtitle mt-1">Real thoughts from the Whisper community. Posts clear after 24 hours.</p>
         </div>
 
-        <GlassPanel strong className="mb-7 rounded-3xl p-5">
+        <GlassPanel strong className="mb-6 rounded-3xl p-5">
           <form onSubmit={createPost}>
             <textarea
               value={body}
@@ -600,21 +450,24 @@ export default function PublicFeedPage() {
               maxLength={500}
               rows={3}
               placeholder="Share a thought with the Whisper community..."
-              className="w-full resize-none bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
+              className="w-full resize-none bg-transparent text-sm outline-none"
+              style={{ color: "var(--theme-text)" }}
             />
 
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
                 onClick={() => setBody(SUGGESTED_POST)}
-                className="glass-control min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs text-cyan-100 transition"
+                className="glass-control min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs transition"
+                style={{ color: "var(--theme-text-secondary)" }}
               >
-                <span className="font-bold text-cyan-300">Suggestion:</span> {SUGGESTED_POST}
+                <span className="theme-accent-text font-bold">Suggestion:</span> {SUGGESTED_POST}
               </button>
               <button
                 type="button"
                 onClick={() => setShowAiSuggestions((visible) => !visible)}
-                className="glass-control flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold text-fuchsia-200 transition"
+                className="glass-control flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold transition"
+                style={{ color: "var(--theme-accent-pink)" }}
                 aria-expanded={showAiSuggestions}
               >
                 <Sparkles size={14} /> AI Write
@@ -628,7 +481,8 @@ export default function PublicFeedPage() {
                     key={suggestion}
                     type="button"
                     onClick={() => { setBody(suggestion); setShowAiSuggestions(false); }}
-                    className="glass-control rounded-xl px-3 py-2 text-left text-xs leading-5 text-gray-200 transition hover:text-white"
+                    className="glass-control rounded-xl px-3 py-2 text-left text-xs leading-5 transition"
+                    style={{ color: "var(--theme-text-secondary)" }}
                   >
                     {suggestion}
                   </button>
@@ -636,15 +490,18 @@ export default function PublicFeedPage() {
               </div>
             )}
 
-            <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
-              <div className="min-w-0 text-xs text-gray-400">
+            <div
+              className="mt-3 flex items-center justify-between gap-3 border-t pt-3"
+              style={{ borderColor: "var(--theme-border)" }}
+            >
+              <div className="min-w-0 text-xs theme-text-muted">
                 <span className="block">Your Whisper link will be attached automatically.</span>
-                {ownLink && <Link href={ownLink} className="truncate text-cyan-300">whisper.app{ownLink}</Link>}
+                {ownLink && <Link href={ownLink} className="theme-accent-text truncate">whisper.app{ownLink}</Link>}
               </div>
               <button
                 type="submit"
                 disabled={!cleanBody || posting || !ownLink}
-                className="glass-control flex shrink-0 items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50"
+                className="premium-button premium-button-primary flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black disabled:opacity-50"
               >
                 <Send size={15} />
                 {posting ? "Posting" : "Post"}
@@ -653,13 +510,27 @@ export default function PublicFeedPage() {
           </form>
         </GlassPanel>
 
-        <div className="space-y-4">
-          {posts.length === 0 ? (
-            <GlassPanel className="rounded-3xl p-10 text-center text-gray-400">No posts yet. Start the conversation.</GlassPanel>
+        {/* One surface, hairline-separated rows — the timeline is a column of
+            text, not a stack of cards. See the `.feed-post` note in globals. */}
+        <section aria-label="Public feed timeline">
+          {loading ? (
+            <FeedSkeleton />
+          ) : postTree.length === 0 ? (
+            <GlassPanel className="rounded-3xl p-10 text-center theme-text-muted">
+              No posts yet. Start the conversation.
+            </GlassPanel>
           ) : (
-            postTree.map((post) => renderPost(post))
+            postTree.map((post) => (
+              <FeedPostCard
+                key={post.id}
+                node={post}
+                controller={controller}
+                depth={0}
+                impressionRef={impressionRef}
+              />
+            ))
           )}
-        </div>
+        </section>
       </div>
 
       {pendingReply && (
@@ -667,6 +538,7 @@ export default function PublicFeedPage() {
           title={`Reply for ${REPLY_COST} coins?`}
           description={`Posting this reply to the public feed costs ${REPLY_COST} Whisper coins.`}
           confirmLabel={`Reply (${REPLY_COST} coins)`}
+          tone="default"
           loading={Boolean(replySendingMap[pendingReply])}
           onCancel={() => setPendingReply(null)}
           onConfirm={() => {
@@ -688,5 +560,24 @@ export default function PublicFeedPage() {
 
       <BottomNavigation />
     </main>
+  );
+}
+
+/** Row-shaped placeholders, so the timeline doesn't reflow when posts land. */
+function FeedSkeleton() {
+  return (
+    <div aria-hidden>
+      {[0, 1, 2].map((row) => (
+        <div key={row} className="feed-post flex gap-3">
+          <div className="skeleton h-[42px] w-[42px] shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2 pt-1">
+            <div className="skeleton h-3 w-32 rounded-full" />
+            <div className="skeleton h-3 w-full rounded-full" />
+            <div className="skeleton h-3 w-4/5 rounded-full" />
+            <div className="skeleton mt-3 h-8 w-full rounded-2xl" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

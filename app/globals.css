@@ -2499,6 +2499,172 @@ main.min-h-screen {
 
 
 /* ==========================================================================
+   7b. PUBLIC FEED
+   --------------------------------------------------------------------------
+   An X-shaped timeline. The defining property is that a post is *not* a card:
+   rows are separated by a hairline and share one background, so a thread reads
+   as one column of text rather than a stack of floating panels. Whisper's
+   glass belongs to chrome here — the composer, the header — not to the feed
+   rows, which is what keeps a long scroll from turning into forty blurred
+   surfaces the compositor has to re-blend on every frame.
+   ========================================================================== */
+
+.feed-post {
+  padding: 0.875rem 0.25rem 0.75rem;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+/* Replies live inside their parent's row, so they carry no divider of their
+   own — the parent's is the only line that should close the group. */
+.feed-post-reply {
+  padding: 0.75rem 0 0;
+  border-bottom: 0;
+}
+
+/* The rail: one continuous stroke down the avatar column joining a post to the
+   replies underneath it. `flex: 1` rather than a fixed height so it always
+   reaches the next avatar however tall the body above it grows. */
+.feed-thread-rail {
+  width: 2px;
+  flex: 1;
+  min-height: 0.75rem;
+  margin-top: 0.375rem;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    to bottom,
+    var(--theme-border-strong),
+    color-mix(in srgb, var(--theme-border-strong) 30%, transparent)
+  );
+}
+
+.feed-thread-children {
+  /* Aligns a depth-1 reply's avatar under the rail dropping from the root. */
+  padding-left: 0.75rem;
+}
+
+.feed-author { color: var(--theme-text); }
+.feed-dot,
+.feed-time { color: var(--theme-text-muted); }
+.feed-body { color: var(--theme-text); }
+.feed-replying-to { color: var(--theme-text-muted); }
+.feed-replying-to-name { color: var(--theme-accent-purple); }
+
+.feed-avatar-ring {
+  padding: 1.5px;
+  background: linear-gradient(140deg, var(--theme-accent-from), var(--theme-accent-to));
+  box-shadow: var(--elev-1);
+}
+
+.feed-avatar-img {
+  background: var(--theme-card);
+  /* The ring is the padding of the parent; this keeps the glyph off it. */
+  border: 1.5px solid var(--theme-card);
+}
+
+.feed-cta {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--theme-accent-purple);
+}
+
+.feed-cta:hover { text-decoration: underline; }
+
+/* --- Action row --------------------------------------------------------- */
+
+/* X's hit-target trick: the icon gets a circular hover pad larger than the
+   glyph, while the label sits outside it, so a 15px icon still clears the 44px
+   touch minimum without the row growing tall enough to space the posts apart. */
+.feed-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+  background: none;
+  border: 0;
+  padding: 0;
+  transition: color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-action-icon {
+  display: grid;
+  place-items: center;
+  height: 2rem;
+  width: 2rem;
+  border-radius: var(--radius-full);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-action-reply:hover,
+.feed-action-reply.is-active { color: var(--theme-info); }
+.feed-action-reply:hover .feed-action-icon,
+.feed-action-reply.is-active .feed-action-icon {
+  background: color-mix(in srgb, var(--theme-info) 14%, transparent);
+}
+
+.feed-action-like:hover,
+.feed-action-like.is-active { color: var(--theme-accent-pink); }
+.feed-action-like:hover .feed-action-icon,
+.feed-action-like.is-active .feed-action-icon {
+  background: color-mix(in srgb, var(--theme-accent-pink) 14%, transparent);
+}
+
+.feed-action-share:hover { color: var(--theme-accent-purple); }
+.feed-action-share:hover .feed-action-icon {
+  background: color-mix(in srgb, var(--theme-accent-purple) 14%, transparent);
+}
+
+.feed-action-delete:hover { color: var(--theme-error); }
+.feed-action-delete:hover .feed-action-icon {
+  background: color-mix(in srgb, var(--theme-error) 14%, transparent);
+}
+
+/* Views are not a control, so they get no hover state at all — the absence is
+   the signal that there's nothing to press. */
+.feed-action-view { cursor: default; }
+
+.feed-show-more {
+  display: block;
+  width: 100%;
+  padding: 0.625rem 0 0.25rem;
+  text-align: left;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--theme-accent-purple);
+  background: none;
+  border: 0;
+}
+
+.feed-show-more:hover { text-decoration: underline; }
+
+/* --- Reply composer ----------------------------------------------------- */
+
+.feed-reply-box {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--theme-border);
+  background: var(--theme-card);
+  padding: 0.625rem 0.75rem;
+}
+
+.feed-reply-box:focus-within {
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent-purple) 12%, transparent);
+}
+
+.feed-reply-input { color: var(--theme-text); }
+.feed-reply-input::placeholder { color: var(--theme-text-muted); }
+.feed-reply-cost { color: var(--theme-text-muted); }
+
+.feed-reply-send {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+}
+
+/* ==========================================================================
    8. REDUCED MOTION
    --------------------------------------------------------------------------
    Degrade, don't delete. Decorative loops stop; state changes stay legible.

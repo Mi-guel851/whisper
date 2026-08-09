@@ -4,7 +4,13 @@ import { createClient } from "@supabase/supabase-js";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const text = String(body?.message || "").slice(0, 1000);
+    /* The table caps a body at 500 characters. Accepting 1000 here meant a long
+       reply passed validation, took the coins, and was then rejected by the
+       insert — the user paid for a post that never appeared. */
+    const text = String(body?.message || "").trim().slice(0, 500);
+    if (!text) {
+      return NextResponse.json({ error: "Write a reply first" }, { status: 400 });
+    }
 
     const authHeader = req.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -78,8 +84,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to record transaction" }, { status: 500 });
     }
 
-    // Create a public feed post so the reply is visible in the Public Feed.
+    /**
+     * Create the public feed post.
+     *
+     * This is the part the user is actually paying for, so a failure here can't
+     * be swallowed: it used to log and still return `success: true`, which
+     * charged two coins for a reply that never appeared anywhere. Both the
+     * balance and the transaction are rolled back before reporting the error.
+     */
+    async function refund(reason: string) {
+      await supabaseAdmin.from("coins").update({ balance }).eq("user_id", user!.id);
+      await supabaseAdmin.from("coin_transactions").insert([
+        {
+          user_id: user!.id,
+          amount: COST,
+          description: "Refund: public reply failed",
+          transaction_type: "refund",
+        },
+      ]);
+      console.error("Reply refunded:", reason);
+    }
+
     let createdPost: any = null;
+    let postFailure = "";
     try {
       // attempt to look up the user's username for whisper_link
       const { data: profile } = await supabaseAdmin.from("profiles").select("username").eq("id", user.id).maybeSingle();
@@ -93,19 +120,44 @@ export async function POST(req: NextRequest) {
       // allow optional parent post id for replies
       if (body?.postId) insertBody.parent_post_id = body.postId;
 
+      const BASE = "id,author_id,body,whisper_link,created_at,expires_at";
+
       const { data: postData, error: postError } = await supabaseAdmin
         .from("public_feed_posts")
         .insert([insertBody])
-        .select("id,author_id,body,whisper_link,created_at,expires_at,parent_post_id")
+        .select(`${BASE},parent_post_id`)
         .single();
 
-      if (postError) {
-        console.error("Public post insert error:", postError.message);
-      } else {
+      if (!postError) {
         createdPost = postData;
+      } else if (insertBody.parent_post_id) {
+        /* `parent_post_id` is the newest column on this table. If the migration
+           hasn't been applied, post the reply unthreaded rather than taking the
+           coins and returning nothing — the text still reaches the feed. */
+        console.warn("Threaded reply insert failed, retrying flat:", postError.message);
+        delete insertBody.parent_post_id;
+
+        const flat = await supabaseAdmin
+          .from("public_feed_posts")
+          .insert([insertBody])
+          .select(BASE)
+          .single();
+
+        if (flat.error) postFailure = flat.error.message;
+        else createdPost = flat.data;
+      } else {
+        postFailure = postError.message;
       }
     } catch (e) {
-      console.error("Public post creation failed:", e);
+      postFailure = e instanceof Error ? e.message : "Public post creation failed";
+    }
+
+    if (!createdPost) {
+      await refund(postFailure || "unknown insert failure");
+      return NextResponse.json(
+        { error: "Couldn't post your reply. You have not been charged." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true, balance: newBalance, post: createdPost });

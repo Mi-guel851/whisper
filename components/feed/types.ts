@@ -23,4 +23,5 @@ export type FeedController = {
   onRequestSend: (postId: string) => void;
   onExpand: (postId: string) => void;
   onRequestDelete: (postId: string) => void;
+  onShare: (postId: string, body: string, whisperLink: string) => void;
 };
