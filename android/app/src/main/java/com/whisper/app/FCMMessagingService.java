@@ -17,6 +17,13 @@ import java.util.Map;
 public class FCMMessagingService extends FirebaseMessagingService {
 
     @Override
+    public void onNewToken(String token) {
+        super.onNewToken(token);
+        // Token is handled by Capacitor's PushNotifications plugin usually,
+        // but we can log it for debugging real-time delivery.
+    }
+
+    @Override
     public void onMessageReceived(RemoteMessage remoteMessage) {
         super.onMessageReceived(remoteMessage);
 

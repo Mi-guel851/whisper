@@ -114,8 +114,13 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
       ),
     ]);
 
-    const width = card.offsetWidth;
-    const height = card.offsetHeight;
+    /* `offsetWidth` truncates to a whole pixel. The card is centred in a
+       max-width column, so its real width is usually fractional — capturing at
+       the truncated value shaves the right and bottom edges, which is where the
+       thin dark seam along the exported card's border came from. Round up. */
+    const rect = card.getBoundingClientRect();
+    const width = Math.ceil(rect.width);
+    const height = Math.ceil(rect.height);
 
     /* The card lays out around 340 CSS px, so a 1:1 capture is a thumbnail —
        it looks soft the moment it's posted full-bleed to a story, which is the
@@ -141,8 +146,20 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
       logging: false,
       width,
       height,
+      /* The card is inside a scrollable modal. Without pinning the scroll
+         origin, html2canvas measures against the document's scroll position and
+         captures an offset region — a card sliced across the top with a band of
+         empty background at the bottom. */
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: document.documentElement.clientWidth,
+      windowHeight: document.documentElement.clientHeight,
     });
-    return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png", 1.0));
+
+    /* `toBlob` hands back null when the canvas is tainted or allocation failed.
+       Returning it as-is would surface as a silent no-op download, so the
+       caller's null branch is the one that reports it. */
+    return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
   }
 
   /**

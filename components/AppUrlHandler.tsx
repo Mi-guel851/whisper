@@ -23,12 +23,29 @@ export default function AppUrlHandler() {
 
         const url = new URL(urlStr);
 
-        // 1. Handle Navigation/Pathnames (from Notifications)
-        const path = url.pathname; // e.g., /chat/some-id or /inbox
-        if (path && path !== "/" && !path.includes("complete-profile")) {
-          console.log("[deeplink] Navigating to:", path);
-          router.push(path);
-          return;
+        // 1. Handle Navigation (from Notifications)
+        // whisperapp://inbox -> host is "inbox", path is ""
+        // whisperapp://chat/123 -> host is "chat", path is "/123"
+        if (url.protocol === "whisperapp:") {
+          const host = url.host;
+          const path = url.pathname;
+
+          if (host === "inbox") {
+            router.push("/inbox");
+            return;
+          } else if (host === "chat") {
+            router.push(`/chat${path}`);
+            return;
+          } else if (host === "friends") {
+            router.push("/friends");
+            return;
+          } else if (host === "feed") {
+            router.push("/feed");
+            return;
+          } else if (host === "dashboard") {
+            router.push("/dashboard");
+            return;
+          }
         }
 
         // 2. Handle Auth Tokens (Supabase/Google)
@@ -59,7 +76,6 @@ export default function AppUrlHandler() {
           }
         } else {
           console.log("[deeplink] No tokens found in URL");
-          // If we just landed on complete-profile without tokens, maybe we're already logged in?
           if (url.pathname.includes("complete-profile")) {
              router.push("/complete-profile");
           }

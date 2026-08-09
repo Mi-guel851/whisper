@@ -4,6 +4,9 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { Mic, Trash2, Send, Lock, ChevronUp, Pause, Play, Eye, Loader2 } from "lucide-react";
 import { vibrate } from "@/lib/haptics";
+import { Capacitor } from "@capacitor/core";
+import MicPermissionDialog from "./MicPermissionDialog";
+import { useToast } from "@/components/ToastProvider";
 import {
   useVoiceRecorder,
   MIN_RECORDING_MS,
@@ -13,34 +16,11 @@ import {
 
 /**
  * WhatsApp's voice note control, in its two states.
- *
- * **Holding.** Press and hold the mic and a slim bar takes over the composer:
- * trash, a running timer, a live level meter, and "slide to cancel". Slide left
- * past the threshold to discard, slide up to lock, release to send. Nothing
- * here is permanent chrome — the composer is replaced for the duration and
- * comes straight back.
- *
- * **Locked.** Let go after sliding up and the bar grows into the full panel:
- * the timer and waveform on top, and trash / pause / send underneath. This is
- * the state you record a long note in, and it's why pause exists at all — a
- * hands-free recording you can't interrupt is a recording you have to restart.
- *
- * Everything gestural runs on motion values rather than React state, so the
- * drag itself never re-renders. The two things that do re-render — the timer
- * and the meter — are why this is a separate component: at 10 samples a second
- * they would otherwise re-render the entire chat thread.
  */
 
-/** Horizontal travel that discards the take. Matches WhatsApp's feel. */
 const CANCEL_DISTANCE = 96;
-
-/** Vertical travel that locks hands-free recording. */
 const LOCK_DISTANCE = 76;
-
-/** Bars in the slim hold-to-record bar. */
 const HOLD_BARS = 28;
-
-/** Bars in the expanded panel, which is roughly twice as wide. */
 const PANEL_BARS = 44;
 
 function formatDuration(ms: number) {
@@ -50,32 +30,17 @@ function formatDuration(ms: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-/**
- * Right-align the peaks into a fixed number of slots so the waveform grows
- * from the left and scrolls once it fills, rather than rescaling itself every
- * sample. Empty slots read as the baseline.
- */
 function laneFor(peaks: number[], count: number) {
   return Array.from({ length: count }, (_, index) => peaks[peaks.length - count + index] ?? 0);
 }
 
 type VoiceRecorderProps = {
-  /** False while the chat is still locked behind coins. */
   canRecord: boolean;
-  /** Coin cost, surfaced in the button title so the price is never a surprise. */
   cost: number;
-  /** True while a previous note is still uploading. */
   busy: boolean;
-  /** Fired when the user presses the mic on a locked chat. */
   onBlocked: () => void;
   onSend: (recording: VoiceRecording) => void;
   onError: (message: string) => void;
-  /**
-   * Raised whenever capture starts or ends. The composer swaps this component
-   * out for a send button as soon as there's a draft, so without this a
-   * keystroke landing on the still-focused textarea mid-recording would unmount
-   * the recorder and tear the take down with it.
-   */
   onRecordingChange?: (recording: boolean) => void;
 };
 
@@ -89,6 +54,9 @@ function VoiceRecorderBase({
   onRecordingChange,
 }: VoiceRecorderProps) {
   const [locked, setLocked] = useState(false);
+  const [showMicRationale, setShowMicRationale] = useState(false);
+  const { showToast } = useToast();
+
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
 
@@ -106,12 +74,6 @@ function VoiceRecorderBase({
     animate(dragY, 0, { duration: 0.18 });
   }, [dragX, dragY]);
 
-  /**
-   * Everything that happens once a take is in hand, whichever way it ended.
-   * A recording that hits the five-minute ceiling stops itself rather than
-   * being stopped, so it arrives here instead of through `finish()` — without
-   * this path a long note would simply vanish at the cap.
-   */
   const deliver = useCallback(
     (recording: VoiceRecording | null) => {
       setLocked(false);
@@ -119,8 +81,6 @@ function VoiceRecorderBase({
       resetGesture();
       if (!recording) return;
 
-      /* A tap that happened to land on the mic isn't a voice note. Discarding
-         below the floor is what stops the thread filling with 200ms clips. */
       if (recording.durationMs < MIN_RECORDING_MS) {
         onError("Hold the mic to record a voice note.");
         return;
@@ -136,16 +96,17 @@ function VoiceRecorderBase({
     clearError, start, stop, cancel, pause, resume,
   } = useVoiceRecorder({ onAutoStop: deliver });
 
-  /* The cancel hint fades as the finger travels toward the threshold, and the
-     trash icon comes up to meet it — the gesture tells you how far you have
-     left before it commits. */
   const hintOpacity = useTransform(dragX, [-CANCEL_DISTANCE, -8, 0], [0, 1, 1]);
   const trashScale = useTransform(dragX, [-CANCEL_DISTANCE, 0], [1.35, 1]);
   const lockProgress = useTransform(dragY, [-LOCK_DISTANCE, 0], [1, 0]);
 
   useEffect(() => {
     if (error) {
-      onError(error);
+      if (error.toLowerCase().includes("access was blocked")) {
+         // This is handled by rationale or browser settings
+      } else {
+         onError(error);
+      }
       clearError();
       setLocked(false);
       lockedRef.current = false;
@@ -153,9 +114,6 @@ function VoiceRecorderBase({
     }
   }, [error, onError, clearError, resetGesture]);
 
-  /* Read through a ref so a parent passing an inline arrow doesn't re-fire this
-     on every render — it should announce transitions, not renders. Mirrors the
-     `onAutoStopRef` pattern in useVoiceRecorder. */
   const onRecordingChangeRef = useRef(onRecordingChange);
   useEffect(() => { onRecordingChangeRef.current = onRecordingChange; }, [onRecordingChange]);
   useEffect(() => {
@@ -181,15 +139,13 @@ function VoiceRecorderBase({
       if (!canRecord) { onBlocked(); return; }
 
       if (Capacitor.isNativePlatform()) {
-        const { Camera } = await import("@capacitor/camera"); // We use this for general permission checks if specialized ones aren't available, but actually Capacitor has a specialized one
-        // Wait, Capacitor doesn't have a built-in microphone permission check in a simple way without a plugin.
-        // But @capacitor/voice-recorder or similar would.
-        // Given the request, I'll use a generic rationale logic.
+        const hasPrompted = localStorage.getItem("mic_prompted");
+        if (!hasPrompted) {
+          setShowMicRationale(true);
+          return;
+        }
       }
 
-      /* Capture on the button so the gesture keeps tracking once the finger
-         leaves its 40px box — which it does immediately, since the whole
-         interaction is about sliding away from it. */
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* unsupported */ }
       pointerIdRef.current = event.pointerId;
       originRef.current = { x: event.clientX, y: event.clientY };
@@ -211,8 +167,6 @@ function VoiceRecorderBase({
       const deltaX = Math.min(0, event.clientX - originRef.current.x);
       const deltaY = Math.min(0, event.clientY - originRef.current.y);
 
-      /* Whichever axis is dominant wins, so a diagonal drag resolves to one
-         intent instead of half-committing to both. */
       if (Math.abs(deltaY) > Math.abs(deltaX)) {
         dragY.set(Math.max(deltaY, -LOCK_DISTANCE - 24));
         dragX.set(0);
@@ -242,7 +196,7 @@ function VoiceRecorderBase({
       try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* unsupported */ }
       pointerIdRef.current = null;
 
-      if (lockedRef.current) return;      // hands-free; the panel takes over
+      if (lockedRef.current) return;
       if (cancelledRef.current) { resetGesture(); return; }
       if (!armedRef.current) { resetGesture(); return; }
       void finish();
@@ -250,13 +204,31 @@ function VoiceRecorderBase({
     [finish, resetGesture]
   );
 
+  async function grantMicAccess() {
+    setShowMicRationale(false);
+    localStorage.setItem("mic_prompted", "true");
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      showToast("Microphone ready! Hold to record.");
+    } else {
+      showToast("Microphone access denied.");
+    }
+  }
+
   const holding = isRecording && !locked;
   const nearingLimit = elapsedMs > MAX_RECORDING_MS - 15_000;
-  const timerColor = nearingLimit ? "var(--theme-danger, #f43f5e)" : "var(--chat-bubble-text)";
+  const timerColor = nearingLimit ? "var(--chat-danger)" : "var(--chat-bubble-text)";
 
   return (
     <>
-      {/* --- Holding: a slim bar over the composer ------------------------ */}
+      {showMicRationale && (
+        <MicPermissionDialog
+          onConfirm={grantMicAccess}
+          onCancel={() => setShowMicRationale(false)}
+        />
+      )}
+
       {holding && (
         <div className="chat-recording-bar absolute inset-0 z-20 flex items-center gap-2 rounded-[26px] pl-3 pr-16">
           <button
@@ -276,8 +248,6 @@ function VoiceRecorderBase({
             {formatDuration(elapsedMs)}
           </span>
 
-          {/* Bars are keyed by slot rather than by value so React updates a
-              fixed set of heights instead of rebuilding the row each sample. */}
           <div className="flex h-6 min-w-0 flex-1 items-center gap-[2px] overflow-hidden" aria-hidden="true">
             {laneFor(peaks, HOLD_BARS).map((peak, index) => (
               <span
@@ -294,7 +264,6 @@ function VoiceRecorderBase({
         </div>
       )}
 
-      {/* --- Locked: the full panel --------------------------------------- */}
       {locked && isRecording && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -302,7 +271,6 @@ function VoiceRecorderBase({
           transition={{ type: "spring", bounce: 0, duration: 0.32 }}
           className="chat-recording-panel absolute inset-x-0 bottom-0 z-30 flex flex-col gap-3 rounded-[26px] px-4 pb-3 pt-3.5"
         >
-          {/* Row 1 — timer, waveform, view-once */}
           <div className="flex items-center gap-3">
             <span
               className="shrink-0 text-[15px] font-bold tabular-nums"
@@ -327,10 +295,6 @@ function VoiceRecorderBase({
               ))}
             </div>
 
-            {/* Not a toggle. Every voice note is view-once, so this states what
-                is about to happen rather than offering a choice — the sender
-                should still know before they press send, but there is nothing
-                here to get wrong. */}
             <span
               title="This voice note can only be played once"
               className="chat-recording-once-on flex h-8 shrink-0 items-center gap-1 rounded-full pl-2 pr-2.5 text-[10px] font-black uppercase tracking-wide"
@@ -340,7 +304,6 @@ function VoiceRecorderBase({
             </span>
           </div>
 
-          {/* Row 2 — discard, pause/resume, send */}
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -373,14 +336,8 @@ function VoiceRecorderBase({
         </motion.div>
       )}
 
-      {/* --- The mic itself ----------------------------------------------- */}
-      {/* Gone once locked: the finger has left, and the panel's own send is
-          what finishes the take. Keeping it would be a second, competing
-          commit control sitting on top of the panel. */}
       {!locked && (
         <div className="relative flex shrink-0 items-center">
-          {/* Lock affordance, mounted only mid-gesture — a permanent rail is
-              chrome for a state you are usually not in. */}
           {holding && (
             <motion.div
               style={{ opacity: lockProgress }}
