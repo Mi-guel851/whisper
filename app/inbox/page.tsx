@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { getCachedSession } from "@/lib/supabase/session";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
@@ -86,7 +87,8 @@ export default function InboxPage() {
     let cancelled = false;
 
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getCachedSession();
+
 
       if (!session?.user?.id) {
         setLoading(false);

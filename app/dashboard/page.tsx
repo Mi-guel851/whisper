@@ -68,7 +68,6 @@ export default function DashboardPage() {
 
     init();
   }, [router]);
-
   if (checking) {
     return <BrandedLoader />;
   }

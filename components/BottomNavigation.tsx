@@ -9,7 +9,7 @@ import {
   getNavBadges,
   getNavBadgesServerSnapshot,
 } from "@/lib/nav/navBadges";
-import { House, Compass, MessageCircle, User, Gem } from "lucide-react";
+import { House, Compass, MessageCircle, User, Gem, type LucideIcon } from "lucide-react";
 
 /**
  * The bottom tab bar.
@@ -23,15 +23,25 @@ import { House, Compass, MessageCircle, User, Gem } from "lucide-react";
  */
 
 /* Static shape, hoisted out of render. Only the badge numbers change. */
-const ITEMS = [
+type BadgeKey = "feed" | "chats" | "whispers";
+
+type NavItem = {
+  href: string;
+  /** `null` renders the ghost image instead of a stroke icon. */
+  icon: LucideIcon | null;
+  label: string;
+  presenceDot: boolean;
+  badge: BadgeKey | null;
+};
+
+const ITEMS: NavItem[] = [
   { href: "/dashboard", icon: House, label: "Home", presenceDot: false, badge: null },
   { href: "/discover", icon: Compass, label: "Discover", presenceDot: true, badge: "feed" },
   { href: "/inbox", icon: MessageCircle, label: "Inbox", presenceDot: false, badge: "chats" },
   { href: "/notifications", icon: null, label: "Whispers", presenceDot: false, badge: "whispers" },
   { href: "/profile", icon: User, label: "Profile", presenceDot: false, badge: null },
   { href: "/premium", icon: Gem, label: "Coins", presenceDot: false, badge: null },
-] as const;
-
+];
 export default function BottomNavigation() {
   const pathname = usePathname();
   const badges = useSyncExternalStore(

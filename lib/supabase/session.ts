@@ -117,8 +117,7 @@ export async function getCachedSession(): Promise<Session | null> {
   return inflight;
 }
 
-/** The signed-in user's id, or null. Convenience for the common case. */
-export async function getCachedUserId(): Promise<string | null> {
+/** The signed-in user's id, or null. Convenience for the common case. */export async function getCachedUserId(): Promise<string | null> {
   const session = await getCachedSession();
   return session?.user?.id ?? null;
 }

@@ -123,7 +123,6 @@ function describeVoiceNoteFailure(message: string) {
   }
   return message;
 }
-
 /** Label for the sticky date separator: Today / Yesterday / a full date. */
 function dayLabel(value: string) {
   const date = new Date(value);

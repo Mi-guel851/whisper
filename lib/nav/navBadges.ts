@@ -296,7 +296,6 @@ export function subscribeNavBadges(listener: () => void) {
 export function getNavBadges(): NavBadges {
   return state;
 }
-
 /** Server render has no session, so the badges start hidden and fill in on the client. */
 export function getNavBadgesServerSnapshot(): NavBadges {
   return EMPTY;

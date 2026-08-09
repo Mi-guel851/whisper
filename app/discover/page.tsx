@@ -20,6 +20,7 @@ import {
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import { supabase } from "@/lib/supabase/client";
+import { getCachedSession } from "@/lib/supabase/session";
 import { presenceManager } from "@/lib/realtime/presence";
 
 function WavingAnimeAvatar() {
@@ -76,7 +77,8 @@ export default function DiscoverPage() {
     let feedChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function loadFriendPresence() {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getCachedSession();
+
       if (!session || cancelled) return;
 
       const { data: friends, error } = await supabase
