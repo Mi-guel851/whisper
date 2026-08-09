@@ -289,6 +289,19 @@
 *::after {
   box-sizing: border-box;
   border-color: var(--theme-border);
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+html, body {
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+
+input, textarea, [contenteditable] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* Deliberately NOT a universal transition. The previous `* { transition:
@@ -1366,6 +1379,85 @@ main.min-h-screen {
 .chat-voice-speed {
   background: color-mix(in srgb, var(--chat-meta) 20%, transparent);
   color: var(--chat-meta);
+}
+
+/* View-once marker on the play control — WhatsApp puts a "1" there rather than
+   spelling it out in the bubble, which is what lets the note keep the ordinary
+   scrubbable shape instead of degrading into a text link. */
+.chat-voice-badge {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  border: 1.5px solid var(--chat-bubble-in);
+}
+
+.chat-bubble-out .chat-voice-badge { border-color: var(--chat-bubble-out); }
+
+/* --- View-once photo bubble --------------------------------------------- */
+
+/* WhatsApp renders an unopened photo as a blurred tile with a "1" ring, not as
+   a text link. The tile is a gradient rather than a real thumbnail: Whisper's
+   photos are consumed on open, so there is no preview to blur — the placeholder
+   has to carry the shape on its own. */
+.chat-photo-once {
+  position: relative;
+  display: flex;
+  height: 132px;
+  width: 176px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  border: 1px solid var(--chat-chrome-bd);
+  background:
+    radial-gradient(120% 100% at 20% 0%, color-mix(in srgb, var(--theme-accent-from) 34%, transparent), transparent 62%),
+    radial-gradient(120% 100% at 85% 100%, color-mix(in srgb, var(--theme-accent-to) 30%, transparent), transparent 60%),
+    var(--chat-quote-bg);
+}
+
+/* The scatter that reads as "there is an image under here" without being one. */
+.chat-photo-once::after {
+  content: "";
+  position: absolute;
+  inset: -12%;
+  opacity: 0.5;
+  background-image:
+    radial-gradient(circle at 22% 32%, rgba(255, 255, 255, 0.42) 0 14%, transparent 15%),
+    radial-gradient(circle at 68% 24%, rgba(255, 255, 255, 0.26) 0 11%, transparent 12%),
+    radial-gradient(circle at 44% 74%, rgba(255, 255, 255, 0.3) 0 16%, transparent 17%),
+    radial-gradient(circle at 84% 66%, rgba(255, 255, 255, 0.2) 0 12%, transparent 13%);
+  filter: blur(9px);
+}
+
+.chat-photo-once-ring {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 46px;
+  width: 46px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--theme-accent-contrast) 82%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-purple) 34%, transparent);
+  color: var(--theme-accent-contrast);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Opened, or your own outgoing copy: same footprint, no live affordance. */
+.chat-photo-once-spent {
+  opacity: 0.55;
+}
+
+.chat-photo-once-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  padding: 14px 10px 6px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.55), transparent);
+  color: #fff;
 }
 
 /* --- Chat doodle wallpaper --------------------------------------------- */

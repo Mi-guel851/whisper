@@ -1,23 +1,30 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, Loader2, Eye, Mic } from "lucide-react";
+import { Play, Pause, Loader2, Mic } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 /**
- * A voice note bubble.
+ * A voice note bubble, WhatsApp-shaped.
  *
  * WhatsApp's version is a scrubbable waveform, not a play button — the shape
  * tells you where the pauses are, and dragging it is how you re-hear the word
- * you missed. This is that, with two Whisper-specific cases folded in:
+ * you missed. View-once notes get the *same* control surface here rather than a
+ * "Tap to play once" text link, which is the whole point of the rewrite: a
+ * one-shot note is the one you most need to scrub back through, and a link
+ * gives you no way to.
  *
- * - **View-once notes** can't be scrubbed, because the file is consumed by the
- *   act of playing it. They keep their own affordance and route through the
- *   API, which is what deletes the object server-side.
- * - **Notes with no stored waveform** predate the capture-time sampling. Rather
- *   than show a flat bar or decode the file client-side to recover the shape,
- *   they get a deterministic pseudo-waveform seeded from the message id: stable
- *   across renders and reloads, and honest about being decoration.
+ * The one-shot semantics still hold, because they live on the server. Tapping
+ * play calls `onRequestViewOnce`, which routes through `/api/audio/view` — that
+ * endpoint hands back the bytes, nulls `audio_path`, and deletes the object.
+ * From then on the note exists only as a blob URL held by this component, so it
+ * is scrubbable for as long as the thread stays open and gone the moment it
+ * isn't. Nothing is re-downloadable.
+ *
+ * Notes with no stored waveform predate capture-time sampling. Rather than show
+ * a flat bar or decode the file to recover the shape, they get a deterministic
+ * pseudo-waveform seeded from the message id: stable across renders and
+ * reloads, and honest about being decoration.
  */
 
 const BAR_COUNT = 34;
@@ -78,10 +85,12 @@ type VoicePlayerProps = {
   isMe: boolean;
   isViewOnce: boolean;
   viewedAt: string | null;
-  /** View-once playback is server-mediated; the page owns that request. */
-  onPlayViewOnce: () => void;
-  viewOnceLoading: boolean;
-  viewOncePlaying: boolean;
+  /**
+   * Consumes the note server-side and resolves to a playable object URL, or
+   * `null` if it couldn't be fetched. Owned by the page because the same call
+   * is what marks the row viewed.
+   */
+  onRequestViewOnce: () => Promise<string | null>;
 };
 
 function VoicePlayerBase({
@@ -92,9 +101,7 @@ function VoicePlayerBase({
   isMe,
   isViewOnce,
   viewedAt,
-  onPlayViewOnce,
-  viewOnceLoading,
-  viewOncePlaying,
+  onRequestViewOnce,
 }: VoicePlayerProps) {
   const bars = useMemo(() => toBars(waveform, messageId), [waveform, messageId]);
 
@@ -103,18 +110,42 @@ function VoicePlayerBase({
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState((durationMs ?? 0) / 1000);
   const [speedIndex, setSpeedIndex] = useState(0);
+  /* Set once a view-once note has been fetched into memory. It is what makes
+     the difference between "consumed, nothing to play" and "consumed, but this
+     tab still holds the bytes and can scrub them". */
+  const [unlocked, setUnlocked] = useState(false);
+  const [spent, setSpent] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const urlRef = useRef<string | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const wasPlayingRef = useRef(false);
 
   useEffect(() => {
     return () => {
       audioRef.current?.pause();
       audioRef.current = null;
-      urlRef.current = null;
+      /* Revoking matters more here than for a normal note: this URL is the only
+         remaining copy of a file the server has already deleted. */
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
     };
   }, []);
+
+  /** Wire an element up to component state. Shared by both playback paths. */
+  const attach = useCallback((element: HTMLAudioElement) => {
+    element.preload = "metadata";
+    element.playbackRate = SPEEDS[speedIndex];
+    element.onloadedmetadata = () => {
+      if (Number.isFinite(element.duration) && element.duration > 0) setDuration(element.duration);
+    };
+    element.ontimeupdate = () => setPosition(element.currentTime);
+    element.onended = () => { setPlaying(false); setPosition(0); element.currentTime = 0; };
+    element.onpause = () => setPlaying(false);
+    element.onplay = () => setPlaying(true);
+    audioRef.current = element;
+    return element;
+  }, [speedIndex]);
 
   /**
    * The bucket is private, so playback needs a signed URL. It is minted on the
@@ -123,10 +154,19 @@ function VoicePlayerBase({
    */
   const ensureAudio = useCallback(async (): Promise<HTMLAudioElement | null> => {
     if (audioRef.current) return audioRef.current;
-    if (!audioPath) return null;
 
     setLoading(true);
     try {
+      if (isViewOnce) {
+        const url = await onRequestViewOnce();
+        if (!url) { setSpent(true); return null; }
+        objectUrlRef.current = url;
+        setUnlocked(true);
+        return attach(new Audio(url));
+      }
+
+      if (!audioPath) return null;
+
       const { data, error } = await supabase.storage
         .from("voice-messages")
         .createSignedUrl(audioPath, 60 * 60);
@@ -142,24 +182,11 @@ function VoicePlayerBase({
       }
       if (!url) return null;
 
-      const element = new Audio(url);
-      element.preload = "metadata";
-      element.playbackRate = SPEEDS[speedIndex];
-      element.onloadedmetadata = () => {
-        if (Number.isFinite(element.duration) && element.duration > 0) setDuration(element.duration);
-      };
-      element.ontimeupdate = () => setPosition(element.currentTime);
-      element.onended = () => { setPlaying(false); setPosition(0); element.currentTime = 0; };
-      element.onpause = () => setPlaying(false);
-      element.onplay = () => setPlaying(true);
-
-      audioRef.current = element;
-      urlRef.current = url;
-      return element;
+      return attach(new Audio(url));
     } finally {
       setLoading(false);
     }
-  }, [audioPath, speedIndex]);
+  }, [attach, audioPath, isViewOnce, onRequestViewOnce]);
 
   const togglePlayback = useCallback(async () => {
     const element = await ensureAudio();
@@ -189,85 +216,92 @@ function VoicePlayerBase({
     });
   }, []);
 
-  // --- View-once ------------------------------------------------------------
+  const nudge = useCallback((seconds: number) => {
+    const element = audioRef.current;
+    if (!element || !Number.isFinite(element.duration)) return;
+    element.currentTime = Math.min(element.duration, Math.max(0, element.currentTime + seconds));
+    setPosition(element.currentTime);
+  }, []);
 
-  if (isViewOnce) {
-    const consumed = Boolean(viewedAt) || !audioPath;
-    return (
-      <div className="flex min-w-[190px] items-center gap-2.5 py-0.5">
-        <span className="chat-voice-once flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
-          {viewOnceLoading ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} />}
-        </span>
-        <div className="min-w-0 flex-1">
-          {consumed ? (
-            <p className="chat-meta text-[13px] italic">Voice note played</p>
-          ) : isMe ? (
-            <p className="chat-meta text-[13px]">Voice note sent · view once</p>
-          ) : (
-            <button
-              type="button"
-              onClick={onPlayViewOnce}
-              disabled={viewOnceLoading || viewOncePlaying}
-              className="text-left text-[13px] font-bold disabled:opacity-60"
-              style={{ color: "var(--theme-accent-purple)" }}
-            >
-              {viewOncePlaying ? "Playing…" : viewOnceLoading ? "Loading…" : "Tap to play once"}
-            </button>
-          )}
-          <p className="chat-meta mt-0.5 flex items-center gap-1 text-[10px]">
-            <Eye size={10} /> {durationMs ? formatClock(durationMs / 1000) : "Plays once"}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // --- Normal voice note ----------------------------------------------------
+  /* View-once notes that this tab never opened have nothing to scrub. Everything
+     else — including one opened a moment ago — gets the full control surface. */
+  const consumed = isViewOnce && !unlocked && (Boolean(viewedAt) || !audioPath || spent);
+  const interactive = !consumed && (!isViewOnce || unlocked);
+  const canPlay = !consumed && (isViewOnce ? unlocked || Boolean(audioPath) : Boolean(audioPath));
 
   const progress = duration > 0 ? Math.min(1, position / duration) : 0;
   const playedBars = Math.round(progress * BAR_COUNT);
 
+  /* A note you sent, or one already spent, is a read-only object: same shape so
+     the thread doesn't jump, no affordances that would lie about being usable. */
+  const inert = consumed || (isViewOnce && isMe && !unlocked);
+
   return (
-    <div className="flex min-w-[200px] max-w-[260px] items-center gap-2.5 py-0.5">
+    <div className="flex min-w-[210px] max-w-[268px] items-center gap-2.5 py-0.5">
       <button
         type="button"
-        onClick={() => void togglePlayback()}
-        disabled={loading || !audioPath}
-        className={`${isMe ? "chat-voice-play" : "chat-voice-play-in"} flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-60`}
+        onClick={() => { if (!inert) void togglePlayback(); }}
+        disabled={inert || loading || !canPlay}
         aria-label={playing ? "Pause voice note" : "Play voice note"}
+        className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:opacity-60 ${
+          isViewOnce && !unlocked ? "chat-voice-once" : isMe ? "chat-voice-play" : "chat-voice-play-in"
+        }`}
       >
         {loading ? (
           <Loader2 size={15} className="animate-spin" />
+        ) : inert ? (
+          <Mic size={15} />
         ) : playing ? (
           <Pause size={15} fill="currentColor" />
         ) : (
           <Play size={15} fill="currentColor" className="ml-0.5" />
+        )}
+
+        {/* WhatsApp's view-once marker: a "1" on the control itself. */}
+        {isViewOnce && !consumed && (
+          <span className="chat-voice-badge absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black leading-none">
+            1
+          </span>
         )}
       </button>
 
       <div className="min-w-0 flex-1">
         <div
           ref={trackRef}
-          role="slider"
-          tabIndex={0}
-          aria-label="Seek voice note"
-          aria-valuemin={0}
-          aria-valuemax={Math.round(duration)}
-          aria-valuenow={Math.round(position)}
+          role={interactive ? "slider" : undefined}
+          tabIndex={interactive ? 0 : -1}
+          aria-label={interactive ? "Seek voice note" : undefined}
+          aria-valuemin={interactive ? 0 : undefined}
+          aria-valuemax={interactive ? Math.round(duration) : undefined}
+          aria-valuenow={interactive ? Math.round(position) : undefined}
           onPointerDown={(event) => {
+            if (!interactive || !audioRef.current) return;
+            /* Capture so the drag keeps tracking past the bubble's edges — the
+               track is ~120px wide and a thumb easily leaves it mid-scrub. */
             event.currentTarget.setPointerCapture(event.pointerId);
+            wasPlayingRef.current = !audioRef.current.paused;
+            audioRef.current.pause();
             seekFromPointer(event.clientX);
           }}
           onPointerMove={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) seekFromPointer(event.clientX);
+            if (interactive && event.currentTarget.hasPointerCapture(event.pointerId)) {
+              seekFromPointer(event.clientX);
+            }
+          }}
+          onPointerUp={(event) => {
+            if (!interactive) return;
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            /* Resume only if the scrub interrupted playback. Scrubbing a paused
+               note should leave it paused where you put it. */
+            if (wasPlayingRef.current) void audioRef.current?.play().catch(() => {});
+            wasPlayingRef.current = false;
           }}
           onKeyDown={(event) => {
-            const element = audioRef.current;
-            if (!element) return;
-            if (event.key === "ArrowRight") element.currentTime = Math.min(element.duration, element.currentTime + 5);
-            if (event.key === "ArrowLeft") element.currentTime = Math.max(0, element.currentTime - 5);
+            if (!interactive) return;
+            if (event.key === "ArrowRight") { event.preventDefault(); nudge(5); }
+            if (event.key === "ArrowLeft") { event.preventDefault(); nudge(-5); }
           }}
-          className="flex h-8 cursor-pointer items-center gap-[2px] touch-none"
+          className={`flex h-8 items-center gap-[2px] ${interactive ? "cursor-pointer touch-none" : "opacity-70"}`}
         >
           {bars.map((peak, index) => (
             <span
@@ -279,15 +313,26 @@ function VoicePlayerBase({
         </div>
 
         <div className="chat-meta mt-0.5 flex items-center gap-2 text-[10px] leading-none">
-          <span className="tabular-nums">{formatClock(playing || position > 0 ? position : duration)}</span>
-          <button
-            type="button"
-            onClick={cycleSpeed}
-            className="chat-voice-speed rounded-full px-1.5 py-0.5 text-[9px] font-black"
-            aria-label={`Playback speed ${SPEEDS[speedIndex]}x`}
-          >
-            {SPEEDS[speedIndex]}×
-          </button>
+          <span className="tabular-nums">
+            {formatClock(position > 0 ? position : duration)}
+          </span>
+
+          {consumed ? (
+            <span className="italic">Played</span>
+          ) : isViewOnce && !unlocked ? (
+            <span className="font-bold uppercase tracking-wide">
+              {isMe ? "Sent · once" : "Once"}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={cycleSpeed}
+              className="chat-voice-speed rounded-full px-1.5 py-0.5 text-[9px] font-black"
+              aria-label={`Playback speed ${SPEEDS[speedIndex]}x`}
+            >
+              {SPEEDS[speedIndex]}×
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -296,3 +341,4 @@ function VoicePlayerBase({
 
 export const VoicePlayer = memo(VoicePlayerBase);
 export default VoicePlayer;
+

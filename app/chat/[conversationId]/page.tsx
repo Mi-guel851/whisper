@@ -17,6 +17,7 @@ import { useEventCallback } from "@/lib/useEventCallback";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoicePlayer from "@/components/chat/VoicePlayer";
 import type { VoiceRecording } from "@/lib/useVoiceRecorder";
+import { messagePreviewText } from "@/lib/messagePreview";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
@@ -170,8 +171,6 @@ const MessageBubble = memo(function MessageBubbleBase({
   onSwipeReply,
   onViewPhoto,
   onPlayAudio,
-  isAudioLoading,
-  isAudioPlaying,
   viewingPhotoId,
   onDelete,
   onCopy,
@@ -197,9 +196,8 @@ const MessageBubble = memo(function MessageBubbleBase({
   cancelPress: () => void;
   onSwipeReply: (msg: Message) => void;
   onViewPhoto: (msg: Message) => void;
-  onPlayAudio: (msg: Message) => void;
-  isAudioLoading: boolean;
-  isAudioPlaying: boolean;
+  /** Resolves to a playable object URL for a view-once note, or null. */
+  onPlayAudio: (msg: Message) => Promise<string | null>;
   viewingPhotoId: string | null;
   onDelete: (msg: Message) => void;
   onCopy: (msg: Message) => void;
@@ -282,7 +280,7 @@ const MessageBubble = memo(function MessageBubbleBase({
                 onClick={() => onJumpToQuote(repliedMsg.id)}
                 className="chat-quote mb-2 block w-full truncate rounded-sm py-1 pl-2 pr-2 text-left text-xs"
               >
-                {repliedMsg.content || "📷 Photo"}
+                {messagePreviewText(repliedMsg)}
               </button>
             )}
 
@@ -297,35 +295,47 @@ const MessageBubble = memo(function MessageBubbleBase({
                     isMe={isMe}
                     isViewOnce={msg.is_view_once}
                     viewedAt={msg.audio_viewed_at}
-                    onPlayViewOnce={() => onPlayAudio(msg)}
-                    viewOnceLoading={isAudioLoading}
-                    viewOncePlaying={isAudioPlaying}
+                    onRequestViewOnce={() => onPlayAudio(msg)}
                   />
                 ) : isPhotoMessage ? (
-                  <>
-                    {msg.image_viewed_at ? (
-                      <p className="chat-meta flex items-center gap-2 text-sm italic">
-                        <Eye size={14} /> Photo viewed
-                      </p>
-                    ) : isMe ? (
-                      <p className="chat-meta flex items-center gap-2 text-sm">
-                        <ImagePlus size={14} /> Photo sent (view once)
-                      </p>
-                    ) : (
-                      <button
-                        onClick={() => onViewPhoto(msg)}
-                        disabled={viewingPhotoId === msg.id}
-                        className="flex items-center gap-2 text-sm font-bold text-[var(--theme-accent-purple)] disabled:opacity-60"
-                      >
-                        {viewingPhotoId === msg.id ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <ImagePlus size={14} />
-                        )}
-                        {viewingPhotoId === msg.id ? "Loading..." : "Tap to view photo (once)"}
-                      </button>
-                    )}
-                  </>
+                  /* WhatsApp's unopened-photo tile: a blurred placeholder with a
+                     "1" ring, tappable as a whole. The version this replaces was
+                     a line of text reading "Tap to view photo (once)", which
+                     gave a photo no visual weight in the thread at all. */
+                  <button
+                    type="button"
+                    onClick={() => { if (!isMe && !msg.image_viewed_at) onViewPhoto(msg); }}
+                    disabled={isMe || Boolean(msg.image_viewed_at) || viewingPhotoId === msg.id}
+                    aria-label={
+                      msg.image_viewed_at ? "Photo already viewed"
+                        : isMe ? "Photo sent, view once"
+                        : "View photo once"
+                    }
+                    className={`chat-photo-once ${
+                      msg.image_viewed_at || isMe ? "chat-photo-once-spent" : ""
+                    } disabled:cursor-default`}
+                  >
+                    <span className="chat-photo-once-ring">
+                      {viewingPhotoId === msg.id ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : msg.image_viewed_at ? (
+                        <Eye size={18} />
+                      ) : (
+                        <span className="text-[15px] font-black leading-none">1</span>
+                      )}
+                    </span>
+
+                    <span className="chat-photo-once-caption flex items-center justify-center gap-1.5 text-[11px] font-bold">
+                      <ImagePlus size={12} />
+                      {msg.image_viewed_at
+                        ? "Opened"
+                        : viewingPhotoId === msg.id
+                          ? "Opening…"
+                          : isMe
+                            ? "Photo · once"
+                            : "Tap to open"}
+                    </span>
+                  </button>
                 ) : null}
                 {msg.content && (
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{msg.content}</p>
@@ -461,8 +471,6 @@ export default function ChatPage() {
   /* Mirrors the recorder's own state up here so the composer can hold the
      mic/send swap still for the duration of a take. */
   const [recordingVoice, setRecordingVoice] = useState(false);
-  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
-  const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null);
   const [viewingPhotoId, setViewingPhotoId] = useState<string | null>(null);
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const [photoModalCaption, setPhotoModalCaption] = useState<string | null>(null);
@@ -1121,11 +1129,21 @@ export default function ChatPage() {
     }
   });
 
-  const handlePlayAudio = useEventCallback(async (msg: Message) => {
+  /**
+   * Consumes a view-once note and hands the bytes back as an object URL.
+   *
+   * This used to own an `Audio` element and call `.play()` itself, which is why
+   * a one-shot note could only ever be played straight through — the page held
+   * the element, the bubble drew the waveform, and neither could scrub. Now the
+   * server round trip (the thing that deletes the object and nulls
+   * `audio_path`) stays here, and the element belongs to the `VoicePlayer` that
+   * renders the track. The URL returned is the only remaining copy of the file;
+   * the player revokes it on unmount.
+   */
+  const handlePlayAudio = useEventCallback(async (msg: Message): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session || !msg.audio_path) return;
+    if (!session || !msg.audio_path) return null;
 
-    setAudioLoadingId(msg.id);
     try {
       const res = await fetch("/api/audio/view", {
         method: "POST",
@@ -1139,27 +1157,18 @@ export default function ChatPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         showToast(data.error || "Couldn't play voice note.");
-        return;
+        return null;
       }
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      audioPlayerRef.current?.pause();
-      audioPlayerRef.current = new Audio(url);
-      audioPlayerRef.current.onended = () => {
-        URL.revokeObjectURL(url);
-        setPlayingAudioId(null);
-      };
-      await audioPlayerRef.current.play();
-      setPlayingAudioId(msg.id);
+      const url = URL.createObjectURL(await res.blob());
       setMessages((prev) => prev.map((m) =>
         m.id === msg.id ? { ...m, audio_viewed_at: new Date().toISOString(), audio_path: null } : m
       ));
+      return url;
     } catch (error) {
       console.error(error);
       showToast("Could not play voice note.");
-    } finally {
-      setAudioLoadingId(null);
+      return null;
     }
   });
 
@@ -1422,7 +1431,7 @@ export default function ChatPage() {
                 aria-label={`Jump to pinned message${pinnedMessages.length > 1 ? `, ${pinIndex + 1} of ${pinnedMessages.length}` : ""}`}
               >
                 <Pin size={12} className="shrink-0" />
-                <span className="truncate">{activePin.content || "📷 Photo"}</span>
+                <span className="truncate">{messagePreviewText(activePin)}</span>
                 {pinnedMessages.length > 1 && (
                   <span className="shrink-0 opacity-60">
                     {pinIndex + 1}/{pinnedMessages.length}
@@ -1515,8 +1524,6 @@ export default function ChatPage() {
                       onSwipeReply={setReplyingTo}
                       onViewPhoto={handleViewPhoto}
                       onPlayAudio={handlePlayAudio}
-                      isAudioLoading={audioLoadingId === msg.id}
-                      isAudioPlaying={playingAudioId === msg.id}
                       viewingPhotoId={viewingPhotoId}
                       onDelete={setDeleteConfirm}
                       onCopy={copyMessage}
@@ -1592,7 +1599,7 @@ export default function ChatPage() {
             className="chat-field mx-3 mb-2 flex flex-shrink-0 items-center justify-between rounded-xl px-3 py-2 md:mx-6"
             style={{ borderLeft: "3px solid var(--theme-accent-purple)" }}
           >
-            <p className="chat-meta truncate text-xs">Replying to: {replyingTo.content || "📷 Photo"}</p>
+            <p className="chat-meta truncate text-xs">Replying to: {messagePreviewText(replyingTo)}</p>
             <button onClick={() => setReplyingTo(null)} className="chat-icon" aria-label="Cancel reply">
               <X size={14} />
             </button>
@@ -1780,7 +1787,7 @@ export default function ChatPage() {
               <h2 className="text-base font-black">Pin this message</h2>
             </div>
             <p className="mb-4 truncate text-sm text-[var(--theme-text-muted)]">
-              {pinDurationFor.content || (pinDurationFor.audio_path || pinDurationFor.audio_viewed_at ? "🎙️ Voice note" : "📷 Photo")}
+              {messagePreviewText(pinDurationFor)}
             </p>
             <div className="flex flex-col gap-1.5">
               {PIN_DURATIONS.map((duration) => (

@@ -11,6 +11,7 @@ import FriendsHeader from "@/components/FriendsHeader";
 import ChatRow from "@/components/inbox/ChatRow";
 import InboxSkeleton from "@/components/inbox/InboxSkeleton";
 import { anonymousDisplayName } from "@/lib/anonymousIdentity";
+import { messagePreviewText } from "@/lib/messagePreview";
 import { presenceManager } from "@/lib/realtime/presence";
 import { typingManager } from "@/lib/realtime/typing";
 import { Search, X } from "lucide-react";
@@ -30,6 +31,9 @@ type MessagePreview = {
   content: string | null;
   sender_id: string;
   is_view_once: boolean;
+  image_path: string | null;
+  audio_path: string | null;
+  audio_viewed_at: string | null;
   created_at: string;
   delivered_at: string | null;
   read_at: string | null;
@@ -125,7 +129,7 @@ export default function InboxPage() {
         // first row seen for a conversation is its latest message.
         const { data: recent, error: recentError } = await supabase
           .from("direct_messages")
-          .select("conversation_id, content, sender_id, is_view_once, created_at, delivered_at, read_at")
+          .select("conversation_id, content, sender_id, is_view_once, image_path, audio_path, audio_viewed_at, created_at, delivered_at, read_at")
           .in("conversation_id", ids)
           .order("created_at", { ascending: false })
           .limit(600);
@@ -321,8 +325,10 @@ export default function InboxPage() {
   function previewText(c: ConversationRow) {
     const preview = previews[c.id];
     if (!preview) return "Tap to open the conversation";
-    if (preview.is_view_once) return "📷 Photo";
-    return preview.content || "Message";
+    /* `mediaOnly` deliberately: a view-once photo's caption is the *sender's*
+       text about a photo the recipient hasn't opened yet, so quoting it in the
+       list would leak the framing before the reveal. The media kind is safe. */
+    return messagePreviewText(preview, { mediaOnly: preview.is_view_once, fallback: "Message" });
   }
 
   const filtered = useMemo(() => {

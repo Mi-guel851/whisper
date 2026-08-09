@@ -4,10 +4,17 @@ const config: CapacitorConfig = {
   appId: 'com.whisper.app',
   appName: 'Whisper',
   webDir: 'public',
+  android: {
+    allowMixedContent: false,
+    captureInput: true,
+    webContentsDebuggingEnabled: false,
+    overrideUserAgent: "WhisperApp/1.0 Android"
+  },
   server: {
     url: 'https://whisper-anonymous.vercel.app',
     cleartext: false,
-    errorPath: 'offline.html'
+    errorPath: 'offline.html',
+    androidScheme: "https"
   },
   plugins: {
     PushNotifications: {

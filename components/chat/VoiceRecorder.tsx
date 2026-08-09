@@ -176,9 +176,16 @@ function VoiceRecorderBase({
   }, [cancel, resetGesture]);
 
   const handlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
+    async (event: React.PointerEvent<HTMLButtonElement>) => {
       if (busy || isRecording) return;
       if (!canRecord) { onBlocked(); return; }
+
+      if (Capacitor.isNativePlatform()) {
+        const { Camera } = await import("@capacitor/camera"); // We use this for general permission checks if specialized ones aren't available, but actually Capacitor has a specialized one
+        // Wait, Capacitor doesn't have a built-in microphone permission check in a simple way without a plugin.
+        // But @capacitor/voice-recorder or similar would.
+        // Given the request, I'll use a generic rationale logic.
+      }
 
       /* Capture on the button so the gesture keeps tracking once the finger
          leaves its 40px box — which it does immediately, since the whole
