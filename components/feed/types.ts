@@ -21,7 +21,8 @@ export type FeedController = {
   onToggleReplyBox: (postId: string) => void;
   onReplyTextChange: (postId: string, value: string) => void;
   onRequestSend: (postId: string) => void;
-  onExpand: (postId: string) => void;
+  /** Opens a closed thread, closes an open one. Threads start closed. */
+  onToggleThread: (postId: string) => void;
   onRequestDelete: (postId: string) => void;
   onShare: (postId: string, body: string, whisperLink: string) => void;
 };

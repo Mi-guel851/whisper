@@ -22,13 +22,16 @@ import type { FeedController } from "./types";
  * So indentation stops after the first level. Depth 1 steps in; everything
  * below reuses the same rail and is distinguished by the "replying to" line
  * instead. Threads stay legible however deep they run.
+ *
+ * Threads start closed. The reply count beside the reply icon is the
+ * affordance, and tapping it opens the whole conversation — every reply and
+ * everything under them — rather than a two-line preview with a second
+ * "show more" control behind it. A feed of root posts is scannable; a feed
+ * where every post has already unpacked its replies is not.
  */
 
 const AVATAR_ROOT = 42;
 const AVATAR_REPLY = 34;
-
-/** Replies shown before the thread collapses behind a "show more" affordance. */
-const VISIBLE_REPLIES = 2;
 
 type FeedPostCardProps = {
   node: FeedPostNode;
@@ -38,6 +41,12 @@ type FeedPostCardProps = {
   parentAuthorId?: string;
   /** Ref callback that registers a root card for impression counting. */
   impressionRef?: (node: HTMLElement | null) => void;
+  /**
+   * An ancestor is open, so this post's replies come with it. Opening a thread
+   * is one action: it would be tedious to expand every level by hand just to
+   * read a conversation the user already asked to see.
+   */
+  threadOpen?: boolean;
 };
 
 function FeedPostCardBase({
@@ -46,17 +55,17 @@ function FeedPostCardBase({
   depth,
   parentAuthorId,
   impressionRef,
+  threadOpen = false,
 }: FeedPostCardProps) {
   const isRoot = depth === 0;
   const likes = controller.likesByPost[node.id] || [];
   const liked = likes.some((like) => like.user_id === controller.myId);
   const replyCount = countDescendants(node);
-  const isExpanded = Boolean(controller.expanded[node.id]);
   const isReplyOpen = Boolean(controller.replyOpen[node.id]);
 
   const children = node.children;
-  const visibleChildren = isExpanded ? children : children.slice(0, VISIBLE_REPLIES);
-  const hiddenCount = children.length - visibleChildren.length;
+  const isExpanded = threadOpen || Boolean(controller.expanded[node.id]);
+  const visibleChildren = isExpanded ? children : [];
 
   /* The rail is drawn whenever something renders below this post in the same
      column — a reply, or the composer that will become one. */
@@ -124,8 +133,17 @@ function FeedPostCardBase({
             viewCount={node.view_count ?? 0}
             liked={liked}
             replyOpen={isReplyOpen}
+            threadOpen={isExpanded}
             canDelete={node.author_id === controller.myId}
             onReply={() => controller.onToggleReplyBox(node.id)}
+            onToggleThread={
+              /* Only meaningful when this post owns replies, and never on a
+                 post whose thread was opened from above — collapsing a branch
+                 inside an open conversation would strand the rail. */
+              children.length > 0 && !threadOpen
+                ? () => controller.onToggleThread(node.id)
+                : undefined
+            }
             onLike={() => controller.onToggleLike(node.id)}
             onShare={() => controller.onShare(node.id, node.body, node.whisper_link)}
             onDelete={() => controller.onRequestDelete(node.id)}
@@ -154,17 +172,20 @@ function FeedPostCardBase({
               controller={controller}
               depth={depth + 1}
               parentAuthorId={node.author_id}
+              threadOpen
             />
           ))}
 
-          {hiddenCount > 0 && (
+          {/* Closing from the bottom of a long thread saves scrolling back up
+              to the reply icon that opened it. */}
+          {!threadOpen && (
             <button
               type="button"
-              onClick={() => controller.onExpand(node.id)}
+              onClick={() => controller.onToggleThread(node.id)}
               className="feed-show-more"
             >
-              Show {compactCount(hiddenCount)} more{" "}
-              {hiddenCount === 1 ? "reply" : "replies"}
+              Hide {compactCount(replyCount)}{" "}
+              {replyCount === 1 ? "reply" : "replies"}
             </button>
           )}
         </div>

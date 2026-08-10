@@ -84,7 +84,7 @@ async function fetchFeedPosts(): Promise<{ rows: FeedPost[]; threaded: boolean }
   for (const column of OPTIONAL_COLUMNS) {
     const { error } = await supabase
       .from("public_feed_posts")
-      .select(`id,${column}`, { head: true, count: undefined })
+      .select(`id,${column}`)
       .limit(1);
 
     if (!error) supported.push(column);
@@ -433,8 +433,8 @@ export default function PublicFeedPage() {
     setReplyTextMap((map) => ({ ...map, [postId]: value }));
   }, []);
 
-  const expandThread = useCallback((postId: string) => {
-    setExpandedThreads((map) => ({ ...map, [postId]: true }));
+  const toggleThread = useCallback((postId: string) => {
+    setExpandedThreads((map) => ({ ...map, [postId]: !map[postId] }));
   }, []);
 
   const requestSend = useCallback((postId: string) => setPendingReply(postId), []);
@@ -452,12 +452,12 @@ export default function PublicFeedPage() {
     onToggleReplyBox: toggleReplyBox,
     onReplyTextChange: setReplyText,
     onRequestSend: requestSend,
-    onExpand: expandThread,
+    onToggleThread: toggleThread,
     onRequestDelete: requestDelete,
     onShare: sharePost,
   }), [
     myId, likesByPost, replyOpen, replyTextMap, replySendingMap, expandedThreads,
-    toggleLike, toggleReplyBox, setReplyText, requestSend, expandThread, requestDelete, sharePost,
+    toggleLike, toggleReplyBox, setReplyText, requestSend, toggleThread, requestDelete, sharePost,
   ]);
 
   return (
