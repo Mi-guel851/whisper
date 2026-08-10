@@ -1,7 +1,7 @@
 export const HINT_UNLOCK_COST = 5;
-export const UNLOCK_CHAT_COST = 40;
-export const SEND_IMAGE_COST = 20;
-export const SEND_VOICE_COST = 20;
+export const UNLOCK_CHAT_COST = 30;
+export const SEND_IMAGE_COST = 10;
+export const SEND_VOICE_COST = 5;
 
 // Base pricing (before local-currency conversion):
 //   Africa + India -> priced in NGN, 100 coins = ₦1,000

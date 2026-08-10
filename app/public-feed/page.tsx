@@ -22,16 +22,19 @@ import {
 const REPLY_COST = 2;
 
 /**
- * Columns beyond the original feed schema, newest migration first.
+ * Columns beyond the original feed schema.
  *
- * Each entry is dropped in turn if the server rejects the select, so a database
- * that hasn't had a migration applied yet degrades one feature at a time
- * instead of falling all the way back to the bare table. That ordering matters:
- * `parent_post_id` is what tells a reply from a post, and losing it is what
- * used to make every reply reappear as its own top-level entry.
+ * Support is probed per column, not as a prefix cascade. These ship in
+ * independent migrations, so any combination of them can be missing — and the
+ * previous version dropped them from the end of this list one at a time, which
+ * coupled them together. On a database missing only `view_count`, the first
+ * retry discarded `parent_post_id` — the column that tells a reply from a post
+ * — while keeping the column that actually didn't exist. The query failed
+ * again and the feed fell all the way back to the bare table, so threading
+ * died because of an unrelated missing column.
  */
 const BASE_COLUMNS = "id,author_id,body,whisper_link,created_at,expires_at";
-const OPTIONAL_COLUMNS = ["view_count", "parent_post_id"] as const;
+const OPTIONAL_COLUMNS = ["parent_post_id", "view_count"] as const;
 
 const SUGGESTED_POST = "Hi everyone! I have a little time to talk. Send me an anonymous Whisper and let’s see where the conversation goes.";
 const AI_SUGGESTIONS = [
@@ -48,33 +51,58 @@ const AI_SUGGESTIONS = [
 ];
 
 /**
- * Fetches the live feed, shedding optional columns until the server accepts.
+ * Fetches the live feed, keeping every optional column the server accepts.
+ *
+ * The happy path is one request. Only when that fails does this bisect: each
+ * optional column is probed on its own, and the real query is re-run with the
+ * survivors. So a database missing `view_count` still gets threading, which is
+ * the case the old prefix-shedding version got wrong.
  *
  * Returns the rows plus whether threading survived, so the caller can say so
  * rather than silently rendering a flat feed that looks like a bug.
  */
 async function fetchFeedPosts(): Promise<{ rows: FeedPost[]; threaded: boolean }> {
-  for (let dropped = 0; dropped <= OPTIONAL_COLUMNS.length; dropped += 1) {
-    const optional = OPTIONAL_COLUMNS.slice(0, OPTIONAL_COLUMNS.length - dropped);
-    const columns = [BASE_COLUMNS, ...optional].join(",");
-
-    const { data, error } = await supabase
+  const select = (columns: string) =>
+    supabase
       .from("public_feed_posts")
       .select(columns)
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
 
-    if (!error) {
-      return {
-        rows: (data || []) as unknown as FeedPost[],
-        threaded: optional.includes("parent_post_id"),
-      };
-    }
+  const all = [BASE_COLUMNS, ...OPTIONAL_COLUMNS].join(",");
+  const first = await select(all);
 
-    console.warn(`Public feed select failed with [${columns}]:`, error.message);
+  if (!first.error) {
+    return { rows: (first.data || []) as unknown as FeedPost[], threaded: true };
   }
 
-  return { rows: [], threaded: false };
+  console.warn(`Public feed select failed with [${all}]:`, first.error.message);
+
+  /* Probe each optional column alone. `head: true` asks for no rows, so this
+     costs a schema check rather than a second copy of the feed. */
+  const supported: string[] = [];
+  for (const column of OPTIONAL_COLUMNS) {
+    const { error } = await supabase
+      .from("public_feed_posts")
+      .select(`id,${column}`, { head: true, count: undefined })
+      .limit(1);
+
+    if (!error) supported.push(column);
+    else console.warn(`Public feed column [${column}] unavailable:`, error.message);
+  }
+
+  const columns = [BASE_COLUMNS, ...supported].join(",");
+  const { data, error } = await select(columns);
+
+  if (error) {
+    console.error(`Public feed select failed with [${columns}]:`, error.message);
+    return { rows: [], threaded: false };
+  }
+
+  return {
+    rows: (data || []) as unknown as FeedPost[],
+    threaded: supported.includes("parent_post_id"),
+  };
 }
 
 export default function PublicFeedPage() {
