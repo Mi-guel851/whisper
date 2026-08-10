@@ -74,7 +74,16 @@
    script in app/layout.tsx.
    ========================================================================== */
 
-:root {
+/* Dark is the default token set, and it is also what an always-dark island
+   re-declares on itself.
+
+   Custom properties inherit, so an element carrying `data-surface="dark"` hands
+   this whole set to its subtree — which outranks the light values declared up on
+   `:root[data-theme="light"]` for everything inside it, without a single
+   `!important`. That is how the marketing homepage stays dark in light mode
+   instead of turning into a white nav and white cards sitting on a dark hero. */
+:root,
+[data-surface="dark"] {
   color-scheme: dark;
 
   --theme-bg:             #000000;
@@ -557,6 +566,23 @@ body {
 main.min-h-screen {
   background: transparent;
   color: var(--theme-text);
+}
+
+/* A full-page always-dark island is the one case that has to paint its own
+   canvas. The layer the rule above defers to is `body::before`, which resolves
+   `--theme-bg` up at `:root` — where the light theme still applies — so the
+   marketing page would otherwise render a dark subtree on a pale canvas.
+
+   Painted on the element rather than as another fixed layer: a normally
+   scrolling background is composited and costs one paint, which is the property
+   the fixed-attachment version documented above was missing. */
+main[data-surface="dark"] {
+  background:
+    radial-gradient(ellipse 60rem 40rem at 8% -8%,
+      color-mix(in srgb, var(--theme-accent-purple) 16%, transparent), transparent 70%),
+    radial-gradient(ellipse 50rem 36rem at 96% 4%,
+      color-mix(in srgb, var(--theme-accent-from) 12%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--theme-bg) 0%, var(--theme-surface) 100%);
 }
 
 .theme-accent-gradient,
@@ -2620,6 +2646,23 @@ main.min-h-screen {
 .feed-action-delete:hover { color: var(--theme-error); }
 .feed-action-delete:hover .feed-action-icon {
   background: color-mix(in srgb, var(--theme-error) 14%, transparent);
+}
+
+/* The write-a-reply control that appears once the reply icon has been taken
+   over by the thread count. Text rather than an icon, because the row already
+   has four glyphs and a fifth would need a metaphor nobody would read
+   correctly. Padding matches .feed-action-icon's 2rem box so the row's optical
+   baseline doesn't shift when this appears. */
+.feed-action-write {
+  padding: 0 0.5rem;
+  height: 2rem;
+  border-radius: var(--radius-full);
+}
+
+.feed-action-write:hover,
+.feed-action-write.is-active {
+  color: var(--theme-info);
+  background: color-mix(in srgb, var(--theme-info) 14%, transparent);
 }
 
 /* Views are not a control, so they get no hover state at all — the absence is

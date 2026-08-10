@@ -37,14 +37,33 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen relative overflow-x-hidden" style={{ background: "#0a0814" }}>
+    /* The marketing page is always dark, in both themes.
+
+       It isn't an app screen — it's the product's first impression, and the
+       hero, the phone mockup and the ambient blobs were all composed against a
+       dark canvas. Letting the light theme repaint it turned the nav, the stats
+       card and the footer white while the hero stayed dark, so the page read as
+       two different sites stitched together.
+
+       `data-surface="dark"` re-declares the dark token set on this subtree (see
+       globals.css section 2), so every child resolves dark values through
+       ordinary inheritance. Signed-in screens are untouched — they still honour
+       the user's theme. */
+    <main
+      data-surface="dark"
+      className="theme-bg-gradient min-h-screen relative overflow-x-hidden"
+    >
       <Background />
 
       {/* Sticky hero block */}
       <div
         className="sticky top-0 z-20 overflow-hidden"
         style={{
-          background: "rgba(10, 8, 20, 0.92)",
+          /* Reads from the token rather than a hardcoded near-black, so it
+             tracks the dark canvas this subtree declares. `color-mix` keeps the
+             frosted-over-canvas effect: enough body to blur against, not an
+             opaque slab. */
+          background: "color-mix(in srgb, var(--theme-bg) 92%, transparent)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
         }}
