@@ -572,17 +572,41 @@ main.min-h-screen {
    canvas. The layer the rule above defers to is `body::before`, which resolves
    `--theme-bg` up at `:root` — where the light theme still applies — so the
    marketing page would otherwise render a dark subtree on a pale canvas.
-
-   Painted on the element rather than as another fixed layer: a normally
-   scrolling background is composited and costs one paint, which is the property
-   the fixed-attachment version documented above was missing. */
-main[data-surface="dark"] {
+ *
+ * Painted as a fixed pseudo-element rather than on the element itself, for the
+ * same reason `body::before` exists — and for one more. `main` is
+ * `position: relative`, so its own background paints in the positioned pass,
+ * above every negative-z-index layer beneath it; a background declared directly
+ * on it would have buried the ambient blobs in Background.tsx (a fixed `-z-10`
+ * layer) under an opaque sheet. At `-20` it sits exactly where the app-wide
+ * canvas sits, just later in DOM order, so it covers the light one and the
+ * blobs still float above it.
+ *
+ * Custom properties on a pseudo-element are inherited from the originating
+ * element, so `--theme-bg` here is the island's black, not the root's off-white. */
+main[data-surface="dark"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -20;
+  pointer-events: none;
   background:
     radial-gradient(ellipse 60rem 40rem at 8% -8%,
       color-mix(in srgb, var(--theme-accent-purple) 16%, transparent), transparent 70%),
     radial-gradient(ellipse 50rem 36rem at 96% 4%,
       color-mix(in srgb, var(--theme-accent-from) 12%, transparent), transparent 70%),
+    radial-gradient(ellipse 55rem 40rem at 50% 108%,
+      color-mix(in srgb, var(--theme-accent-pink) 10%, transparent), transparent 70%),
     linear-gradient(180deg, var(--theme-bg) 0%, var(--theme-surface) 100%);
+}
+
+/* The overscroll gutter is the one strip no in-page layer can reach: iOS and
+   Android rubber-band past the document and paint whatever `body` declares. On
+   an always-dark page that flashed a pale band at the top of every bounce.
+   `:has()` is a progressive enhancement here — where it isn't supported the
+   page still renders correctly and only the bounce gutter stays light. */
+:root:has(main[data-surface="dark"]) body {
+  background: #000000;
 }
 
 .theme-accent-gradient,
@@ -1767,6 +1791,103 @@ main[data-surface="dark"] {
   animation: whisper-glow 3.5s var(--ease-soft) infinite;
   pointer-events: none;
   user-select: none;
+}
+
+/* The same mark, but drifting rather than only pulsing in place.
+ *
+ * Two animations on one element instead of one combined keyframe set, because
+ * the glow breathes at 3.5s and the drift wants ~9s — folding them together
+ * would force the slower one to the faster one's period, and a logo bobbing
+ * every 3.5s reads as a nervous tic rather than something weightless. Separate
+ * animations keep the two rhythms independent, and since both write `transform`
+ * the float owns `translate`/`rotate` while `whisper-glow` keeps `scale`.
+ *
+ * Composited: transform, opacity and filter only. There is no layout work in
+ * here, which is what lets it run forever on a phone. */
+.whisper-logo-float {
+  animation:
+    whisper-glow 3.5s var(--ease-soft) infinite,
+    whisper-float 9s var(--ease-soft) infinite;
+  pointer-events: none;
+  user-select: none;
+  will-change: transform, filter, opacity;
+}
+
+@keyframes whisper-float {
+  0%, 100% { translate: 0 0; rotate: -1.5deg; }
+  50%      { translate: 0 -22px; rotate: 1.5deg; }
+}
+
+/* --- Ambient reaction floaters (components/AmbientFloaters.tsx) ---------- */
+
+/* Full-bleed and inert. `overflow: hidden` is what makes the rise look like it
+   comes from off-screen: each floater starts below the bottom edge and is
+   clipped until it climbs into view. */
+.ambient-floaters {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+/* One layer per floater, animating nothing but transform and opacity.
+   `bottom: -10%` puts the start position outside the clip, so the first frame
+   the user sees is already mid-rise rather than an emoji popping into
+   existence. */
+.ambient-floater {
+  position: absolute;
+  bottom: -10%;
+  line-height: 1;
+  opacity: 0;
+  animation-name: ambient-rise;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+
+/* Linear on purpose. An eased loop has a visible slow point where the curve
+   turns around, and on an infinite ambient animation that reads as a stutter;
+   real drifting motion holds a steady speed. The fade is carried by the
+   keyframes instead — in at the bottom, out at the top — so nothing ever
+   appears or vanishes abruptly. */
+@keyframes ambient-rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  12% {
+    opacity: var(--floater-peak, 0.4);
+  }
+  80% {
+    opacity: var(--floater-peak, 0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--floater-drift, 0), -115vh, 0) rotate(22deg);
+  }
+}
+
+/* Ambient motion is the first thing that should go: it carries no information,
+   and a permanently drifting field is exactly the vestibular trigger the
+   preference exists for. The floaters stay — as a still, faint texture — so the
+   page doesn't lose its depth, while the logo keeps only its glow.
+
+   `--floater-rest` is what keeps them scattered once the rise stops. Without it
+   every floater would need a resting position and they'd all land on the same
+   line, turning an ambient field into a row of emoji. */
+@media (prefers-reduced-motion: reduce) {
+  .whisper-logo-float {
+    animation: whisper-glow 3.5s var(--ease-soft) infinite;
+  }
+
+  .ambient-floater {
+    animation: none;
+    opacity: calc(var(--floater-peak, 0.4) * 0.55);
+    bottom: auto;
+    top: var(--floater-rest, 40%);
+  }
 }
 
 .text-white,

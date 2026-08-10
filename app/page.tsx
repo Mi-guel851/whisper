@@ -37,18 +37,6 @@ export default function Home() {
   }
 
   return (
-    /* The marketing page is always dark, in both themes.
-
-       It isn't an app screen — it's the product's first impression, and the
-       hero, the phone mockup and the ambient blobs were all composed against a
-       dark canvas. Letting the light theme repaint it turned the nav, the stats
-       card and the footer white while the hero stayed dark, so the page read as
-       two different sites stitched together.
-
-       `data-surface="dark"` re-declares the dark token set on this subtree (see
-       globals.css section 2), so every child resolves dark values through
-       ordinary inheritance. Signed-in screens are untouched — they still honour
-       the user's theme. */
     <main
       data-surface="dark"
       className="theme-bg-gradient min-h-screen relative overflow-x-hidden"

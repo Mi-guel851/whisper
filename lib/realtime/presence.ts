@@ -147,6 +147,18 @@ class PresenceManager {
 
       watchdog = setTimeout(() => {
         if (settled) return;
+
+        /* The same identity guard the status callback and the sync handler use.
+           By the time this fires, `disconnect()` may already have torn this
+           channel down and a later `connect()` may have replaced it — and
+           reporting a dead channel's silence as the *current* channel's failure
+           would knock out a connection that is working fine. Resolve so the
+           caller isn't left waiting, and leave the live channel alone. */
+        if (this.channel !== channel) {
+          settle();
+          return;
+        }
+
         this.live = false;
         this.stopReaffirming();
         settle();
