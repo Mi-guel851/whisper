@@ -215,10 +215,16 @@ function FriendsPageContent() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setLoading(false); return; }
       setMyId(session.user.id);
-      await presenceManager.connect(session.user.id);
+      /* Listener first, then connect. Registering up front means the roster is
+         applied whenever it arrives — including on a later automatic rebuild —
+         instead of only if the first connect happened to succeed. The connect
+         itself isn't awaited: presence is ambient, and blocking the page's data
+         load on a WebSocket handshake is what made a slow network look like a
+         hung screen. */
       unsubscribePresence = presenceManager.subscribe((users) => {
         if (!cancelled) setOnlineUserIds(users.map((u) => u.id));
       });
+      void presenceManager.connect(session.user.id);
       await Promise.all([loadFriends(session.user.id), loadRequests(session.user.id), loadPeople(session.user.id, 0)]);
       if (cancelled) return;
       setLoading(false);
@@ -243,9 +249,21 @@ function FriendsPageContent() {
 
   const tab = normalizeTab(searchParams.get("tab"));
 
-  // Everyone online except me
-  const friendIdSet = new Set(friends.map((friend) => friend.friend_id));
-  const activeNow = onlineUserIds.filter((id) => id !== myId && !friendIdSet.has(id));
+  const friendIdSet = useMemo(
+    () => new Set(friends.map((friend) => friend.friend_id)),
+    [friends]
+  );
+
+  /* Requests in either direction. Both count as "already handled" for the
+     purposes of the Active tab's action button — an outgoing one is awaiting
+     them, an incoming one is awaiting you on the Requests tab, and neither
+     should offer Add Friend a second time. */
+  const pendingIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    for (const request of outgoing) ids.add(request.receiver_id);
+    for (const request of incoming) ids.add(request.sender_id);
+    return ids;
+  }, [outgoing, incoming]);
 
   /* `onlineUserIds.includes(id)` was the per-row online check in four places,
      each a linear scan of the online list for every row rendered. Presence
@@ -253,6 +271,19 @@ function FriendsPageContent() {
      that ran on every row on every presence event — O(rows × online) per tick,
      across four lists. One Set makes each check a hash lookup. */
   const onlineSet = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
+
+  /* Everyone online but me.
+
+     This used to also exclude friends, on the reasoning that a friend belongs
+     on the Friends tab. But the people actually online are overwhelmingly the
+     ones you've already added, so the filter removed most of its own input and
+     the tab read as empty even with a room full of users. "Active now" means
+     active now — the row's action just changes: Message someone you've added,
+     Add Friend for anyone else. */
+  const activeNow = useMemo(
+    () => onlineUserIds.filter((id) => id !== myId),
+    [onlineUserIds, myId]
+  );
 
   // The count lives on the tab as a badge, not baked into the label string —
   // a label that changes width every time someone comes online re-lays out the
@@ -464,26 +495,49 @@ function FriendsPageContent() {
                 </>
               }
             >
-              {activeNow.map((id) => (
-                <PersonRow
-                  key={id}
-                  avatarUrl={generatedAvatarUrl(id)}
-                  name={anonymousName(id)}
-                  online
-                  subtitle={<ActiveNowLabel />}
-                  actions={
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      loading={busyId === id}
-                      onClick={() => addFriend(id)}
-                      icon={<UserPlus size={15} />}
-                    >
-                      Add Friend
-                    </Button>
-                  }
-                />
-              ))}
+              {activeNow.map((id) => {
+                const isFriend = friendIdSet.has(id);
+                const isPending = pendingIdSet.has(id);
+
+                return (
+                  <PersonRow
+                    key={id}
+                    avatarUrl={generatedAvatarUrl(id)}
+                    name={anonymousName(id)}
+                    online
+                    subtitle={<ActiveNowLabel />}
+                    actions={
+                      isFriend ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={busyId === id}
+                          onClick={() => startChat(id)}
+                          icon={<MessageCircle size={15} />}
+                        >
+                          Message
+                        </Button>
+                      ) : isPending ? (
+                        /* Requested already — shown disabled rather than hidden,
+                           so the row doesn't vanish the moment you tap it. */
+                        <Button size="sm" variant="ghost" disabled>
+                          Pending
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          loading={busyId === id}
+                          onClick={() => addFriend(id)}
+                          icon={<UserPlus size={15} />}
+                        >
+                          Add Friend
+                        </Button>
+                      )
+                    }
+                  />
+                );
+              })}
             </PersonList>
           </section>
         )}
