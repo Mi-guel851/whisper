@@ -96,10 +96,14 @@ export default function DiscoverPage() {
         .eq("is_read", false);
       if (!cancelled) setUnreadFeedCount(feedCount || 0);
 
-      await presenceManager.connect(session.user.id);
+      /* Listener before connect, connect not awaited — see the note in
+         lib/realtime/presence.ts. The roster arrives whenever the channel
+         settles, including after a rebuild, and the feed badge below no longer
+         waits on a WebSocket handshake to appear. */
       unsubscribePresence = presenceManager.subscribe((users) => {
         if (!cancelled) setOnlineUserIds(users.map((user) => user.id));
       });
+      void presenceManager.connect(session.user.id);
 
       feedChannel = supabase
         .channel(`discover-feed-badge-${session.user.id}-${Date.now()}`)

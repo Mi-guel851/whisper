@@ -569,10 +569,13 @@ export default function ChatPage() {
       const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
       setOtherUserId(otherUserId);
       setOtherLabel(anonymousDisplayName(otherUserId));
-      await presenceManager.connect(session.user.id);
+      /* Listener before connect, connect not awaited. The header's online dot is
+         ambient; blocking the rest of thread setup on a presence handshake made
+         a slow socket look like a slow chat. */
       unsubscribePresence = presenceManager.subscribe((users) => {
         setOtherUserOnline(users.some((user) => user.id === otherUserId));
       });
+      void presenceManager.connect(session.user.id);
       unsubscribeTyping = typingManager.subscribe(conversationId, session.user.id, (typing) => {
         setOtherTyping(typing);
       });

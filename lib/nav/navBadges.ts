@@ -223,10 +223,13 @@ async function arm(uid: string) {
     )
     .subscribe();
 
-  await presenceManager.connect(uid);
+  /* Listener before connect, connect not awaited — the nav's friend-online dot
+     picks up the roster whenever the channel settles, including after the
+     manager rebuilds a dropped one. */
   stopPresence = presenceManager.subscribe((users) => {
     patch({ friendOnline: users.some((user) => friendIds.has(user.id)) });
   });
+  void presenceManager.connect(uid);
 }
 
 /**

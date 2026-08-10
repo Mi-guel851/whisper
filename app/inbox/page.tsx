@@ -102,10 +102,14 @@ export default function InboxPage() {
       const userId = session.user.id;
       if (!cancelled) setMyId(userId);
 
-      await presenceManager.connect(userId);
+      /* Listener first, then connect — and the connect isn't awaited. The manager
+         rebuilds its channel on its own after a drop, so registering up front
+         means a later rebuild still reaches these dots. Awaiting the handshake
+         only delayed the conversation list behind a WebSocket. */
       unsubscribePresence = presenceManager.subscribe((users) => {
         if (!cancelled) setOnlineUserIds(users.map((user) => user.id));
       });
+      void presenceManager.connect(userId);
 
       const { data: friendRows, error: friendsError } = await supabase
         .from("friends")

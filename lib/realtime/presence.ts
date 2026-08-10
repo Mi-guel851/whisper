@@ -43,6 +43,18 @@ const RETRY_MAX_MS = 30_000;
  */
 const REAFFIRM_MS = 25_000;
 
+/**
+ * Ceiling on how long a single `subscribe()` may stay unsettled.
+ *
+ * Supabase raises `TIMED_OUT` on its own, so this should never fire in normal
+ * operation. It exists because the one thing this class must never do is leave
+ * `opening` pending: `connect()` awaits an in-flight open rather than starting a
+ * second one, so a callback that never arrives would block every future connect
+ * for the rest of the session — the same permanent-lockout shape as the bug this
+ * rewrite fixes, just reached by a different route.
+ */
+const OPEN_WATCHDOG_MS = 15_000;
+
 class PresenceManager {
   private channel: RealtimeChannel | null = null;
   private listeners = new Set<(users: PresenceUser[]) => void>();
@@ -123,11 +135,23 @@ class PresenceManager {
 
     await new Promise<void>((resolve) => {
       let settled = false;
+      let watchdog: ReturnType<typeof setTimeout> | null = null;
+
       const settle = () => {
         if (settled) return;
         settled = true;
+        if (watchdog) clearTimeout(watchdog);
+        watchdog = null;
         resolve();
       };
+
+      watchdog = setTimeout(() => {
+        if (settled) return;
+        this.live = false;
+        this.stopReaffirming();
+        settle();
+        this.scheduleRetry();
+      }, OPEN_WATCHDOG_MS);
 
       channel.subscribe(async (status) => {
         if (this.channel !== channel) return;
