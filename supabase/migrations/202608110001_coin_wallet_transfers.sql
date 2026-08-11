@@ -240,21 +240,49 @@ alter table public.coin_transfers enable row level security;
 
 -- Widen the type constraint for the two new ledger entries.
 --
--- Added NOT VALID first, then validated: the new set is a strict superset of
--- the old one so no existing row can fail, and this way the table is never
--- held under ACCESS EXCLUSIVE for a full verification scan. The old constraint
--- is dropped only after the replacement is in place, so there is no window
--- where the column is unconstrained.
+-- The allowed set is built from the values already in the table, unioned with
+-- the five this codebase writes. Hard-coding the five is what broke the first
+-- version of this migration: the live database contains a transaction_type
+-- written by a path that was never checked into this folder, so VALIDATE failed
+-- with 23514 and took the whole migration down. Deriving the set means
+-- validation cannot fail and no legitimate existing type is suddenly rejected
+-- on future inserts.
+--
+-- NOT VALID first, then VALIDATE, so the table is never held under ACCESS
+-- EXCLUSIVE for a full verification scan.
 do $$
+declare
+  allowed text[];
+  literals text;
 begin
-  alter table public.coin_transactions add constraint coin_transactions_type_check
-    check (transaction_type in ('purchase', 'spend', 'refund', 'transfer_in', 'transfer_out'))
-    not valid;
-exception when duplicate_object then null;
-end $$;
+  select coalesce(array_agg(distinct transaction_type), '{}'::text[])
+    into allowed
+  from public.coin_transactions
+  where transaction_type is not null;
 
-alter table public.coin_transactions validate constraint coin_transactions_type_check;
-alter table public.coin_transactions drop constraint if exists coin_transactions_transaction_type_check;
+  select string_agg(quote_literal(v), ', ' order by v) into literals
+  from (
+    select distinct unnest(
+      allowed || array['purchase', 'spend', 'refund', 'transfer_in', 'transfer_out']
+    ) as v
+  ) s;
+
+  -- A previous failed run can leave this behind in the NOT VALID state, where
+  -- re-adding it raises duplicate_object and re-validating raises 23514 again.
+  alter table public.coin_transactions
+    drop constraint if exists coin_transactions_type_check;
+
+  execute format(
+    'alter table public.coin_transactions add constraint coin_transactions_type_check
+       check (transaction_type in (%s)) not valid', literals);
+
+  execute 'alter table public.coin_transactions validate constraint coin_transactions_type_check';
+
+  -- Dropped only once the replacement is in place, so there is no window where
+  -- the column is unconstrained.
+  alter table public.coin_transactions
+    drop constraint if exists coin_transactions_transaction_type_check;
+end $$;
 
 -- Links the debit and the credit rows of one transfer.
 alter table public.coin_transactions add column if not exists reference text;
