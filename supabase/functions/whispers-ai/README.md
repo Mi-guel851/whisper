@@ -17,6 +17,11 @@ Deno.env.get("HF_API_TOKEN")
 Deno.env.get("HF_CHAT_MODEL")
 ```
 
+`HF_CHAT_MODEL` should be a Hugging Face router chat model id such as
+`openai/gpt-oss-20b:fastest`. If it is missing or malformed the function falls
+back to that fast in-app-assistant default and logs the configuration issue
+server-side; `HF_API_TOKEN` is still required and has no fallback.
+
 Neither is hardcoded, logged, or included in any response body — including error
 bodies. See "Why the token can't leak" below.
 
@@ -58,7 +63,8 @@ One shape, always:
 ```
 
 Codes: `unauthenticated`, `bad_request`, `empty`, `too_long`, `rate_limited`,
-`daily_limit`, `in_flight`, `timeout`, `unavailable`.
+`daily_limit`, `in_flight`, `timeout`, `configuration_error`,
+`provider_auth`, `model_unavailable`, `unavailable`.
 
 ## Deploying
 

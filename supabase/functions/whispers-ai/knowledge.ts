@@ -76,6 +76,23 @@ What Whisper actually does:
  */
 const NOT_BUILT = `Not available yet — say so politely if asked, and don't describe how to use them: Saved Messages, Pinned Messages (the standalone screen — pinning a message inside a chat does work), Blocklist, Blocked Keywords, Favorites. There is also no in-app account deletion (Contact Support handles it), no way to unsend a whisper, and no way to learn a sender's identity.`;
 
+
+const OFF_TOPIC_PATTERNS = [
+  /\b(capital of|weather|president|prime minister|stock price|exchange rate|sports score)\b/i,
+  /\b(write (me )?(a )?(poem|song|essay|code|website)|help me code|debug my code)\b/i,
+  /\b(homework|recipe|translate this|summari[sz]e this article)\b/i,
+];
+
+const WHISPER_PATTERNS = /\b(whisper|whispers|coin|coins|wallet|address|transfer|chat|message|anonymous|sender|hint|profile|theme|setting|notification|inbox|feed|friend|link|receipt|history|unlock|send|copy|icon|button|home|discover)\b/i;
+
+export const OFF_TOPIC_REPLY =
+  "I'm here specifically to help you with Whisper and its features. Ask me anything about using the app, coins, messages, your wallet, settings, or other Whisper features.";
+
+export function answerOffTopic(question: string): string | null {
+  if (WHISPER_PATTERNS.test(question)) return null;
+  return OFF_TOPIC_PATTERNS.some((pattern) => pattern.test(question)) ? OFF_TOPIC_REPLY : null;
+}
+
 /* --------------------------------------------------------------------------
  * Detail blocks — attached only when relevant
  * ------------------------------------------------------------------------ */
@@ -162,6 +179,11 @@ Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent �
     text: `Getting help: Discover (or Profile) → Help Center for guides and FAQs, Contact Support to reach the team, Feedback to send suggestions, Community Guidelines for the rules. Note that the Help Center FAQ mentions Blocklist and Blocked Keywords, but those screens aren't live yet.`,
   },
 
+  icons: {
+    keywords: ["icon", "button", "symbol", "what does", "lock icon", "copy icon", "send icon", "bell", "ghost", "gem", "search", "trash", "x", "close", "back"],
+    text: `Important icons in Whisper: Home uses the house icon for the dashboard. Discover uses the compass icon. Inbox/chats use the message-circle icon. Whispers uses the ghost icon for received anonymous messages. Coins uses the gem icon for the Coin Store. Profile uses the user icon. The bell opens notifications or notification settings. Send/paper-plane sends a whisper, chat message, feed reply or AI question depending on the current composer. Copy duplicates your Whisper link, wallet address or chat message text. Share opens the device share sheet. Transfer/Send on the wallet card opens coin transfer. History rows in the Coin Store reopen transfer receipts when they are transfers. A lock or keyhole means a paid locked action: unlocking a chat, a sender hint, or the voice-recorder slide-up lock while recording. Lightbulb/Hint is the sender-hint action on a received whisper. Search filters chats or searches within a chat. Trash deletes after confirmation. X closes a modal/sheet or removes an attachment. Arrow-left goes back or exits chat search. More/menu opens extra navigation where present.`,
+  },
+
   account: {
     keywords: ["sign up", "signup", "login", "log in", "password", "forgot", "recovery", "account", "google", "email"],
     text: `Accounts: sign up or log in with email and password, or with Google. Forgot Password sends a reset, and a recovery phrase can be set up as a backup way in. New accounts finish at Complete Profile, where the username that forms your Whisper link is chosen. Whispers AI can't reset a password or recover an account — use Forgot Password, or Contact Support.`,
@@ -188,7 +210,7 @@ const PAGE_TOPICS: Record<string, string[]> = {
   analytics: ["analytics"],
   "activity-log": ["analytics"],
   help: ["support"],
-  support: ["support"],
+  support: ["support", "icons"],
   auth: ["account"],
   "public-profile": ["sending"],
 };

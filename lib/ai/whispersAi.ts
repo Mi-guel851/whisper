@@ -49,6 +49,9 @@ export type AiErrorCode =
   | "daily_limit"
   | "in_flight"
   | "timeout"
+  | "configuration_error"
+  | "provider_auth"
+  | "model_unavailable"
   | "unavailable"
   | "offline";
 
@@ -77,6 +80,9 @@ const ERROR_CODES: AiErrorCode[] = [
   "daily_limit",
   "in_flight",
   "timeout",
+  "configuration_error",
+  "provider_auth",
+  "model_unavailable",
   "unavailable",
   "offline",
 ];

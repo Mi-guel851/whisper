@@ -85,14 +85,21 @@ function subscribeSeen(onChange: () => void) {
   };
 }
 
-function markSeen() {
-  if (seenCache === true) return;
-  seenCache = true;
+function setSeen(nextSeen: boolean) {
+  if (seenCache === nextSeen) return;
+
+  seenCache = nextSeen;
+
   try {
-    window.localStorage.setItem(SEEN_KEY, "true");
+    if (nextSeen) {
+      window.localStorage.setItem(SEEN_KEY, "true");
+    } else {
+      window.localStorage.removeItem(SEEN_KEY);
+    }
   } catch {
     // The ring just shows again next session. Not worth handling further.
   }
+
   seenListeners.forEach((listener) => listener());
 }
 
@@ -149,6 +156,7 @@ export default function WhispersAiAssistant() {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<{ message: string; retryable: boolean } | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -185,6 +193,7 @@ export default function WhispersAiAssistant() {
         setMessages([]);
         setError(null);
         retryRef.current = null;
+        setCanRetry(false);
       }
     });
 
@@ -214,15 +223,6 @@ export default function WhispersAiAssistant() {
     // `pathname` changing is what makes the tab worth re-reading.
   }, [pathname]);
 
-  /* Whether the panel is actually on screen.
-   *
-   * Derived rather than pushed into state by an effect. `open` is the user's
-   * intent — "I want the assistant" — and `hidden` is a property of the route.
-   * Combining them at render time means navigating into a chat can't leave an
-   * orphaned window over the composer, and coming back restores the panel and
-   * its transcript exactly as they were, with no extra render to get there. */
-  const panelOpen = open && !hidden;
-
   /* --- Asking ----------------------------------------------------------- */
 
   const ask = useCallback(
@@ -232,6 +232,7 @@ export default function WhispersAiAssistant() {
 
       inFlightRef.current = true;
       setError(null);
+      setCanRetry(false);
       setPending(true);
 
       /* On a retry the failed question is already in the transcript, so it must
@@ -260,6 +261,7 @@ export default function WhispersAiAssistant() {
 
       if (result.ok) {
         retryRef.current = null;
+        setCanRetry(false);
         setMessages((current) => [
           ...current,
           { id: nextBubbleId(), role: "assistant", content: result.reply },
@@ -268,6 +270,7 @@ export default function WhispersAiAssistant() {
       }
 
       setError({ message: result.message, retryable: result.retryable });
+      setCanRetry(result.retryable);
     },
     [context]
   );
@@ -291,6 +294,7 @@ export default function WhispersAiAssistant() {
     setMessages([]);
     setError(null);
     retryRef.current = null;
+    setCanRetry(false);
     setDraft("");
     inputRef.current?.focus();
   }, [pending]);
@@ -298,14 +302,7 @@ export default function WhispersAiAssistant() {
   const toggleOpen = useCallback(() => {
     setOpen((current) => {
       const next = !current;
-      if (next && !seen) {
-        setSeen(true);
-        try {
-          window.localStorage.setItem(SEEN_KEY, "true");
-        } catch {
-          // Nothing to do — the ring simply shows again next session.
-        }
-      }
+      if (next && !seen) setSeen(true);
       return next;
     });
     vibrate(10);
@@ -605,7 +602,7 @@ export default function WhispersAiAssistant() {
                     </p>
                   </div>
 
-                  {error.retryable && retryRef.current && (
+                  {error.retryable && canRetry && (
                     <button
                       type="button"
                       onClick={retry}
