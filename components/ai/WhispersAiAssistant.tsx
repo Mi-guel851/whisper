@@ -85,14 +85,21 @@ function subscribeSeen(onChange: () => void) {
   };
 }
 
-function markSeen() {
-  if (seenCache === true) return;
-  seenCache = true;
+function setSeen(nextSeen: boolean) {
+  if (seenCache === nextSeen) return;
+
+  seenCache = nextSeen;
+
   try {
-    window.localStorage.setItem(SEEN_KEY, "true");
+    if (nextSeen) {
+      window.localStorage.setItem(SEEN_KEY, "true");
+    } else {
+      window.localStorage.removeItem(SEEN_KEY);
+    }
   } catch {
     // The ring just shows again next session. Not worth handling further.
   }
+
   seenListeners.forEach((listener) => listener());
 }
 
@@ -295,7 +302,7 @@ export default function WhispersAiAssistant() {
   const toggleOpen = useCallback(() => {
     setOpen((current) => {
       const next = !current;
-      if (next && !seen) markSeen();
+      if (next && !seen) setSeen(true);
       return next;
     });
     vibrate(10);
