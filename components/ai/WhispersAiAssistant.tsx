@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
@@ -51,6 +52,49 @@ type Bubble = { id: string; role: "user" | "assistant"; content: string };
 
 /** Marks that the button has been noticed, so the attention ring shows once. */
 const SEEN_KEY = "whisper-ai-seen";
+
+/* --------------------------------------------------------------------------
+ * "Has the button been noticed yet?"
+ *
+ * A one-bit store rather than `useState` + an effect that reads localStorage.
+ * The server has no localStorage, so its snapshot is `true` — the ring is
+ * absent from the server HTML and appears a frame later for a user who hasn't
+ * opened the panel, instead of hydrating into a mismatch. Same shape as
+ * `useSafeReducedMotion`, for the same reason.
+ * ------------------------------------------------------------------------ */
+
+let seenCache: boolean | null = null;
+const seenListeners = new Set<() => void>();
+
+function readSeen(): boolean {
+  if (seenCache === null) {
+    try {
+      seenCache = window.localStorage.getItem(SEEN_KEY) === "true";
+    } catch {
+      // Private mode or storage disabled — treat as seen and skip the ring.
+      seenCache = true;
+    }
+  }
+  return seenCache;
+}
+
+function subscribeSeen(onChange: () => void) {
+  seenListeners.add(onChange);
+  return () => {
+    seenListeners.delete(onChange);
+  };
+}
+
+function markSeen() {
+  if (seenCache === true) return;
+  seenCache = true;
+  try {
+    window.localStorage.setItem(SEEN_KEY, "true");
+  } catch {
+    // The ring just shows again next session. Not worth handling further.
+  }
+  seenListeners.forEach((listener) => listener());
+}
 
 /** Composer never grows past this; it scrolls instead. */
 const MAX_COMPOSER_HEIGHT = 116;
@@ -99,7 +143,7 @@ export default function WhispersAiAssistant() {
 
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [open, setOpen] = useState(false);
-  const [seen, setSeen] = useState(true);
+  const seen = useSyncExternalStore(subscribeSeen, readSeen, () => true);
 
   const [messages, setMessages] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState("");
@@ -150,15 +194,6 @@ export default function WhispersAiAssistant() {
     };
   }, []);
 
-  useEffect(() => {
-    try {
-      setSeen(window.localStorage.getItem(SEEN_KEY) === "true");
-    } catch {
-      // Private mode / storage disabled — just skip the attention ring.
-      setSeen(true);
-    }
-  }, []);
-
   /* --- Presentation decisions -------------------------------------------- */
 
   const hidden = assistantHiddenOn(pathname);
@@ -179,11 +214,14 @@ export default function WhispersAiAssistant() {
     // `pathname` changing is what makes the tab worth re-reading.
   }, [pathname]);
 
-  /* A route the assistant doesn't belong on should also close it, or navigating
-     into a chat from the panel leaves an orphaned window on screen. */
-  useEffect(() => {
-    if (hidden) setOpen(false);
-  }, [hidden]);
+  /* Whether the panel is actually on screen.
+   *
+   * Derived rather than pushed into state by an effect. `open` is the user's
+   * intent — "I want the assistant" — and `hidden` is a property of the route.
+   * Combining them at render time means navigating into a chat can't leave an
+   * orphaned window over the composer, and coming back restores the panel and
+   * its transcript exactly as they were, with no extra render to get there. */
+  const panelOpen = open && !hidden;
 
   /* --- Asking ----------------------------------------------------------- */
 
