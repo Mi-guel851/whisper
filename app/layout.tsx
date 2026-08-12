@@ -10,6 +10,7 @@ import PushNotificationsProvider from "@/components/PushNotificationsProvider";
 import ClickHaptics from "@/components/ClickHaptics";
 import AppUrlHandler from "@/components/AppUrlHandler";
 import OfflineHandler from "@/components/OfflineHandler";
+import WhispersAiAssistant from "@/components/ai/WhispersAiAssistant";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -81,6 +82,13 @@ export default function RootLayout({
             <NotificationProvider>
               <PushNotificationsProvider>
                 {children}
+                {/* Mounted here rather than per-page for two reasons: the
+                    transcript has to survive a navigation, and it must sit
+                    outside app/template.tsx so the route fade can't take its
+                    fixed positioning with it. It renders nothing for signed-out
+                    visitors and hides itself on the marketing, auth,
+                    anonymous-send and chat routes. */}
+                <WhispersAiAssistant />
               </PushNotificationsProvider>
             </NotificationProvider>
           </ToastProvider>

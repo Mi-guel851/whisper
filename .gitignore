@@ -33,6 +33,20 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Supabase Edge Function secrets.
+#
+# `.env*` above already matches these (a pattern with no slash matches at any
+# depth), but they are named explicitly because these files hold HF_API_TOKEN
+# for `supabase functions serve --env-file`, and "it's probably covered" is not
+# good enough for a provider token. Production reads the same names from
+# Supabase secrets, not from any file in this repository.
+supabase/.env
+supabase/.env.*
+supabase/functions/.env
+supabase/functions/.env.*
+supabase/**/.env
+supabase/**/.env.*
+
 # vercel
 .vercel
 
