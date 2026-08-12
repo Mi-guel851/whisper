@@ -70,5 +70,8 @@ export const MESSAGES = {
   DAILY_LIMIT: "You've reached today's Whispers AI limit. It resets tomorrow.",
   IN_FLIGHT: "Whispers AI is still working on your last question — one moment.",
   UNAVAILABLE: "Whispers AI is temporarily unavailable. Please try again in a moment.",
+  CONFIGURATION: "Whispers AI is not configured correctly yet. Please try again later.",
+  PROVIDER_AUTH: "Whispers AI is temporarily unavailable. Please try again in a moment.",
+  MODEL_UNAVAILABLE: "Whispers AI is being updated. Please try again in a moment.",
   TIMEOUT: "That took too long. Please try again in a moment.",
 } as const;

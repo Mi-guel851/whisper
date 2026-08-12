@@ -23,7 +23,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { MESSAGES } from "./config.ts";
-import { buildSystemPrompt } from "./knowledge.ts";
+import { answerOffTopic, buildSystemPrompt } from "./knowledge.ts";
 import { askHuggingFace, readHfConfig } from "./huggingface.ts";
 import { checkDurable, checkLocal, releaseLocal } from "./rateLimit.ts";
 import { parseRequest } from "./validate.ts";
@@ -51,6 +51,9 @@ type ErrorCode =
   | "daily_limit"
   | "in_flight"
   | "timeout"
+  | "configuration_error"
+  | "provider_auth"
+  | "model_unavailable"
   | "unavailable";
 
 /**
@@ -175,6 +178,9 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const offTopic = answerOffTopic(parsed.question);
+    if (offTopic) return json(200, { ok: true, reply: offTopic });
+
     /* Step 7 — the model. */
     const systemPrompt = buildSystemPrompt(parsed.question, parsed.context);
     const outcome = await askHuggingFace(hf, systemPrompt, parsed.history, parsed.question);
@@ -185,10 +191,20 @@ Deno.serve(async (req: Request) => {
     if (outcome.kind === "timeout") {
       return fail(504, "timeout", MESSAGES.TIMEOUT);
     }
-    if (outcome.kind === "unavailable") {
+    if (outcome.kind === "configuration_error") {
+      return fail(503, "configuration_error", MESSAGES.CONFIGURATION);
+    }
+    if (outcome.kind === "authentication_error") {
+      return fail(503, "provider_auth", MESSAGES.PROVIDER_AUTH);
+    }
+    if (outcome.kind === "model_unavailable") {
+      return fail(503, "model_unavailable", MESSAGES.MODEL_UNAVAILABLE);
+    }
+    if (outcome.kind === "provider_unavailable") {
       return fail(503, "unavailable", MESSAGES.UNAVAILABLE);
     }
 
+    console.info(`[whispers-ai] Hugging Face completed chat request with model ${outcome.model}.`);
     return json(200, { ok: true, reply: outcome.reply });
   } catch (cause) {
     /* Anything unforeseen still leaves as the same friendly line. The detail
