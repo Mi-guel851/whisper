@@ -123,6 +123,7 @@ Deno.serve(async (req) => {
                   body,
                 },
                 data: {
+                  type: "whisper",
                   messageId: message.id,
                 },
               },

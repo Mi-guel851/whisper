@@ -115,6 +115,8 @@ Deno.serve(async (req) => {
     const accessToken = await getAccessToken();
     const body = message.image_path
       ? "📷 Sent you a photo"
+      : message.audio_path
+      ? "🎙️ Sent you a voice note"
       : (message.content || "New message").slice(0, 120);
 
     const results = await Promise.all(
@@ -135,6 +137,7 @@ Deno.serve(async (req) => {
                   body,
                 },
                 data: {
+                  type: "message",
                   conversationId,
                   messageId: message.id,
                 },
