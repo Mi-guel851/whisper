@@ -3,9 +3,12 @@ package com.whisper.app;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
@@ -13,6 +16,8 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -21,54 +26,62 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SecureScreenPlugin.class);
-        // Plugin will be auto-registered by Capacitor
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
-        // Edge-to-edge
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        // 1. TRUE FULL SCREEN / EDGE-TO-EDGE
+        Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+
+        // Light/Dark status bar icons based on app theme (Whisper is dark first)
+        WindowInsetsControllerCompat controller = new WindowInsetsControllerCompat(window, window.getDecorView());
+        controller.setAppearanceLightStatusBars(false); // White text on dark bar
+        controller.setAppearanceLightNavigationBars(false);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
 
         WebView webView = getBridge().getWebView();
-
-        // Disable long-press context menu (kills the "website feel")
+        webView.setBackgroundColor(Color.TRANSPARENT); 
+        
+        // 2. SMOOTHNESS / PERFORMANCE TWEAKS
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        webView.setHapticFeedbackEnabled(true);
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setHorizontalScrollBarEnabled(false);
+        
+        // Disable long-press to feel like a native app
         webView.setOnLongClickListener(v -> true);
         webView.setLongClickable(false);
 
-        // Disable overscroll glow effect
-        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
-
-        // Request Notification permission for Android 13+
+        // 3. RUNTIME PERMISSIONS (NOTIFICATIONS)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, PERMISSION_REQUEST_CODE);
             }
         }
 
-        // Custom WebChromeClient to handle microphone rationale
+        // 4. MICROPHONE RATIONALE / PERMISSION FOR WEBVIEW
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 for (String resource : request.getResources()) {
                     if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                        requestMicrophonePermission(request);
+                        if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                        } else {
+                            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.RECORD_AUDIO}, 101);
+                            request.deny();
+                        }
                         return;
                     }
                 }
                 request.grant(request.getResources());
             }
         });
-    }
-
-    private void requestMicrophonePermission(PermissionRequest request) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-        } else {
-            // In a real production app, you'd show a native dialog here first as rationale.
-            // For now, we'll trigger the system prompt.
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, 101);
-            // WebView permission needs to be handled after result. Simplifying for now.
-            request.deny();
-        }
     }
 
     @Override

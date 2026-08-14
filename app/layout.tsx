@@ -24,6 +24,13 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Whisper",
   description: "Anonymous Messaging App",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: "cover",
+  },
 };
 
 export default function RootLayout({

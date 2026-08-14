@@ -8,7 +8,8 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false,
-    overrideUserAgent: "WhisperApp/1.0 Android"
+    overrideUserAgent: "WhisperApp/1.0 Android",
+    backgroundColor: "#000000",
   },
   server: {
     url: 'https://whisper-anonymous.vercel.app',

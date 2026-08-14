@@ -329,6 +329,10 @@ html {
   min-height: 100%;
   background: var(--theme-bg);
   -webkit-text-size-adjust: 100%;
+  /* Support full-screen edge-to-edge on notched devices */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 body {
