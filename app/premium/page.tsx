@@ -3,16 +3,24 @@
 import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import Script from "next/script";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Coins, Gem, Sparkles, WalletCards, Loader2 } from "lucide-react";
+import { Coins, Gem, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { COIN_PACKAGES, CoinPackage } from "@/lib/coins";
 import { CountryInfo, convertForDisplay, formatLocalAmount, getCountryInfo } from "@/lib/currency";
+import { TransferReceipt } from "@/lib/wallet";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
+import WalletAddressCard from "@/components/wallet/WalletAddressCard";
+import TransferCoinsModal from "@/components/wallet/TransferCoinsModal";
+import TransferReceiptModal from "@/components/wallet/TransferReceiptModal";
+import TransactionHistory, {
+  CoinTransaction,
+  HISTORY_PAGE_SIZE,
+} from "@/components/wallet/TransactionHistory";
 
 type PaystackSetupOptions = {
   key: string | undefined;
@@ -35,7 +43,10 @@ declare global {
 
 const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
-type Transaction = { id: string; amount: number; description: string; transaction_type: string; created_at: string };
+const TX_COLUMNS = "id,amount,description,transaction_type,created_at,reference";
+/* Rows fetched per round trip. Larger than the 4 shown initially so the first
+   "Show more" is instant — the second page is already in memory. */
+const FETCH_SIZE = 20;
 
 function AnimatedBalance({ value }: { value: number }) {
   const count = useMotionValue(value);
@@ -54,9 +65,16 @@ export default function PremiumPage() {
   const { showToast } = useToast();
   const [userId, setUserId] = useState("");
   const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
+  const [visibleCount, setVisibleCount] = useState(HISTORY_PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [receipt, setReceipt] = useState<TransferReceipt | null>(null);
 
   const [countryCode, setCountryCode] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<string, number> | null>(null);
@@ -64,16 +82,48 @@ export default function PremiumPage() {
 
   const country: CountryInfo = getCountryInfo(countryCode);
 
+  /**
+   * Reads one page of history.
+   *
+   * Ordered by `created_at desc, id desc` — the secondary key matters: two rows
+   * written in the same transaction (both halves of a transfer, when a user
+   * sends to themselves in testing, or a purchase and its refund) share a
+   * timestamp, and without a tiebreaker Postgres is free to order them
+   * differently between requests, which would let a row appear on two pages.
+   */
+  const fetchTransactions = useCallback(async (uid: string, offset: number) => {
+    const { data, error } = await supabase
+      .from("coin_transactions")
+      .select(TX_COLUMNS)
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + FETCH_SIZE - 1);
 
-  async function refresh(uid: string) {
-    await supabase.rpc("ensure_coin_wallet", { target_user: uid });
-    const [{ data: wallet }, { data: txs }] = await Promise.all([
-      supabase.from("coins").select("balance").eq("user_id", uid).maybeSingle(),
-      supabase.from("coin_transactions").select("id,amount,description,transaction_type,created_at").eq("user_id", uid).order("created_at", { ascending: false }).limit(12),
-    ]);
-    setBalance(wallet?.balance || 0);
-    setTransactions(txs || []);
-  }
+    if (error) throw error;
+    return (data ?? []) as CoinTransaction[];
+  }, []);
+
+  const refresh = useCallback(
+    async (uid: string) => {
+      await supabase.rpc("ensure_coin_wallet", { target_user: uid });
+
+      const [walletResult, txRows] = await Promise.all([
+        supabase
+          .from("coins")
+          .select("balance,wallet_address")
+          .eq("user_id", uid)
+          .maybeSingle(),
+        fetchTransactions(uid, 0),
+      ]);
+
+      setBalance(walletResult.data?.balance ?? 0);
+      setWalletAddress(walletResult.data?.wallet_address ?? null);
+      setTransactions(txRows);
+      setHasMore(txRows.length === FETCH_SIZE);
+    },
+    [fetchTransactions]
+  );
 
   useEffect(() => {
     async function init() {
@@ -93,11 +143,44 @@ export default function PremiumPage() {
         .maybeSingle();
       setCountryCode(profile?.country_code || null);
 
-      await refresh(session.user.id);
+      try {
+        await refresh(session.user.id);
+      } catch {
+        showToast("Couldn't load your wallet.", { variant: "error" });
+      }
       setLoading(false);
     }
     init();
-  }, [router]);
+  }, [router, refresh, showToast]);
+
+  /* Coins can arrive while the page is open — someone transfers to this wallet,
+     or a purchase settles on another device. Both write to `coins`, so one
+     subscription covers every path. */
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`wallet:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "coins",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          refresh(userId).catch(() => {
+            // A dropped refresh isn't worth a toast; the next one recovers.
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, refresh]);
 
   // Live FX rates so the local-currency price shown is accurate. Falls back
   // to the hardcoded table in lib/currency.ts if the provider is unreachable.
@@ -115,6 +198,126 @@ export default function PremiumPage() {
     }
     loadRates();
   }, []);
+
+  /**
+   * Reveals the next batch, fetching another page only when the local buffer
+   * would run dry. New rows are merged by id, so a transfer that landed via
+   * realtime between pages can't be inserted twice.
+   */
+  const handleShowMore = useCallback(async () => {
+    const next = visibleCount + HISTORY_PAGE_SIZE;
+
+    if (next <= transactions.length || !hasMore) {
+      setVisibleCount(Math.min(next, transactions.length));
+      return;
+    }
+
+    setLoadingMore(true);
+    try {
+      const page = await fetchTransactions(userId, transactions.length);
+      setTransactions((current) => {
+        const seen = new Set(current.map((tx) => tx.id));
+        return [...current, ...page.filter((tx) => !seen.has(tx.id))];
+      });
+      setHasMore(page.length === FETCH_SIZE);
+      setVisibleCount(next);
+    } catch {
+      showToast("Couldn't load more transactions.", { variant: "error" });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [visibleCount, transactions.length, hasMore, userId, fetchTransactions, showToast]);
+
+  const handleShowLess = useCallback(() => {
+    setVisibleCount(HISTORY_PAGE_SIZE);
+  }, []);
+
+  const handleOpenReceipt = useCallback(
+    async (reference: string) => {
+      const { data, error } = await supabase.rpc("get_transfer_receipt", {
+        transfer_reference: reference,
+      });
+      if (error || !data) {
+        showToast("Couldn't open that receipt.", { variant: "error" });
+        return;
+      }
+      setReceipt(data as TransferReceipt);
+    },
+    [showToast]
+  );
+
+  /**
+   * Hands the transfer to the database and shows whatever receipt comes back.
+   *
+   * Every rule — address validity, self-transfer, amount, sufficient balance —
+   * is enforced inside `transfer_whisper_coins`, which settles both balances in
+   * one transaction under row locks. The client-side checks in the modal only
+   * save a round trip; they are not what makes this safe.
+   */
+  const handleTransfer = useCallback(
+    async ({
+      address,
+      amount,
+      idempotencyKey,
+    }: {
+      address: string;
+      amount: number;
+      idempotencyKey: string;
+    }) => {
+      try {
+        const { data, error } = await supabase.rpc("transfer_whisper_coins", {
+          recipient_address: address,
+          coin_amount: amount,
+          idempotency_key: idempotencyKey,
+        });
+
+        if (error) {
+          // A thrown exception means nothing was committed — no coins moved.
+          setTransferOpen(false);
+          setReceipt({
+            status: "failed",
+            reference: "—",
+            amount,
+            fee: 0,
+            sender_address: null,
+            recipient_address: null,
+            created_at: new Date().toISOString(),
+            failure_reason:
+              "We couldn't reach the wallet service. No coins have left your balance.",
+          });
+          return;
+        }
+
+        const result = data as TransferReceipt;
+        setTransferOpen(false);
+        setReceipt(result);
+
+        if (result.status === "completed") {
+          if (typeof result.balance === "number") setBalance(result.balance);
+          navigator.vibrate?.(18);
+        }
+
+        // Pull the new ledger rows in either case; a failed attempt leaves the
+        // balance alone but the refresh keeps history authoritative.
+        setVisibleCount(HISTORY_PAGE_SIZE);
+        await refresh(userId).catch(() => {});
+      } catch {
+        setTransferOpen(false);
+        setReceipt({
+          status: "failed",
+          reference: "—",
+          amount,
+          fee: 0,
+          sender_address: null,
+          recipient_address: null,
+          created_at: new Date().toISOString(),
+          failure_reason:
+            "Something went wrong. No coins have left your balance.",
+        });
+      }
+    },
+    [userId, refresh]
+  );
 
   function localPriceFor(pkg: CoinPackage) {
     const baseAmount = country.ngnRegion ? pkg.ngnAmount : pkg.usdAmount;
@@ -185,6 +388,7 @@ export default function PremiumPage() {
             } else {
               setBalance(result.balance || 0);
               showToast(`🎉 ${result.coins ?? pkg.coins} Whisper Coins added to your wallet!`);
+              setVisibleCount(HISTORY_PAGE_SIZE);
               await refresh(userId);
             }
           } catch {
@@ -243,6 +447,19 @@ export default function PremiumPage() {
           </GlassPanel>
         </motion.section>
 
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+          className="mt-6"
+        >
+          <WalletAddressCard
+            address={walletAddress}
+            loading={loading}
+            onTransfer={() => setTransferOpen(true)}
+          />
+        </motion.section>
+
         <section className="mt-8">
           <h2 className="section-title mb-4 flex items-center gap-2"><Gem className="text-cyan-400" /> Buy Coins</h2>
 
@@ -282,14 +499,35 @@ export default function PremiumPage() {
         </section>
 
         <div className="mt-8">
-          <GlassPanel className="rounded-3xl p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><WalletCards className="text-purple-300" /> Wallet History</h2>
-            <div className="space-y-3">
-              {transactions.length === 0 ? <p className="text-sm text-gray-400">No transactions yet.</p> : transactions.map((tx) => <div key={tx.id} className="flex items-center justify-between rounded-2xl bg-white/[0.05] p-3"><div><p className="font-bold">{tx.description}</p><p className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleString()}</p></div><span className={tx.amount > 0 ? "font-black text-emerald-300" : "font-black text-pink-300"}>{tx.amount > 0 ? "+" : ""}{tx.amount}</span></div>)}
-            </div>
-          </GlassPanel>
+          <TransactionHistory
+            transactions={transactions}
+            visibleCount={visibleCount}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+            onShowMore={handleShowMore}
+            onShowLess={handleShowLess}
+            onOpenReceipt={handleOpenReceipt}
+          />
         </div>
       </div>
+
+      <TransferCoinsModal
+        open={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        balance={balance}
+        ownAddress={walletAddress}
+        onSubmit={handleTransfer}
+      />
+
+      <TransferReceiptModal
+        receipt={receipt}
+        onClose={() => setReceipt(null)}
+        onRetry={() => {
+          setReceipt(null);
+          setTransferOpen(true);
+        }}
+      />
+
       <BottomNavigation />
     </main>
   );
