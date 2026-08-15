@@ -888,16 +888,17 @@ export default function ChatPage() {
   }).eq("id", conversationId);
 
   supabase.functions.invoke("notify-new-direct-message", {
-    body: {
-      record: {
-        id: crypto.randomUUID(),
-        conversation_id: conversationId,
-        sender_id: myId,
-        content: content,
-      },
-      type: "INSERT",
+  body: JSON.stringify({
+    record: {
+      id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      sender_id: myId,
+      content: content,
     },
-  }).catch(console.error);
+    type: "INSERT",
+  }),
+  headers: { "Content-Type": "application/json" },
+}).catch(console.error);
 }
 
   async function deleteMessage(msg: Message) {
@@ -1140,18 +1141,19 @@ setReplyingTo(null);
       setInput("");
       setReplyingTo(null);
       showToast("Voice note sent — plays once.");
-
 supabase.functions.invoke("notify-new-direct-message", {
-  body: {
+  body: JSON.stringify({
     record: {
       id: crypto.randomUUID(),
       conversation_id: conversationId,
       sender_id: myId,
-      audio_path: "voice",
+      image_path: "photo",
     },
     type: "INSERT",
-  },
+  }),
+  headers: { "Content-Type": "application/json" },
 }).catch(console.error);
+
     } finally {
       setUploadingPhoto(false);
     }
