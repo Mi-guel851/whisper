@@ -323,6 +323,7 @@ function FriendsPageContent() {
     } else {
       setPeople((prev) => prev.filter((p) => p.id !== profileId));
       showToast("Friend request sent.");
+      supabase.functions.invoke("notify-friend-request", { body: { record: { receiver_id: profileId, sender_id: myId, id: crypto.randomUUID() }, type: "INSERT" } }).catch(console.error);
     }
     await refreshAll(myId);
     setBusyId(null);
@@ -344,6 +345,7 @@ function FriendsPageContent() {
       .insert({ user_id: myId, friend_id: requestRow.sender_id, source: "request" });
     if (friendError && friendError.code !== "23505") showSupabaseError("Request accepted, but adding the friend failed.", friendError);
     else showToast("Friend added.");
+    supabase.functions.invoke("notify-friend-request", { body: { record: { sender_id: requestRow.sender_id, receiver_id: myId, id: requestId, status: "accepted" }, type: "UPDATE" } }).catch(console.error);
     await refreshAll(myId);
     setBusyId(null);
   }
