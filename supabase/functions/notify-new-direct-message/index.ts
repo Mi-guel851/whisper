@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     const senderId = message.sender_id;
     const conversationId = message.conversation_id;
 
-    // 1. Get conversation details to find the recipient
+    // 1. Get conversation to find the recipient
     const { data: convo, error: convoError } = await supabase
       .from("conversations")
       .select("user_a, user_b")
@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 
     const receiverId = convo.user_a === senderId ? convo.user_b : convo.user_a;
 
-    // 2. Check if the receiver has push notifications enabled in their profile
+    // 2. Check push notification preference
     const { data: profile } = await supabase
       .from("profiles")
       .select("push_notifications")
@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "user disabled notifications" }), { status: 200 });
     }
 
-    // 3. Get FCM tokens for the receiver
+    // 3. Get FCM tokens
     const { data: tokens } = await supabase
       .from("device_tokens")
       .select("fcm_token")
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "no device tokens" }), { status: 200 });
     }
 
-    // 4. Send notifications via FCM
+    // 4. Build notification body
     const accessToken = await getAccessToken();
     const body = message.image_path
       ? "📷 Sent you a photo"
@@ -119,6 +119,7 @@ Deno.serve(async (req) => {
       ? "🎙️ Sent you a voice note"
       : (message.content || "New message").slice(0, 120);
 
+    // 5. Send FCM push to all devices
     const results = await Promise.all(
       tokens.map((t: { fcm_token: string }) =>
         fetch(
@@ -137,9 +138,9 @@ Deno.serve(async (req) => {
                   body,
                 },
                 data: {
-                  type: "message",
+                  type: "direct_message",
                   conversationId,
-                  messageId: message.id,
+                  messageId: message.id ?? "",
                 },
               },
             }),

@@ -859,46 +859,46 @@ export default function ChatPage() {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
   }, [pendingPhoto]);
 
-  async function sendMessage() {
-    setShowEmojiPicker(false);
-    setShowAttachSheet(false);
-    if (pendingPhoto) { await sendPendingPhoto(); return; }
-    const hasMessage = input.trim().length > 0;
-    if (!chatUnlocked) {
-      showToast(isFriendConversation
-        ? "You need 40 coins to unlock this conversation."
-        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
-      return;
-    }
-    if (!hasMessage || !myId) return;
-    const content = input.trim();
-    setInput("");
-    const replyId = replyingTo?.id || null;
-    setReplyingTo(null);
-    const { error } = await supabase.from("direct_messages").insert({
-  conversation_id: conversationId,
-  sender_id: myId,
-  content: content,
-  reply_to_id: replyId,
-});
-if (error) { showToast(error.message); return; }
-await supabase.from("conversations").update({
-  last_message_at: new Date().toISOString(),
-  last_message_sender_id: myId,
-}).eq("id", conversationId);
-supabase.functions.invoke("notify-new-direct-message", {
-  body: {
-    record: {
-      id: crypto.randomUUID(),
-      conversation_id: conversationId,
-      sender_id: myId,
-      receiver_id: otherUserId,
-      content: content,
-    },
-    type: "INSERT",
-  },
-}).catch(console.error);
+ async function sendMessage() {
+  setShowEmojiPicker(false);
+  setShowAttachSheet(false);
+  if (pendingPhoto) { await sendPendingPhoto(); return; }
+  const hasMessage = input.trim().length > 0;
+  if (!chatUnlocked) {
+    showToast(isFriendConversation
+      ? "You need 40 coins to unlock this conversation."
+      : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins to send messages.`);
+    return;
   }
+  if (!hasMessage || !myId) return;
+  const content = input.trim();
+  setInput("");
+  const replyId = replyingTo?.id || null;
+  setReplyingTo(null);
+  const { error } = await supabase.from("direct_messages").insert({
+    conversation_id: conversationId,
+    sender_id: myId,
+    content: content,
+    reply_to_id: replyId,
+  });
+  if (error) { showToast(error.message); return; }
+  await supabase.from("conversations").update({
+    last_message_at: new Date().toISOString(),
+    last_message_sender_id: myId,
+  }).eq("id", conversationId);
+
+  supabase.functions.invoke("notify-new-direct-message", {
+    body: {
+      record: {
+        id: crypto.randomUUID(),
+        conversation_id: conversationId,
+        sender_id: myId,
+        content: content,
+      },
+      type: "INSERT",
+    },
+  }).catch(console.error);
+}
 
   async function deleteMessage(msg: Message) {
     setDeleteConfirm(null);
@@ -1037,11 +1037,22 @@ supabase.functions.invoke("notify-new-direct-message", {
         last_message_at: new Date().toISOString(),
         last_message_sender_id: myId,
       }).eq("id", conversationId);
+     supabase.functions.invoke("notify-new-direct-message", {
+  body: {
+    record: {
+      id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      sender_id: myId,
+      image_path: "photo",
+    },
+    type: "INSERT",
+  },
+}).catch(console.error);
 
-      URL.revokeObjectURL(pendingPhoto.previewUrl);
-      setPendingPhoto(null);
-      setInput("");
-      setReplyingTo(null);
+URL.revokeObjectURL(pendingPhoto.previewUrl);
+setPendingPhoto(null);
+setInput("");
+setReplyingTo(null);
     } finally {
       setUploadingPhoto(false);
     }
@@ -1129,6 +1140,18 @@ supabase.functions.invoke("notify-new-direct-message", {
       setInput("");
       setReplyingTo(null);
       showToast("Voice note sent — plays once.");
+
+supabase.functions.invoke("notify-new-direct-message", {
+  body: {
+    record: {
+      id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      sender_id: myId,
+      audio_path: "voice",
+    },
+    type: "INSERT",
+  },
+}).catch(console.error);
     } finally {
       setUploadingPhoto(false);
     }
