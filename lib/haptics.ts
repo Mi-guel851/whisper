@@ -6,7 +6,7 @@ export async function vibrate(pattern: number | number[] = 12) {
   // 1. Try Native Capacitor Haptics first (Premium Feel)
   if (Capacitor.isNativePlatform()) {
     try {
-      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+      const { Haptics, ImpactStyle } = await import("@capacitor/haptics").catch(() => ({ Haptics: null, ImpactStyle: null })) as any;
       // For short clicks, use light impact
       if (typeof pattern === "number" && pattern <= 15) {
         await Haptics.impact({ style: ImpactStyle.Light });
