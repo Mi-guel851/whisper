@@ -168,21 +168,29 @@ function StoryFrame({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        /* Whisper's own night sky in place of the reference's flat charcoal —
-           the same palette the rest of the app already sits on. */
-        background: "linear-gradient(165deg, #0b1030 0%, #131c4b 38%, #201751 72%, #2a1748 100%)",
+        /* Glossy black. Two layers doing two jobs: a soft sheen falling from just
+           above the top edge, which is what reads as lacquer rather than matte
+           paint, over a black body that is never quite #000 until the very bottom
+           — a flat black canvas kills the card's own edge light and the whole
+           thing goes shapeless. */
+        background:
+          "radial-gradient(125% 72% at 50% -8%, rgba(255,255,255,0.17) 0%, rgba(255,255,255,0.055) 26%, rgba(255,255,255,0) 58%), " +
+          "linear-gradient(168deg, #15161b 0%, #0b0c10 34%, #050507 68%, #000000 100%)",
       }}
     >
-      {/* Painted, never blurred — see the note on this component. */}
+      {/* Painted, never blurred — see the note on this component. Alphas are
+          roughly half what they were on the indigo canvas: the same values over
+          black read as a colour wash rather than a bloom, and the point is that
+          this is black with Whisper in it, not purple. */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(78% 42% at 12% 3%, rgba(34,211,238,0.22) 0%, rgba(34,211,238,0) 62%), " +
-            "radial-gradient(84% 44% at 93% 70%, rgba(236,72,153,0.20) 0%, rgba(236,72,153,0) 64%), " +
-            "radial-gradient(70% 38% at 50% 101%, rgba(139,92,246,0.20) 0%, rgba(139,92,246,0) 66%)",
+            "radial-gradient(78% 42% at 12% 3%, rgba(34,211,238,0.13) 0%, rgba(34,211,238,0) 62%), " +
+            "radial-gradient(84% 44% at 93% 70%, rgba(236,72,153,0.12) 0%, rgba(236,72,153,0) 64%), " +
+            "radial-gradient(70% 38% at 50% 101%, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0) 66%)",
         }}
       />
 
