@@ -10,7 +10,7 @@ browser / Capacitor WebView
 app/api/whispers-ai/route.ts           (Vercel, Node runtime)
         │  x-goog-api-key: GEMINI_API_KEY
         ▼
-generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
+generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent
 ```
 
 The browser never sees `GEMINI_API_KEY`, never sees the model id, and never calls
@@ -18,7 +18,7 @@ Google. Both are read at request time from the server environment:
 
 ```ts
 process.env.GEMINI_API_KEY      // required
-process.env.GEMINI_CHAT_MODEL   // optional, defaults to gemini-2.5-flash
+process.env.GEMINI_CHAT_MODEL   // optional, defaults to gemini-flash-latest
 ```
 
 Neither is hardcoded, logged, or included in any response body — including error
@@ -177,8 +177,44 @@ All in `config.ts`:
 - `thinkingConfig: { thinkingBudget: 0 }` on the Flash models. On the 2.5 family
   thinking tokens are billed against `maxOutputTokens`, so a model left to think
   freely can spend the entire budget reasoning and return `MAX_TOKENS` with no text
-  at all. Only Flash and Flash-Lite accept `0` — Pro's minimum is 128, so the field
-  is omitted for anything that isn't clearly one of those two.
+  at all. Pro rejects `0` (its minimum is 128), so the field goes only to Flash
+  ids — and if a Flash model ever rejects it too, the retry ladder drops it rather
+  than failing the question.
+
+## Model selection and the fallback ladder
+
+The default is the rolling alias `gemini-flash-latest`, not a pinned id. That is a
+scar, not a preference: the default used to be `gemini-2.5-flash`, Google retired
+it, and every request came back 404 — which the app surfaced as "Whispers AI is
+being updated", a message indistinguishable from a transient blip. Nothing pointed
+at the real cause until someone read the function log.
+
+So `gemini.ts` now walks a ladder (`MODEL_LADDER`), configured model first:
+
+```
+gemini-flash-latest → gemini-3.5-flash → gemini-3-flash → gemini-2.5-flash → gemini-flash-lite-latest
+```
+
+- **404** on a model → try the next candidate. A retirement heals itself.
+- **400** that isn't about the key → retry the same model once without the optional
+  `thinkingConfig` / `safetySettings` fields, since those are what a new model
+  family is most likely to have renamed. Still 400 → next candidate.
+- **401 / 403 / 429 / 5xx / timeout** → terminal. Retrying can't help, and on 429
+  it would make things worse.
+
+Capped at `MAX_ATTEMPTS = 4` upstream calls per question, and the whole ladder
+shares one 20-second deadline — retries with their own budgets would add up past
+`maxDuration` and let the platform kill the invocation.
+
+When a fallback answers, the log names it and suggests pinning
+`GEMINI_CHAT_MODEL` to skip the wasted attempts on later requests.
+
+To see what a key can actually reach:
+
+```bash
+curl -s "https://generativelanguage.googleapis.com/v1beta/models" \
+  -H "x-goog-api-key: $GEMINI_API_KEY" | grep -o '"name": "models/[^"]*"'
+```
 
 ## Two timeouts, in the right order
 

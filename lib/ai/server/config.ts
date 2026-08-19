@@ -71,15 +71,7 @@ export const LIMITS = {
   TOP_P: 0.9,
 } as const;
 
-/**
- * Default model.
- *
- * Flash rather than Pro: the answers are short, grounded lookups against a
- * system prompt, which is what Flash is good at and what Pro would only make
- * slower and more expensive. Override with the `GEMINI_CHAT_MODEL` environment
- * variable — see `readGeminiConfig`.
- */
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
 
 const GEMINI_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models";
 
