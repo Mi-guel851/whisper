@@ -29,31 +29,12 @@ export default function GrantCoinsPage() {
         router.push("/login");
         return;
       }
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("is_admin")
-        .eq("id", session.user.id)
-        .single();
 
-      /* A query that failed and a genuine non-admin used to produce the same
-         silent bounce to /dashboard, which made an unapplied migration look
-         identical to a permissions decision. 42703 is "column does not exist",
-         i.e. 202608190002 has not been run — no amount of reopening the page
-         will fix that, so it says so instead of redirecting. */
-      if (error) {
-        setBlocked(
-          error.code === "42703"
-            ? "This database is missing the admin columns. Apply supabase/migrations/202608190002_admin_coin_grants.sql, then set is_admin on your profile."
-            : error.message
-        );
-        setChecking(false);
-        return;
-      }
-
-      if (!profile?.is_admin) {
-        router.push("/dashboard");
-        return;
-      }
+      /* No `profiles.is_admin` lookup any more. That check is what bounced this
+         page to /dashboard: the column has to be set by hand per account, and an
+         account without it was indistinguishable from a database that never had
+         the column at all. The PIN is the credential now, and it is verified
+         server-side on every grant — see app/api/admin/grant-coins/route.ts. */
       setChecking(false);
     }
     init();
@@ -77,6 +58,14 @@ export default function GrantCoinsPage() {
       const data = await res.json();
 
       if (!res.ok) {
+        /* A 500 here is a server misconfiguration, not a typo — ADMIN_GRANT_PIN
+           missing from the deploy environment. Retyping the PIN can never fix it,
+           so it goes to the blocking panel instead of a toast the user would
+           dismiss and try again against. */
+        if (res.status === 500) {
+          setBlocked(data.error || "The server is not configured for coin grants.");
+          return;
+        }
         showToast(data.error || "Incorrect PIN.");
         return;
       }
@@ -103,20 +92,43 @@ export default function GrantCoinsPage() {
       return;
     }
 
-    setBusy(true);
-    const { data, error } = await supabase.rpc("admin_grant_coins", {
-      target_username: cleanUsername,
-      coin_amount: amount,
-      grant_note: note.trim() || "Premium Grant",
-    });
-    setBusy(false);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push("/login");
+      return;
+    }
 
-    if (error) {
-      showToast(error.message);
-    } else {
-      showToast(`✅ Granted ${amount} coins to @${cleanUsername}. New balance: ${data}`);
+    setBusy(true);
+    try {
+      /* Posted to our own server rather than calling supabase.rpc directly. The
+         RPC is revoked from `authenticated` by 202608190004 and refuses any caller
+         with a user JWT, so the service role key — which only exists server-side —
+         is the sole way to reach it. The PIN travels with the request because the
+         server re-checks it here; the unlocked form is a rendering state and
+         proves nothing on its own. */
+      const res = await fetch("/api/admin/grant-coins", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ pin, username: cleanUsername, amount, note: note.trim() }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || "Could not grant coins.");
+        return;
+      }
+
+      showToast(`✅ Granted ${amount} coins to @${cleanUsername}. New balance: ${data.balance}`);
       setUsername("");
       setCoinAmount("");
+    } catch (err) {
+      console.error("Grant error:", err);
+      showToast("Something went wrong granting coins. Check console.");
+    } finally {
+      setBusy(false);
     }
   }
 

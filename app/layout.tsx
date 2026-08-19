@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Inter } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
@@ -21,16 +21,29 @@ const inter = Inter({
   axes: ["opsz"],
 });
 
+/* metadataBase resolves every relative OG/Twitter image path in the app. Left
+   unset, Next falls back to http://localhost:3000 — so a profile link shared
+   from production pointed the scraper at localhost and rendered no preview at
+   all. Same env-var-with-fallback shape as app/u/[username]/layout.tsx. */
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app"
+  ),
   title: "Whisper",
   description: "Anonymous Messaging App",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-    viewportFit: "cover",
-  },
+};
+
+/* Next reads viewport only from its own export; a `viewport` key inside
+   `metadata` is accepted by the type but then discarded, which is what the build
+   warned about once per route. The values are unchanged — viewportFit "cover" is
+   what lets the shell paint into the iOS safe areas, and the scale locks are what
+   stop Android zooming the page when the chat input takes focus. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
