@@ -2,19 +2,27 @@
  * The browser half of Whispers AI.
  *
  * This module is the only thing in the app that talks to the assistant, and it
- * talks to exactly one place: the `whispers-ai` Supabase Edge Function. There is
- * no Hugging Face URL, model name, or token anywhere in the client bundle —
- * those live in Supabase secrets and are read server-side only. If you ever find
- * yourself needing `HF_API_TOKEN` here, the design has gone wrong.
+ * talks to exactly one place: `POST /api/whispers-ai`, our own route. There is no
+ * Gemini URL, model name, or API key anywhere in the client bundle — those live
+ * in server environment variables and are read only inside
+ * lib/ai/server/gemini.ts. If you ever find yourself needing `GEMINI_API_KEY`
+ * here, the design has gone wrong.
  *
- * The limits below mirror supabase/functions/whispers-ai/config.ts. They exist
- * so the composer can enforce a character count and trim history *before*
- * spending a round trip; the server re-checks every one of them and is the only
- * authority. Keep the two files in step — the server rejecting something the
- * client allowed is a bad error message, not a security hole.
+ * A relative URL is deliberate. The Capacitor shells load the deployed site
+ * through `server.url`, so the app's origin *is* the deployment — the same
+ * relative path resolves correctly in a browser tab and inside the native
+ * WebView, with no per-platform base URL to keep in sync.
+ *
+ * The limits below mirror lib/ai/server/config.ts. They exist so the composer can
+ * enforce a character count and trim history *before* spending a round trip; the
+ * server re-checks every one of them and is the only authority. Keep the two
+ * files in step — the server rejecting something the client allowed is a bad
+ * error message, not a security hole.
  */
 
-import { supabase } from "@/lib/supabase/client";
+import { getCachedSession } from "@/lib/supabase/session";
+
+const ENDPOINT = "/api/whispers-ai";
 
 export const AI_LIMITS = {
   /** Matches MAX_QUESTION_CHARS server-side. */
@@ -23,7 +31,7 @@ export const AI_LIMITS = {
   MAX_HISTORY_MESSAGES: 6,
 } as const;
 
-/** Shown on first open. Mirrors QUICK_QUESTIONS in the function's knowledge.ts. */
+/** Shown on first open. Mirrors QUICK_QUESTIONS in lib/ai/server/knowledge.ts. */
 export const QUICK_QUESTIONS = [
   "How do Whispers work?",
   "How do I send an anonymous message?",
@@ -52,6 +60,7 @@ export type AiErrorCode =
   | "configuration_error"
   | "provider_auth"
   | "model_unavailable"
+  | "blocked"
   | "unavailable"
   | "offline";
 
@@ -83,6 +92,7 @@ const ERROR_CODES: AiErrorCode[] = [
   "configuration_error",
   "provider_auth",
   "model_unavailable",
+  "blocked",
   "unavailable",
   "offline",
 ];
@@ -114,18 +124,16 @@ function toResult(body: ServerBody | null): AiResult {
 }
 
 /**
- * `functions.invoke` reports a non-2xx as an error whose `context` is the raw
- * `Response`. That body is our own structured payload, so it's worth reading —
- * without this, every server-side refusal collapses into one generic string and
- * the rate-limit and daily-limit messages never reach the user.
+ * Reads the envelope off a response, whatever its status.
+ *
+ * Both halves matter. A non-2xx from our own route still carries a structured
+ * body, and without reading it every server-side refusal would collapse into one
+ * generic string — the rate-limit and daily-limit messages would never reach the
+ * user. And a response that *isn't* our JSON (a platform timeout page, a
+ * captive-portal interception) must not throw; it becomes `null`, which
+ * `toResult` renders as the generic fallback.
  */
-async function bodyFromInvokeError(error: unknown): Promise<ServerBody | null> {
-  const context = (error as { context?: unknown } | null)?.context;
-  if (!context || typeof context !== "object") return null;
-
-  const response = context as Response;
-  if (typeof response.json !== "function") return null;
-
+async function readBody(response: Response): Promise<ServerBody | null> {
   try {
     return (await response.json()) as ServerBody;
   } catch {
@@ -185,19 +193,39 @@ export async function askWhispersAi(input: {
   }
 
   try {
-    const { data, error } = await supabase.functions.invoke("whispers-ai", {
-      body: {
+    /* The access token has to be attached by hand now. `functions.invoke` used to
+       do it for us; a plain `fetch` to our own route does not, and without the
+       header the route can't identify the user and answers 401. `getCachedSession`
+       rather than `supabase.auth.getSession()` so this resolves from memory
+       instead of re-reading storage on every question. */
+    const session = await getCachedSession();
+    const accessToken = session?.access_token;
+
+    if (!accessToken) {
+      return {
+        ok: false,
+        code: "unauthenticated",
+        message: "Sign in to Whisper to chat with Whispers AI.",
+        retryable: false,
+      };
+    }
+
+    const response = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
         message,
         history: trimHistory(input.history ?? []),
         ...(input.context && Object.keys(input.context).length > 0
           ? { context: input.context }
           : {}),
-      },
+      }),
     });
 
-    if (error) return toResult(await bodyFromInvokeError(error));
-
-    return toResult(data as ServerBody | null);
+    return toResult(await readBody(response));
   } catch {
     /* A network-level failure. No detail is surfaced deliberately — there is
        nothing here a user can act on, and the server log has the real story. */
