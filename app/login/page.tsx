@@ -8,6 +8,7 @@ import { useToast } from "@/components/ToastProvider";
 import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
 import AuthField from "@/components/auth/AuthField";
 import GoogleMark from "@/components/auth/GoogleMark";
+import { SIGNUPS_CLOSED } from "@/lib/signupGate";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 
@@ -54,6 +55,18 @@ export default function LoginPage() {
   }
 
   async function signInWithGoogle() {
+    /* Google is the same call on both screens: `signInWithOAuth` signs in an
+       existing account and creates a new one, with nothing in the API to ask for
+       only the first. So while signups are closed this button can't be offered
+       here either — it would be the side door around /signup's gate.
+
+       Email and password below are untouched, which is what keeps the test
+       accounts working: those already exist, so they need no creation path. */
+    if (SIGNUPS_CLOSED) {
+      router.push("/signup");
+      return;
+    }
+
     setLoadingGoogle(true);
     const isNative = Capacitor.isNativePlatform();
 
@@ -188,14 +201,22 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <div className="auth-divider">
-        <span>or</span>
-      </div>
+      {/* Hidden rather than disabled while signups are closed. A greyed-out
+          Google button invites a tap and then explains nothing; the guard in
+          `signInWithGoogle` stays as the backstop for any path that still
+          reaches it. The divider goes with it — "or" with nothing after it. */}
+      {!SIGNUPS_CLOSED && (
+        <>
+          <div className="auth-divider">
+            <span>or</span>
+          </div>
 
-      <button onClick={signInWithGoogle} disabled={loadingGoogle} className="auth-google">
-        {loadingGoogle ? <Loader2 size={20} className="animate-spin" /> : <GoogleMark />}
-        {loadingGoogle ? "Connecting..." : "Continue with Google"}
-      </button>
+          <button onClick={signInWithGoogle} disabled={loadingGoogle} className="auth-google">
+            {loadingGoogle ? <Loader2 size={20} className="animate-spin" /> : <GoogleMark />}
+            {loadingGoogle ? "Connecting..." : "Continue with Google"}
+          </button>
+        </>
+      )}
 
       <p className="auth-footnote">
         Don&apos;t have an account?{" "}

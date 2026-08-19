@@ -3,7 +3,9 @@
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
+import ComingSoonGate from "@/components/auth/ComingSoonGate";
 import GoogleMark from "@/components/auth/GoogleMark";
+import { SIGNUPS_CLOSED } from "@/lib/signupGate";
 import { Capacitor } from "@capacitor/core";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -14,6 +16,14 @@ export default function SignupPage() {
   const { showToast } = useToast();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
+  /* Return before any of the Google machinery is reachable.
+     Not a disabled button: `signInWithOAuth` is what *creates* the account, so
+     the correct place to stop is in front of the call, not on the control that
+     happens to trigger it. See lib/signupGate.ts. */
+  if (SIGNUPS_CLOSED) {
+    return <ComingSoonGate />;
+  }
 
   async function registerFcmToken() {
     const isNative = Capacitor.isNativePlatform();

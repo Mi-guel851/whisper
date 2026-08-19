@@ -6,8 +6,10 @@ import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
 import AuthField from "@/components/auth/AuthField";
+import ComingSoonGate from "@/components/auth/ComingSoonGate";
 import CountryPhoneInput, { type CountryPhoneValue } from "@/components/CountryPhoneInput";
 import { COUNTRIES } from "@/lib/countries";
+import { SIGNUPS_CLOSED } from "@/lib/signupGate";
 import { AtSign, Lock, ShieldCheck, Loader2 } from "lucide-react";
 
 function countryCodeFromProfile(countryName: string | null | undefined, fallbackCode: string | null | undefined) {
@@ -26,6 +28,7 @@ export default function CompleteProfilePage() {
   const { showToast } = useToast();
 
   const [checking, setChecking] = useState(true);
+  const [gated, setGated] = useState(false);
   const [userId, setUserId] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -62,6 +65,26 @@ export default function CompleteProfilePage() {
 
       if (profile?.profile_completed) {
         router.push("/dashboard");
+        return;
+      }
+
+      /* The gate. This runs *after* the profile lookup on purpose: reaching here
+         with `profile_completed` false is the definition of a signup in
+         progress, and it's the only signal that distinguishes a brand-new
+         Google account from a test account that has already onboarded. Existing
+         users never get this far — the redirect above catches them first.
+
+         The account does exist in auth.users by now; Supabase created it during
+         the OAuth exchange and there is no client-side way to undo that. Signing
+         out is what keeps that from mattering: without it the app would hold a
+         live session for an account with no username that can never finish
+         onboarding, and every guarded screen would bounce it back here forever.
+         Signed out, the row is inert — and it costs nothing, because the same
+         person can complete signup normally once signups reopen. */
+      if (SIGNUPS_CLOSED) {
+        setGated(true);
+        setChecking(false);
+        await supabase.auth.signOut();
         return;
       }
 
@@ -205,6 +228,12 @@ export default function CompleteProfilePage() {
         </div>
       </AuthShell>
     );
+  }
+
+  /* After the spinner, so a gated arrival sees the loading state resolve into an
+     explanation rather than a flash of the username form it can't submit. */
+  if (gated) {
+    return <ComingSoonGate />;
   }
 
   if (step === "recovery") {
