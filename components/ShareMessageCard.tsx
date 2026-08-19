@@ -509,12 +509,11 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
     );
 
     const canvas = await html2canvas(card, {
-      /* Shows only through the frame's rounded corners, so it is the frame's own
-         darkest stop rather than black — black is what put a hard dark frame
-         around every exported share image. Not `null` either: a transparent PNG
-         gets flattened to white or black by whichever app it lands in, which is
-         the same bug with an extra step. */
-      backgroundColor: "#0b1030",
+      /* Shows only through the frame's rounded corners, so it tracks the frame's
+         own darkest stop — now that the canvas is glossy black, that is black.
+         Not `null`: a transparent PNG gets flattened to white or black by
+         whichever app it lands in, which is a bug with an extra step. */
+      backgroundColor: "#000000",
       scale,
       useCORS: true,
       logging: false,
