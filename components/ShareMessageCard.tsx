@@ -26,27 +26,42 @@ const CANVAS_H = 1920;
 /** Left/right canvas margin, which lands the card at 864 wide. */
 const CANVAS_PAD_X = 108;
 
+/* ---------------------------------------------------------------------------
+   Brand assets for the watermark.
+
+   These replace an inline SVG ghost and the wordmark set in whatever sans-serif
+   the device happened to have. That pairing is what made the signature read as a
+   mockup rather than a brand: a system font is not the logotype, and it changed
+   shape between an iPhone and an Android.
+
+   The previous inline vector existed for a real reason — the version before it
+   was `next/image` on `/ghost.png` with `grayscale invert` applied, and
+   html2canvas has to both re-fetch that URL and re-apply the filters inside its
+   own clone. When either step missed, the export landed with a hole where the
+   logo should be. Two things make the image safe here: no CSS filter is involved
+   at all, and `getImageBlob` already awaits `decode()` on every `<img>` in the
+   frame before capturing, so a half-loaded asset cannot be rasterized.
+
+   The space in the wordmark's filename is percent-encoded deliberately. A literal
+   space works in most browsers, but html2canvas re-resolves every URL in its
+   clone, and that is not a place to rely on lenient parsing.
+   --------------------------------------------------------------------------- */
+const GHOST_SRC = "/ghost.png";
+const WORDMARK_SRC = "/share-message-card%20text.png";
+
 /**
- * The Whisper ghost, drawn rather than loaded.
+ * How much of the wordmark asset is transparent margin on each side.
  *
- * The logo used to be `next/image` pointed at `/ghost.png` with `grayscale
- * invert` on top. html2canvas has to re-fetch that URL at capture time and
- * re-apply the filters itself, and when either step misses, the export lands
- * with a hole where the logo should be. Inline vector geometry has nothing to
- * fetch and no filter to emulate, so it rasterizes identically every time.
+ * Measured off the PNG: the glyphs occupy roughly the middle 54% of its width and
+ * 44% of its height, centred. That padding is invisible but it still takes up
+ * layout space, so a flex `gap` alone would leave an ~88px hole between the ghost
+ * and the W. The negative margins below cancel it symmetrically, which keeps the
+ * lockup optically centred even if this estimate is a few percent out.
  */
-function GhostMark({ size = 20 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 2.4c-4.05 0-7.05 3.03-7.05 7.05v9.06c0 .93 1.02 1.5 1.82 1.02l1.6-.96a1.2 1.2 0 0 1 1.26 0l1.36.82a1.2 1.2 0 0 0 1.24 0l1.36-.82a1.2 1.2 0 0 1 1.25 0l1.6.96c.8.48 1.82-.09 1.82-1.02V9.45c0-4.02-3.21-7.05-7.26-7.05Z"
-        fill="#ffffff"
-      />
-      <ellipse cx="9.5" cy="10.1" rx="1.2" ry="1.55" fill="#16215c" />
-      <ellipse cx="14.5" cy="10.1" rx="1.2" ry="1.55" fill="#16215c" />
-    </svg>
-  );
-}
+const WORDMARK_SIDE_TRIM = 0.23;
+
+/** Rendered height of the wordmark box. The glyphs land at ~44% of it. */
+const WORDMARK_BOX_H = 128;
 
 function PlatformIcon({ platform }: { platform: Platform }) {
   const paths: Record<Platform, React.ReactElement> = {
@@ -337,19 +352,48 @@ function StoryFrame({
           padding: `${u(56)} 0 ${u(104)}`,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: u(16) }}>
-          <GhostMark size={56 * s} />
-          <span
+        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={GHOST_SRC}
+            alt=""
+            aria-hidden
             style={{
-              fontSize: u(52),
-              fontWeight: 900,
-              letterSpacing: "-0.02em",
-              lineHeight: 1,
-              color: "#ffffff",
+              display: "block",
+              width: u(92),
+              height: u(92),
+              /* The asset is a square tile with its own dark backdrop and cyan
+                 glow, not a cut-out. Rounding it into a squircle turns that from
+                 a pasted rectangle into an app-icon badge, which is the one
+                 reading that looks deliberate on a black canvas.
+                 `mixBlendMode: "screen"` would drop the backdrop entirely and
+                 looks better in the preview — but html2canvas ignores blend
+                 modes, so the saved file would not match the card the user
+                 pressed save on, which is the exact bug this whole component was
+                 rebuilt to remove. */
+              borderRadius: u(26),
+              objectFit: "cover",
+              border: `${u(1.5)} solid rgba(255,255,255,0.16)`,
             }}
-          >
-            Whisper
-          </span>
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={WORDMARK_SRC}
+            alt="Whisper"
+            style={{
+              display: "block",
+              /* Sized by height, not width: the asset's box is far larger than
+                 its glyphs, so a width would size the padding rather than the
+                 logotype. */
+              height: u(WORDMARK_BOX_H),
+              width: "auto",
+              /* Cancels the asset's own transparent margin. Symmetric on purpose —
+                 see WORDMARK_SIDE_TRIM. The +26 leaves a real optical gap between
+                 the badge and the W. */
+              marginLeft: u(-(WORDMARK_BOX_H * 2.98 * WORDMARK_SIDE_TRIM) + 26),
+              marginRight: u(-(WORDMARK_BOX_H * 2.98 * WORDMARK_SIDE_TRIM)),
+            }}
+          />
         </div>
         <p
           style={{

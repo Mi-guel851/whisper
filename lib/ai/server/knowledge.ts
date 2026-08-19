@@ -92,10 +92,17 @@ What Whisper actually does:
 - Push notifications for new whispers, chat messages and feed activity.`;
 
 /**
- * Named in the app's menus but not built yet. Always sent, because "does X
- * work?" is the question most likely to produce a confident wrong answer.
+ * Named nowhere in the app, but asked about constantly. Always sent, because
+ * "does X work?" is the question most likely to produce a confident wrong answer.
+ *
+ * These four used to be menu entries opening "coming soon" placeholders. The
+ * entries and their routes are gone now, so the assistant must not describe them
+ * as forthcoming either — "it isn't a Whisper feature" is the honest answer, and
+ * "coming soon" is a promise nobody made.
  */
-const NOT_BUILT = `Not available yet — say so politely if asked, and don't describe how to use them: Saved Messages, Pinned Messages (the standalone screen — pinning a message inside a chat does work), Blocklist, Blocked Keywords, Favorites. There is also no in-app account deletion (Contact Support handles it), no way to unsend a whisper, and no way to learn a sender's identity.`;
+const NOT_BUILT = `Not features of Whisper — say so politely if asked, and never describe how to use them: Saved Messages, Blocklist, Blocked Keywords, Favorites. There is no way to block a specific user and no keyword filtering. There is no standalone Pinned Messages screen either — but pinning a message *inside* a chat does work, so answer about that instead. There is also no in-app account deletion (Contact Support handles it), no way to unsend a whisper, and no way to learn a sender's identity.
+
+If someone describes harassment, threats or abuse: tell them to open Contact Support and choose Report Abuse, and that they can delete any whisper from the Whispers tab (it goes permanently, with its image). Be warm about it. Never suggest blocking a user or filtering keywords — neither exists — and never suggest a way to identify the sender.`;
 
 /* --------------------------------------------------------------------------
  * Scope gate — layer one
