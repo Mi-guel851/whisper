@@ -97,7 +97,9 @@ Deno.serve(async (req) => {
       .eq("id", receiverId)
       .single();
 
-    if (!profile?.push_notifications) {
+    // Null means "never opened the setting", which the rest of the app treats as
+    // opted-in. Only an explicit false stops a push.
+    if (profile?.push_notifications === false) {
       return new Response(JSON.stringify({ skipped: "user disabled notifications" }), { status: 200 });
     }
 
@@ -138,9 +140,25 @@ Deno.serve(async (req) => {
                   body,
                 },
                 data: {
-                  type: "direct_message",
-                  conversationId,
-                  messageId: message.id ?? "",
+                  /* Was "direct_message", which FCMMessagingService matches
+                     against nothing — so every inbox push landed on the default
+                     channel and its tap opened the dashboard instead of the
+                     conversation. "message" is the value that switch expects. */
+                  type: "message",
+                  conversationId: String(conversationId ?? ""),
+                  messageId: String(message.id ?? ""),
+                },
+                android: {
+                  priority: "high",
+                  notification: {
+                    channel_id: "messages",
+                    default_vibrate_timings: false,
+                    vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
+                  },
+                },
+                apns: {
+                  headers: { "apns-priority": "10" },
+                  payload: { aps: { sound: "default" } },
                 },
               },
             }),
@@ -149,7 +167,17 @@ Deno.serve(async (req) => {
       )
     );
 
-    return new Response(JSON.stringify({ sent: results.length }), { status: 200 });
+    const failures: string[] = [];
+    for (const response of results) {
+      if (response.ok) continue;
+      failures.push(`${response.status}: ${(await response.text()).slice(0, 300)}`);
+    }
+    if (failures.length) console.error("[notify-new-direct-message] FCM rejected:", failures);
+
+    return new Response(
+      JSON.stringify({ sent: results.length - failures.length, failed: failures.length }),
+      { status: 200 }
+    );
   } catch (err) {
     console.error(err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });

@@ -36,6 +36,44 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+/**
+ * The route key FCMMessagingService switches on. Its `sendNotification` compares
+ * against "whisper" | "message" | "friend_request" | "feed" and falls through to
+ * the `default` channel and the dashboard deep link for anything else — so a
+ * notification row typed `public_feed` has to be translated, not passed through.
+ * The metadata's own `type` wins when present because that is what the triggers
+ * set deliberately (whisper rows are typed `message` at the table level).
+ */
+function routeFor(notification: { type?: string; metadata?: Record<string, unknown> | null }): string {
+  const raw = String(notification.metadata?.type ?? notification.type ?? "").trim();
+  if (raw === "public_feed") return "feed";
+  return raw || "default";
+}
+
+/** Vibration channels created up front by MainActivity, one per route. */
+const CHANNELS: Record<string, string> = {
+  whisper: "whispers",
+  message: "messages",
+  friend_request: "friend_requests",
+  feed: "feed",
+};
+
+/**
+ * FCM v1 rejects the entire message with a 400 if any value in `data` is not a
+ * string — a single numeric or null field in the trigger's `jsonb_build_object`
+ * would silently kill every push on that path. Objects are re-serialised rather
+ * than dropped so nothing is lost, and nulls are omitted because Android reads
+ * them back as the literal string "null".
+ */
+function toStringData(source: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (value === null || value === undefined) continue;
+    out[key] = typeof value === "string" ? value : typeof value === "object" ? JSON.stringify(value) : String(value);
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   try {
     const payload = await req.json();
@@ -43,17 +81,37 @@ Deno.serve(async (req) => {
 
     if (!notification) return new Response(JSON.stringify({ skipped: true }), { status: 200 });
 
-    // Get receiver tokens
+    /* The per-table functions all check this and this one never did, so a user
+       who turned notifications off still got everything routed through here. */
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("push_notifications")
+      .eq("id", notification.user_id)
+      .single();
+
+    if (profile?.push_notifications === false) {
+      return new Response(JSON.stringify({ skipped: "user disabled notifications" }), { status: 200 });
+    }
+
     const { data: tokens } = await supabase.from("device_tokens").select("fcm_token").eq("user_id", notification.user_id);
     if (!tokens || tokens.length === 0) return new Response(JSON.stringify({ skipped: "no tokens" }), { status: 200 });
 
     const accessToken = await getAccessToken();
+    if (!accessToken) {
+      console.error("[notify-on-notification] could not mint an FCM access token");
+      return new Response(JSON.stringify({ error: "fcm auth failed" }), { status: 500 });
+    }
 
-    // Prepare data payload for deep-linking
-    const messageData = {
-      type: notification.type,
-      ...notification.metadata
-    };
+    const route = routeFor(notification);
+
+    /* `type` is written last so the route survives: several triggers put their
+       own `type` in metadata, and spreading metadata over it would hand Android
+       a value its switch does not recognise. */
+    const messageData = toStringData({
+      ...(notification.metadata ?? {}),
+      type: route,
+      notificationId: notification.id,
+    });
 
     const results = await Promise.all(
       tokens.map((t: { fcm_token: string }) =>
@@ -71,18 +129,39 @@ Deno.serve(async (req) => {
               android: {
                 priority: "high",
                 notification: {
-                  channel_id: notification.type === 'message' ? 'messages' :
-                             notification.type === 'friend_request' ? 'friend_requests' : 'default',
-                  vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"]
-                }
-              }
+                  channel_id: CHANNELS[route] ?? "default",
+                  /* Android only applies these if it is told not to use the
+                     channel's own pattern. Without the opt-out the timings below
+                     are parsed and then ignored. */
+                  default_vibrate_timings: false,
+                  vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
+                },
+              },
+              apns: {
+                headers: { "apns-priority": "10" },
+                payload: { aps: { sound: "default" } },
+              },
             },
           }),
         })
       )
     );
 
-    return new Response(JSON.stringify({ sent: results.length }), { status: 200 });
+    /* Counting attempts was reported as `sent`, so an FCM 400 — a stale token, a
+       non-string data value — looked exactly like a delivered push. The response
+       bodies are read and logged instead, which is the difference between "it
+       says it worked" and knowing that it did. */
+    const failures: string[] = [];
+    for (const response of results) {
+      if (response.ok) continue;
+      failures.push(`${response.status}: ${(await response.text()).slice(0, 300)}`);
+    }
+    if (failures.length) console.error("[notify-on-notification] FCM rejected:", failures);
+
+    return new Response(
+      JSON.stringify({ sent: results.length - failures.length, failed: failures.length, route }),
+      { status: 200 }
+    );
   } catch (err) {
     console.error(err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });

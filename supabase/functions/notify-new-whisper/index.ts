@@ -87,7 +87,11 @@ Deno.serve(async (req) => {
       .eq("id", receiverId)
       .single();
 
-    if (!profile?.push_notifications) {
+    /* `!profile?.push_notifications` was false-y for null, and the column has no
+       default — so every user who has never opened the notification setting was
+       silently skipped. The rest of the app reads null as opted-in, so only an
+       explicit false may stop a push. */
+    if (profile?.push_notifications === false) {
       return new Response(JSON.stringify({ skipped: "user disabled notifications" }), { status: 200 });
     }
 
@@ -124,7 +128,25 @@ Deno.serve(async (req) => {
                 },
                 data: {
                   type: "whisper",
-                  messageId: message.id,
+                  messageId: String(message.id ?? ""),
+                },
+                /* This block is what the other notification paths were missing.
+                   Whispers vibrated anyway because they fell through to FCM's
+                   auto-created fallback channel, which happens to vibrate — so
+                   the behaviour everyone was comparing against was luck, not
+                   configuration. Stating it explicitly makes the buzz survive a
+                   channel actually existing. */
+                android: {
+                  priority: "high",
+                  notification: {
+                    channel_id: "whispers",
+                    default_vibrate_timings: false,
+                    vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
+                  },
+                },
+                apns: {
+                  headers: { "apns-priority": "10" },
+                  payload: { aps: { sound: "default" } },
                 },
               },
             }),
@@ -133,7 +155,17 @@ Deno.serve(async (req) => {
       )
     );
 
-    return new Response(JSON.stringify({ sent: results.length }), { status: 200 });
+    const failures: string[] = [];
+    for (const response of results) {
+      if (response.ok) continue;
+      failures.push(`${response.status}: ${(await response.text()).slice(0, 300)}`);
+    }
+    if (failures.length) console.error("[notify-new-whisper] FCM rejected:", failures);
+
+    return new Response(
+      JSON.stringify({ sent: results.length - failures.length, failed: failures.length }),
+      { status: 200 }
+    );
   } catch (err) {
     console.error(err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });

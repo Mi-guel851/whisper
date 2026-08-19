@@ -12,6 +12,7 @@ export default function GrantCoinsPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [checking, setChecking] = useState(true);
+  const [blocked, setBlocked] = useState<string | null>(null);
   const [pinVerified, setPinVerified] = useState(false);
   const [pin, setPin] = useState("");
   const [verifyingPin, setVerifyingPin] = useState(false);
@@ -28,11 +29,26 @@ export default function GrantCoinsPage() {
         router.push("/login");
         return;
       }
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from("profiles")
         .select("is_admin")
         .eq("id", session.user.id)
         .single();
+
+      /* A query that failed and a genuine non-admin used to produce the same
+         silent bounce to /dashboard, which made an unapplied migration look
+         identical to a permissions decision. 42703 is "column does not exist",
+         i.e. 202608190002 has not been run — no amount of reopening the page
+         will fix that, so it says so instead of redirecting. */
+      if (error) {
+        setBlocked(
+          error.code === "42703"
+            ? "This database is missing the admin columns. Apply supabase/migrations/202608190002_admin_coin_grants.sql, then set is_admin on your profile."
+            : error.message
+        );
+        setChecking(false);
+        return;
+      }
 
       if (!profile?.is_admin) {
         router.push("/dashboard");
@@ -117,7 +133,15 @@ export default function GrantCoinsPage() {
       <div className="mx-auto max-w-md">
         <BackButton />
 
-        {!pinVerified ? (
+        {blocked ? (
+          <GlassPanel strong className="mt-6 rounded-3xl p-8">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15">
+              <ShieldCheck size={26} className="text-amber-300" />
+            </div>
+            <h1 className="page-title text-center">Setup Incomplete</h1>
+            <p className="mt-2 text-center text-sm text-gray-400">{blocked}</p>
+          </GlassPanel>
+        ) : !pinVerified ? (
           <GlassPanel strong className="mt-6 rounded-3xl p-8">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-purple-600/15">
               <ShieldCheck size={26} className="text-purple-400" />

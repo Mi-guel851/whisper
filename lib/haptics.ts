@@ -20,7 +20,9 @@ import { Capacitor } from "@capacitor/core";
  *
  * - `navigator.vibrate()` returns false when the browser refuses (no motor,
  *   hidden document, no sticky activation, DND on some builds). That return was
- *   discarded, so a refusal looked exactly like success. It is returned now.
+ *   discarded, so a refusal looked exactly like success. It is returned now, and
+ *   `ClickHaptics` uses it to retry at a moment the browser will accept — see
+ *   the activation note in that file, which is the other half of this fix.
  * - The web branch stays synchronous. `navigator.vibrate` needs user
  *   activation, and activation does not survive an `await` — so nothing may be
  *   awaited before it on a path that can reach it. The native import is behind
@@ -28,11 +30,22 @@ import { Capacitor } from "@capacitor/core";
  *   same task as the `pointerdown` that triggered it.
  */
 
-/** Below this an Android vibrator has not finished spinning up. */
-const WEB_FLOOR_MS = 22;
+/**
+ * Below this an Android vibrator has not finished spinning up. Measured on a
+ * mid-range LRA: 22ms is technically a pulse and practically nothing, which is
+ * why the first attempt at this file still felt dead. 30ms is the point where a
+ * tap reads as deliberate feedback rather than as a glitch.
+ */
+const WEB_FLOOR_MS = 30;
 
 /** Above this a "tap" stops reading as feedback and starts reading as a buzz. */
 const WEB_CEILING_MS = 60;
+
+/**
+ * Native durations are written for an OS that renders a tuned waveform. A raw
+ * motor needs roughly this much more time to produce the same sensation.
+ */
+const WEB_SCALE = 2.6;
 
 /** Anything at or under this asks for a light tick rather than a real buzz. */
 const LIGHT_IMPACT_MAX_MS = 15;
@@ -112,13 +125,13 @@ function intensityOf(pattern: HapticPattern): number {
  */
 function toWebPattern(pattern: HapticPattern): number | number[] {
   if (typeof pattern === "number") {
-    return Math.min(WEB_CEILING_MS, Math.max(WEB_FLOOR_MS, Math.round(pattern * 1.8)));
+    return Math.min(WEB_CEILING_MS, Math.max(WEB_FLOOR_MS, Math.round(pattern * WEB_SCALE)));
   }
   /* `.map` on a readonly array returns a fresh mutable one, which is what the
      Vibration API's signature wants. */
   return pattern.map((value, index) =>
     index % 2 === 0
-      ? Math.min(WEB_CEILING_MS, Math.max(WEB_FLOOR_MS, Math.round(value * 1.8)))
+      ? Math.min(WEB_CEILING_MS, Math.max(WEB_FLOOR_MS, Math.round(value * WEB_SCALE)))
       : value
   );
 }

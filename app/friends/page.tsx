@@ -323,7 +323,10 @@ function FriendsPageContent() {
     } else {
       setPeople((prev) => prev.filter((p) => p.id !== profileId));
       showToast("Friend request sent.");
-      supabase.functions.invoke("notify-friend-request", { body: { record: { receiver_id: profileId, sender_id: myId, id: crypto.randomUUID() }, type: "INSERT" } }).catch(console.error);
+      /* Push is sent by `friend_request_event_trigger` + 202608190003. The
+         invoke that was here passed `id: crypto.randomUUID()` — a fabricated id
+         for a row that had just been inserted with a real one — and it fired
+         only when this tab stayed open long enough to complete. */
     }
     await refreshAll(myId);
     setBusyId(null);
@@ -345,7 +348,8 @@ function FriendsPageContent() {
       .insert({ user_id: myId, friend_id: requestRow.sender_id, source: "request" });
     if (friendError && friendError.code !== "23505") showSupabaseError("Request accepted, but adding the friend failed.", friendError);
     else showToast("Friend added.");
-    supabase.functions.invoke("notify-friend-request", { body: { record: { sender_id: requestRow.sender_id, receiver_id: myId, id: requestId, status: "accepted" }, type: "UPDATE" } }).catch(console.error);
+    /* The acceptance push comes from the same trigger, which fires on UPDATE as
+       well as INSERT — the status change above is what it reacts to. */
     await refreshAll(myId);
     setBusyId(null);
   }

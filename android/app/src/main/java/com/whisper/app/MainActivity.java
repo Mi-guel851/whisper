@@ -103,6 +103,11 @@ public class MainActivity extends BridgeActivity {
         webView.setOnLongClickListener(v -> true);
         webView.setLongClickable(false);
 
+        // Channels have to exist before the first push lands. FCM posts background
+        // notifications itself without ever entering our service, so creating them
+        // in there was too late on a fresh install.
+        FCMMessagingService.ensureChannels(this);
+
         requestAppPermissions();
     }
 

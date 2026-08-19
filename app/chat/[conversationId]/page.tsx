@@ -82,15 +82,19 @@ const EMOJI_PICKER = [
   "💔","💕","👻","💀","👀","🫶","🤝","💤","🌙","⭐","☀️","🌈",
 ];
 
-const SUPABASE_FUNCTIONS_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+/* Push for a new message is sent by the database, not from here.
+   `direct_message_notification_trigger` writes the notifications row and
+   202608190003 delivers it — see the note in that migration.
 
-function sendPushNotification(record: Record<string, string>) {
-  fetch(`${SUPABASE_FUNCTIONS_URL}/notify-new-direct-message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ record, type: "INSERT" }),
-  }).catch(console.error);
-}
+   What used to be here was a `fetch` to notify-new-direct-message with no
+   Authorization header. Supabase edge functions verify a JWT by default, so
+   every one of those calls was rejected with 401 before the function ran, and
+   `.catch()` never saw it because a 401 is a resolved response, not a network
+   error. That is why inbox pushes were silent while whispers worked.
+
+   Sending it from SQL also covers the paths this helper could not: a voice note
+   inserted by an RPC, and any message written while the sender's page is
+   navigating away mid-request. */
 
 function bubbleTime(value: string) {
   return new Date(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -704,13 +708,6 @@ export default function ChatPage() {
       last_message_at: new Date().toISOString(),
       last_message_sender_id: myId,
     }).eq("id", conversationId);
-
-    sendPushNotification({
-      id: crypto.randomUUID(),
-      conversation_id: conversationId,
-      sender_id: myId,
-      content: content,
-    });
   }
 
   async function deleteMessage(msg: Message) {
@@ -821,13 +818,6 @@ export default function ChatPage() {
         last_message_sender_id: myId,
       }).eq("id", conversationId);
 
-      sendPushNotification({
-        id: crypto.randomUUID(),
-        conversation_id: conversationId,
-        sender_id: myId,
-        image_path: "photo",
-      });
-
       URL.revokeObjectURL(pendingPhoto.previewUrl);
       setPendingPhoto(null);
       setInput("");
@@ -892,13 +882,6 @@ export default function ChatPage() {
       setInput("");
       setReplyingTo(null);
       showToast("Voice note sent — plays once.");
-
-      sendPushNotification({
-        id: crypto.randomUUID(),
-        conversation_id: conversationId,
-        sender_id: myId,
-        audio_path: "voice",
-      });
     } finally {
       setUploadingPhoto(false);
     }

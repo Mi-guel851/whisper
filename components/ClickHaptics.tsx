@@ -28,14 +28,40 @@ const INTERACTIVE = (() => {
 })();
 
 /**
+ * How far the finger may drift off a control and still count as a press. Matches
+ * the ~10px hysteresis native platforms allow, so a slightly sloppy tap still
+ * gets acknowledged while a deliberate drag-away-to-cancel stays silent.
+ */
+const RELEASE_SLOP_PX = 12;
+
+/**
  * App-wide tap feedback.
  *
- * Listens on `pointerdown`, not `click`. The two fire at opposite ends of the
- * same gesture: `pointerdown` at the instant the finger lands, `click` only
- * after it lifts. A buzz on release is feedback for something the user already
- * finished doing, and it reads as lag even when nothing is actually slow —
- * the press is the moment that wants acknowledging, which is the same reason
- * the CSS `:active` scale is on press too. Now they land on the same frame.
+ * WHY THE FIRST VERSION OF THIS BUZZED ON NATIVE BUT NEVER ON THE WEBSITE
+ *
+ * `navigator.vibrate()` is gated on user activation, and the HTML spec's list of
+ * activation-triggering events is narrower than it looks:
+ *
+ *     pointerdown  — only when pointerType is "mouse"
+ *     pointerup    — only when pointerType is NOT "mouse"
+ *     touchend, mousedown, keydown
+ *
+ * So on a phone, `pointerdown` grants no activation at all: the browser refuses
+ * the call and returns false. A desktop mouse press does grant it, which is
+ * exactly why this looked fine on a laptop and dead on Android. For touch, the
+ * release is the earliest moment the platform will allow a buzz — there is no
+ * way around that, only a way to notice it.
+ *
+ * Hence: ask on `pointerdown`, and if the browser refuses, retry on the matching
+ * `pointerup`. Presses that the platform lets us acknowledge immediately still
+ * are — native shell, mouse, and any browser using sticky rather than transient
+ * activation — and the rest fall back to the release instead of being lost.
+ * `vibrate()` returning a boolean is what makes this possible.
+ *
+ * Listening on `pointerdown` first still matters: it is the instant the finger
+ * lands, which is the moment that wants acknowledging and the same frame the CSS
+ * `:active` scale runs on. A buzz that only ever arrived on release would read as
+ * lag even when nothing was slow.
  *
  * Capture phase so a component calling `stopPropagation` on its own handler
  * doesn't silently lose the haptic, and `passive` because this never calls
@@ -44,24 +70,79 @@ const INTERACTIVE = (() => {
  */
 export default function ClickHaptics() {
   useEffect(() => {
+    /* A press the browser would not let us acknowledge yet, waiting for the
+       release that finally carries activation. */
+    let pendingPointerId: number | null = null;
+    let pendingTarget: HTMLElement | null = null;
+
+    function clearPending() {
+      pendingPointerId = null;
+      pendingTarget = null;
+    }
+
+    function pressableFrom(target: EventTarget | null): HTMLElement | null {
+      const element = target as HTMLElement | null;
+      // `closest` is optional-called because the target can be `document`.
+      const interactive = element?.closest?.(INTERACTIVE) as HTMLElement | null;
+      if (!interactive) return null;
+      // A disabled control isn't going to do anything — buzzing for it promises
+      // an action that never arrives.
+      if (interactive.matches(":disabled, [aria-disabled='true']")) return null;
+      return interactive;
+    }
+
     function handlePointerDown(event: PointerEvent) {
+      clearPending();
+
       /* Primary contact only. A second finger landing during a pinch, or the
          right button of a mouse, isn't a press being acknowledged. */
       if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
 
-      const target = event.target as HTMLElement | null;
-      const interactive = target?.closest(INTERACTIVE) as HTMLElement | null;
+      const interactive = pressableFrom(event.target);
       if (!interactive) return;
 
-      // A disabled control isn't going to do anything — buzzing for it promises
-      // an action that never arrives.
-      if (interactive.matches(":disabled, [aria-disabled='true']")) return;
+      if (vibrate(HAPTIC.tap)) return;
 
-      vibrate(HAPTIC.tap);
+      pendingPointerId = event.pointerId;
+      pendingTarget = interactive;
     }
 
-    document.addEventListener("pointerdown", handlePointerDown, { capture: true, passive: true });
-    return () => document.removeEventListener("pointerdown", handlePointerDown, { capture: true });
+    function handlePointerUp(event: PointerEvent) {
+      const target = pendingTarget;
+      if (pendingPointerId !== event.pointerId || !target) return;
+      clearPending();
+
+      /* Touch pointers are implicitly captured by the element the gesture began
+         on, so `event.target` still names the button even after the finger has
+         slid well away from it. Check the geometry instead — a release outside
+         the control is a cancelled press, and cancelled presses stay silent. */
+      const box = target.getBoundingClientRect();
+      const released =
+        event.clientX >= box.left - RELEASE_SLOP_PX &&
+        event.clientX <= box.right + RELEASE_SLOP_PX &&
+        event.clientY >= box.top - RELEASE_SLOP_PX &&
+        event.clientY <= box.bottom + RELEASE_SLOP_PX;
+
+      if (released) vibrate(HAPTIC.tap);
+    }
+
+    /* The gesture turned into a scroll or was taken over by the system. Drop the
+       pending buzz — this also removes a false positive the old version had,
+       where a swipe that happened to start on a button felt like a press. */
+    function handlePointerCancel(event: PointerEvent) {
+      if (pendingPointerId === event.pointerId) clearPending();
+    }
+
+    const listen = { capture: true, passive: true } as const;
+    document.addEventListener("pointerdown", handlePointerDown, listen);
+    document.addEventListener("pointerup", handlePointerUp, listen);
+    document.addEventListener("pointercancel", handlePointerCancel, listen);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, { capture: true });
+      document.removeEventListener("pointerup", handlePointerUp, { capture: true });
+      document.removeEventListener("pointercancel", handlePointerCancel, { capture: true });
+    };
   }, []);
 
   return null;
