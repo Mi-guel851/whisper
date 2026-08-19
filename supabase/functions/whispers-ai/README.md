@@ -1,5 +1,43 @@
 # `whispers-ai`
 
+> ## ⚠️ Superseded — not the live backend any more
+>
+> Whispers AI now runs as a **Next.js route on Vercel** using **Google Gemini**:
+> [`app/api/whispers-ai/route.ts`](../../../app/api/whispers-ai/route.ts), with its
+> modules in [`lib/ai/server/`](../../../lib/ai/server/). See
+> [`lib/ai/server/README.md`](../../../lib/ai/server/README.md) for setup and
+> deployment.
+>
+> **`lib/ai/server/knowledge.ts` is now the source of truth** for what the
+> assistant knows and what it is allowed to answer. The copy in this directory is
+> frozen and no longer receives product updates.
+>
+> The move happened for one concrete reason: the API key has to live where the
+> code that reads it lives. Vercel environment variables are not visible to
+> Supabase Edge Functions — those read Supabase secrets, a separate store — so a
+> `GEMINI_API_KEY` added in Vercel would do nothing for this function. The Next.js
+> route also removes a whole deploy step (`supabase functions deploy`), and because
+> Capacitor's `server.url` points the mobile shells at the Vercel deployment, one
+> origin now serves web and native.
+>
+> This directory is kept, unchanged and undeployed, as reference for the pipeline
+> design and the Hugging Face error mapping. Nothing in the app calls it — the
+> browser client
+> ([`lib/ai/whispersAi.ts`](../../../lib/ai/whispersAi.ts)) now posts to
+> `/api/whispers-ai`. It is safe to delete once the new route has been confirmed
+> working in production; if you leave it in place, remember that edits here have no
+> effect on the live assistant.
+>
+> The rate-limit migration
+> (`supabase/migrations/202608120001_whispers_ai_rate_limit.sql`) is **still used**
+> — it is provider-agnostic, and the Vercel route calls the same
+> `whispers_ai_touch_rate_limit` RPC with the service-role key.
+>
+> Everything below describes the old Hugging Face deployment and is retained for
+> historical accuracy.
+
+---
+
 The server side of Whispers AI, the in-app assistant. It is the **only** place in
 this repository that touches the Hugging Face inference token.
 
