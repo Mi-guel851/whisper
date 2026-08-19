@@ -193,7 +193,7 @@ export default function GrantCoinsPage() {
                 disabled={busy}
                 className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 p-4 font-bold text-black disabled:opacity-60"
               >
-                {busy ? "Granting..." : "Grant Coins"}
+                {busy ? "Granting.." : "Grant Coins"}
               </button>
             </form>
           </GlassPanel>
