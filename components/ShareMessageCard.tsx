@@ -1,11 +1,30 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas-pro";
 import { X, Download, Image as ImageIcon } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 
 type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
+
+/* ---------------------------------------------------------------------------
+   One layout, two sizes.
+
+   Every measurement below is written against a 1080x1920 story canvas — the
+   format Instagram, Snapchat and TikTok all expect — and multiplied by a single
+   scale factor derived from however much room the preview actually has. So the
+   preview and the exported PNG are the same layout rendered at two sizes, not
+   two layouts that have to be kept in agreement by hand.
+
+   That matters for more than tidiness. With fixed pixel sizes the message
+   wrapped after a different word on a 360px phone than it did in the 1080px
+   export, so the file never quite matched the card the user pressed save on.
+   --------------------------------------------------------------------------- */
+const CANVAS_W = 1080;
+const CANVAS_H = 1920;
+
+/** Left/right canvas margin, which lands the card at 864 wide. */
+const CANVAS_PAD_X = 108;
 
 /**
  * The Whisper ghost, drawn rather than loaded.
@@ -13,9 +32,8 @@ type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
  * The logo used to be `next/image` pointed at `/ghost.png` with `grayscale
  * invert` on top. html2canvas has to re-fetch that URL at capture time and
  * re-apply the filters itself, and when either step misses, the export lands
- * with a hole where the logo should be — the exact "errors" in the downloaded
- * card. Inline vector geometry has nothing to fetch and no filter to emulate,
- * so it rasterizes identically every time.
+ * with a hole where the logo should be. Inline vector geometry has nothing to
+ * fetch and no filter to emulate, so it rasterizes identically every time.
  */
 function GhostMark({ size = 20 }: { size?: number }) {
   return (
@@ -71,19 +89,322 @@ const PLATFORM_STYLES: Record<Platform, string> = {
   tiktok: "bg-black border border-white/20",
 };
 
-function messageFontSize(length: number) {
-  if (length <= 40) return "text-2xl";
-  if (length <= 80) return "text-xl";
-  if (length <= 140) return "text-lg";
-  if (length <= 220) return "text-base";
-  if (length <= 400) return "text-sm";
-  return "text-xs";
+/**
+ * Message type size, in canvas units.
+ *
+ * A photo and full-size text cannot both have the room they want inside a frame
+ * whose height is fixed at 9:16. The text is what gives way, because it is the
+ * part that can reflow — cropping the photo instead would damage the thing being
+ * shared.
+ */
+function messageSize(length: number, hasImage: boolean): number {
+  const ramp = [
+    { max: 40, size: 70 },
+    { max: 80, size: 58 },
+    { max: 140, size: 47 },
+    { max: 220, size: 39 },
+    { max: 400, size: 31 },
+  ];
+  const base = ramp.find((step) => length <= step.max)?.size ?? 26;
+  return hasImage ? Math.round(base * 0.78) : base;
+}
+
+/**
+ * The thing that gets rasterized: a full story canvas, the card centred in it,
+ * the Whisper watermark along the bottom.
+ *
+ * Two rules govern everything inside, both imposed by html2canvas rather than by
+ * taste. It cannot rasterize `backdrop-filter`, so the glass has to be real
+ * translucency compositing over the canvas gradient behind it. And it skips
+ * `box-shadow` outright, so every lit edge is a gradient stop — a shadow-lit rim
+ * shows in the preview and is simply absent from the saved file, which is how
+ * the download used to come out flatter than what was on screen.
+ */
+function StoryFrame({
+  message,
+  imageUrl,
+  width,
+  frameRef,
+}: {
+  message: string;
+  imageUrl?: string | null;
+  width: number;
+  frameRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  /* One factor for the whole tree, applied as plain px in inline styles — so the
+     computed values html2canvas reads are already absolute, with no container
+     query or relative unit that could resolve differently inside its clone. */
+  const s = width / CANVAS_W;
+  const u = (n: number) => `${n * s}px`;
+  const hasImage = Boolean(imageUrl);
+
+  return (
+    <div
+      ref={frameRef}
+      style={{
+        /* Explicit pixels rather than `aspect-ratio` and flex: html2canvas lays
+           its clone out in its own iframe, where an ancestor-dependent size can
+           resolve to something else entirely. A stated size cannot drift. */
+        width: `${width}px`,
+        height: `${(width * CANVAS_H) / CANVAS_W}px`,
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: u(28),
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        /* Whisper's own night sky in place of the reference's flat charcoal —
+           the same palette the rest of the app already sits on. */
+        background: "linear-gradient(165deg, #0b1030 0%, #131c4b 38%, #201751 72%, #2a1748 100%)",
+      }}
+    >
+      {/* Painted, never blurred — see the note on this component. */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(78% 42% at 12% 3%, rgba(34,211,238,0.22) 0%, rgba(34,211,238,0) 62%), " +
+            "radial-gradient(84% 44% at 93% 70%, rgba(236,72,153,0.20) 0%, rgba(236,72,153,0) 64%), " +
+            "radial-gradient(70% 38% at 50% 101%, rgba(139,92,246,0.20) 0%, rgba(139,92,246,0) 66%)",
+        }}
+      />
+
+      {/* Card region. Takes the slack above the watermark, so the card lands in
+          the same place whatever height it ends up at. */}
+      <div
+        style={{
+          position: "relative",
+          flex: "1 1 auto",
+          minHeight: 0,
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: `${u(72)} ${u(CANVAS_PAD_X)} 0`,
+        }}
+      >
+        {/* Weighted spacers rather than `justify-content: center`, because the
+            reference sits its card in the upper third and dead-centre reads as a
+            different composition. Uneven flex-grow on two zero-basis spacers
+            gives that bias for a short card, and collapses to nothing once a tall
+            photo needs the whole region — so biasing the layout costs a tall card
+            no room, which a fixed top offset or an asymmetric padding would. */}
+        <div aria-hidden style={{ flex: "1 1 0", minHeight: 0 }} />
+
+        <div
+          style={{
+            width: "100%",
+            flex: "0 1 auto",
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            /* One rounded rectangle with the two halves flush inside it, which is
+               the shape in the reference — not the two separately rounded panels
+               with a gap between them that this used to be. */
+            borderRadius: u(48),
+            overflow: "hidden",
+            border: `${u(2)} solid rgba(255,255,255,0.10)`,
+          }}
+        >
+          {/* The prompt. Left-aligned and set large, as in the reference, so it
+              reads as the invitation the card is built around rather than as a
+              caption. The gradient is Whisper's cyan → purple → pink instead of
+              the reference's pink → orange. */}
+          <div
+            style={{
+              flexShrink: 0,
+              minHeight: u(248),
+              display: "flex",
+              alignItems: "center",
+              padding: `${u(52)} ${u(56)}`,
+              background: "linear-gradient(118deg, #22d3ee 0%, #8b5cf6 52%, #ec4899 100%)",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: u(46),
+                lineHeight: 1.18,
+                fontWeight: 900,
+                letterSpacing: "-0.015em",
+                color: "#ffffff",
+              }}
+            >
+              send me anonymous messages!
+            </p>
+          </div>
+
+          {/* The glass half. Translucent white compositing over the canvas
+              gradient behind it — alpha blending, which rasterizes exactly,
+              rather than a blur that would not. The first gradient layer is its
+              top rim light, a stop rather than an inset shadow for the same
+              reason. */}
+          <div
+            style={{
+              position: "relative",
+              flex: "1 1 auto",
+              minHeight: u(330),
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: u(38),
+              padding: `${u(64)} ${u(56)}`,
+              textAlign: "center",
+              background:
+                `linear-gradient(to bottom, rgba(255,255,255,0.34) 0px, rgba(255,255,255,0) ${u(3)}), ` +
+                "linear-gradient(160deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.085) 48%, rgba(255,255,255,0.055) 100%)",
+            }}
+          >
+            {message ? (
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: u(messageSize(message.length, hasImage)),
+                  lineHeight: 1.32,
+                  fontWeight: 800,
+                  letterSpacing: "-0.01em",
+                  color: "#ffffff",
+                  overflowWrap: "anywhere",
+                  textShadow: `0 ${u(2)} ${u(6)} rgba(4,8,26,0.42)`,
+                }}
+              >
+                {message}
+              </p>
+            ) : hasImage ? null : (
+              /* Only when there is genuinely nothing. A photo with no caption is
+                 a complete whisper, so labelling it "no message" would be telling
+                 the user their card is broken when it isn't. */
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: u(38),
+                  fontWeight: 700,
+                  fontStyle: "italic",
+                  color: "rgba(255,255,255,0.55)",
+                }}
+              >
+                No message text
+              </p>
+            )}
+
+            {imageUrl && (
+              <img
+                src={imageUrl}
+                crossOrigin="anonymous"
+                alt="Anonymous attachment"
+                style={{
+                  display: "block",
+                  width: "auto",
+                  maxWidth: "100%",
+                  /* This is how the card adjusts to the photo: contain plus a
+                     height ceiling, so a landscape shot makes a short wide card
+                     and a portrait one makes a tall card, and neither can push
+                     the watermark off the canvas. The ceiling is lower when there
+                     is also text to fit. */
+                  maxHeight: u(message ? 620 : 900),
+                  objectFit: "contain",
+                  borderRadius: u(32),
+                  border: `${u(2)} solid rgba(255,255,255,0.18)`,
+                }}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Grows faster than the spacer above it, which is what lifts the card
+            into the upper third. */}
+        <div aria-hidden style={{ flex: "2.4 1 0", minHeight: 0 }} />
+      </div>
+
+      {/* Watermark, on the canvas rather than inside the card — the reference
+          signs the story, not the message. */}
+      <div
+        style={{
+          position: "relative",
+          flexShrink: 0,
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: u(20),
+          padding: `${u(56)} 0 ${u(104)}`,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: u(16) }}>
+          <GhostMark size={56 * s} />
+          <span
+            style={{
+              fontSize: u(52),
+              fontWeight: 900,
+              letterSpacing: "-0.02em",
+              lineHeight: 1,
+              color: "#ffffff",
+            }}
+          >
+            Whisper
+          </span>
+        </div>
+        <p
+          style={{
+            margin: 0,
+            fontSize: u(21),
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.42em",
+            lineHeight: 1,
+            color: "rgba(255,255,255,0.52)",
+            /* Tracking adds a trailing gap after the last letter, which drags a
+               centred line visibly left. Indenting by the same amount puts the
+               optical centre back where the geometric one is. */
+            textIndent: "0.42em",
+          }}
+        >
+          anonymous q&amp;a
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function ShareMessageCard({ message, imageUrl, onClose }: { message: string; imageUrl?: string | null; onClose: () => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [frameWidth, setFrameWidth] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState("");
+
+  /**
+   * Fits the story frame to whatever height the modal has left over.
+   *
+   * The width is quantized to a multiple of 9 so that 16/9 lands on a whole
+   * number of pixels on both sides. That makes the export exactly 1080x1920
+   * rather than a pixel over, which matters because the story surfaces re-crop
+   * anything that is not precisely 9:16.
+   *
+   * useLayoutEffect, not useEffect: measuring after paint would show one frame of
+   * a wrongly-sized card. The component only ever mounts behind a client state
+   * flag, so there is no server render for it to warn about.
+   */
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+
+    const measure = () => {
+      const unit = Math.floor(Math.min(box.clientWidth / 9, box.clientHeight / 16));
+      /* Below this the type is unreadable anyway — landscape on a short phone —
+         so it renders nothing rather than a smudge. */
+      const next = unit >= 8 ? unit * 9 : 0;
+      setFrameWidth((prev) => (prev === next ? prev : next));
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
 
   function flashToast(text: string) {
     setToast(text);
@@ -91,14 +412,11 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
   }
 
   /**
-   * Rasterizes the card.
+   * Rasterizes the story frame.
    *
-   * Two things used to make the download come out wrong rather than merely
-   * ugly. Capture ran before webfonts and the attached photo had resolved, so
+   * Capture used to run before webfonts and the attached photo had resolved, so
    * the text rendered in a fallback face and the photo could land as a blank
-   * box; and a fixed `scale: 3` on a card carrying a tall attachment can exceed
-   * the per-side canvas limit on iOS, where the browser hands back a silently
-   * empty bitmap. Both are waited on and bounded here.
+   * box. Both are waited on here.
    */
   async function getImageBlob(): Promise<Blob | null> {
     const card = cardRef.current;
@@ -114,42 +432,42 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
       ),
     ]);
 
-    /* `offsetWidth` truncates to a whole pixel. The card is centred in a
-       max-width column, so its real width is usually fractional — capturing at
-       the truncated value shaves the right and bottom edges, which is where the
-       thin dark seam along the exported card's border came from. Round up. */
+    /* `offsetWidth` truncates to a whole pixel, which shaves the right and bottom
+       edges of a fractionally-sized box. The frame is sized in whole pixels now,
+       but rounding up costs nothing and keeps that from coming back if the sizing
+       ever changes. */
     const rect = card.getBoundingClientRect();
     const width = Math.ceil(rect.width);
     const height = Math.ceil(rect.height);
 
-    /* The card lays out around 340 CSS px, so a 1:1 capture is a thumbnail —
-       it looks soft the moment it's posted full-bleed to a story, which is the
-       whole reason the download reads as low quality next to NGL's. Scale up to
-       a 1080px-wide export, the width every social surface expects.
-       iOS caps a canvas side at ~4096px, and going over doesn't throw — it hands
+    /* The frame lays out at a few hundred CSS px, so a 1:1 capture is a
+       thumbnail — soft the moment it is posted full-bleed to a story, which is
+       the whole reason the download read as low quality. Scaling to CANVAS_W
+       lands it at exactly the 1080x1920 every social surface expects.
+       iOS caps a canvas side at ~4096px and going over doesn't throw — it hands
        back an empty bitmap, which is what made tall cards download blank. So the
        target is a floor and the cap is a ceiling, and the ceiling wins. */
     const scale = Math.max(
       1,
-      Math.min(Math.max(2, 1080 / width), 4096 / Math.max(width, height))
+      Math.min(CANVAS_W / width, 4096 / Math.max(width, height))
     );
 
     const canvas = await html2canvas(card, {
-      /* The canvas fill only ever shows through the card's rounded corners, so
-         it has to be the card's own blue rather than black — black is what put
-         a hard dark frame around every exported share image. Not `null`
-         either: a transparent PNG is flattened to white or black by whichever
-         app it lands in, which is the same bug with an extra step. */
-      backgroundColor: "#131c4b",
+      /* Shows only through the frame's rounded corners, so it is the frame's own
+         darkest stop rather than black — black is what put a hard dark frame
+         around every exported share image. Not `null` either: a transparent PNG
+         gets flattened to white or black by whichever app it lands in, which is
+         the same bug with an extra step. */
+      backgroundColor: "#0b1030",
       scale,
       useCORS: true,
       logging: false,
       width,
       height,
-      /* The card is inside a scrollable modal. Without pinning the scroll
-         origin, html2canvas measures against the document's scroll position and
-         captures an offset region — a card sliced across the top with a band of
-         empty background at the bottom. */
+      /* The frame is inside a flex modal. Without pinning the scroll origin,
+         html2canvas measures against the document's scroll position and captures
+         an offset region — a card sliced across the top with a band of empty
+         background at the bottom. */
       scrollX: 0,
       scrollY: 0,
       windowWidth: document.documentElement.clientWidth,
@@ -166,8 +484,8 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
    * Saves a blob to disk.
    *
    * The link has to be in the document and the object URL has to outlive the
-   * click: Firefox ignores a click on a detached anchor, and revoking the URL
-   * in the same tick cancels the download in Chromium before it starts. Both
+   * click: Firefox ignores a click on a detached anchor, and revoking the URL in
+   * the same tick cancels the download in Chromium before it starts. Both
    * failure modes look identical to the user — the button does nothing.
    */
   function downloadBlob(blob: Blob, fileName = "whisper-message.png") {
@@ -318,7 +636,7 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
 
   return (
     <div
-      className="fixed inset-0 z-[999] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[999] flex flex-col px-4"
       style={{
         /* Still a dimming scrim — a modal needs one to pull focus — but tinted
            into the palette instead of flat black, so the card reads as glass
@@ -326,122 +644,65 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
         background: "radial-gradient(120% 90% at 50% 0%, rgba(24,20,64,0.82) 0%, rgba(6,8,24,0.9) 100%)",
         backdropFilter: "blur(24px)",
         WebkitBackdropFilter: "blur(24px)",
+        paddingTop: "max(1rem, env(safe-area-inset-top))",
+        paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
+        /* Over-constrains `inset-0` on purpose, so height wins and `bottom`
+           is ignored. A fixed element's 100% resolves against the layout
+           viewport, which on mobile Safari is taller than what you can see while
+           the URL bar is expanded — that used not to matter when the card was
+           simply centred, but now the save button is the last row of a column and
+           would sit below the fold. `dvh` tracks the visible height instead. */
+        height: "100dvh",
       }}
     >
       <div className="pointer-events-none absolute top-0 left-0 h-96 w-96 rounded-full bg-purple-600/25 blur-[120px]" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 rounded-full bg-cyan-500/20 blur-[120px]" />
 
-      <div className="relative w-full max-w-sm">
-        <button onClick={onClose} className="absolute -top-12 right-0 flex h-9 w-9 items-center justify-center rounded-full transition" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", backdropFilter: "blur(12px)", color: "white" }}>
-          <X size={18} />
-        </button>
+      {/* A flex column rather than a centred block. The story frame is 9:16 and
+          has to share a phone screen with the platform row and the save buttons,
+          so it takes the leftover height instead of a guessed one. */}
+      <div className="relative mx-auto flex h-full w-full max-w-sm flex-col">
+        <div className="mb-3 flex shrink-0 justify-end">
+          <button onClick={onClose} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-full transition" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", backdropFilter: "blur(12px)", color: "white" }}>
+            <X size={18} />
+          </button>
+        </div>
 
-        <div className="relative rounded-[2.5rem] p-5" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.05) 60%, rgba(168,85,247,0.08) 100%)", backdropFilter: "blur(40px) saturate(200%)", WebkitBackdropFilter: "blur(40px) saturate(200%)", border: "1px solid rgba(255,255,255,0.18)", boxShadow: "0 25px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(255,255,255,0.05)" }}>
-          <div
-            ref={cardRef}
-            className="relative flex w-full flex-col overflow-hidden rounded-[2rem]"
-            style={{
-              /* The deep-blue rectangle *is* the card. It replaces the flat
-                 black slab this used to be, which read as a hole punched in the
-                 glass and exported as a black frame around every share image.
-
-                 The top rim light is the first gradient layer rather than an
-                 `inset` box-shadow, because html2canvas doesn't rasterize
-                 box-shadow at all — the preview had a lit edge and the download
-                 didn't, so the saved card always came out flatter than what the
-                 user pressed save on. A gradient stop rasterizes exactly. */
-              background:
-                "linear-gradient(to bottom, rgba(255,255,255,0.16) 0px, rgba(255,255,255,0) 2px), linear-gradient(160deg, #0d1640 0%, #16215c 42%, #241a56 78%, #2b1a4e 100%)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              padding: "24px 16px",
-            }}
-          >
-            {/* Painted, not blurred: html2canvas can't rasterize backdrop-filter,
-                so every glow in the capture tree has to be a real gradient or it
-                exports as a grey box. */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background:
-                  "radial-gradient(120% 70% at 12% 0%, rgba(34,211,238,0.20) 0%, rgba(34,211,238,0) 55%), radial-gradient(110% 65% at 92% 100%, rgba(192,68,145,0.22) 0%, rgba(192,68,145,0) 60%)",
-              }}
-            />
-
-            <div className="relative overflow-hidden rounded-[1.5rem]" style={{ background: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)", padding: "14px 20px", textAlign: "center" }}>
-              <p style={{ fontSize: "11px", letterSpacing: "0.12em", fontWeight: 900, textTransform: "uppercase", color: "#ffffff", margin: 0 }}>send me anonymous messages!</p>
-            </div>
-
-            {/* The glass container. Translucent white over the blue below it —
-                alpha compositing, which rasterizes exactly, rather than a blur
-                that wouldn't. Its top and bottom edge lights are gradient stops
-                for the same reason the card's are: html2canvas drops inset
-                shadows, so a shadow-lit edge is an edge that vanishes on save. */}
-            <div
-              className="relative mt-3 overflow-hidden rounded-[1.5rem]"
-              style={{
-                background:
-                  "linear-gradient(to bottom, rgba(255,255,255,0.30) 0px, rgba(255,255,255,0) 1.5px), linear-gradient(to top, rgba(0,0,0,0.20) 0px, rgba(0,0,0,0) 1.5px), linear-gradient(160deg, rgba(255,255,255,0.17) 0%, rgba(255,255,255,0.09) 46%, rgba(255,255,255,0.06) 100%)",
-                border: "1px solid rgba(255,255,255,0.20)",
-                minHeight: "160px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "40px 32px",
-                textAlign: "center",
-              }}
-            >
-              {message ? (
-                <p
-                  className={`font-extrabold leading-snug [overflow-wrap:anywhere] ${messageFontSize(message.length)}`}
-                  style={{ color: "#ffffff", margin: 0, textShadow: "0 1px 2px rgba(4,8,26,0.45)" }}
-                >
-                  {message}
-                </p>
-              ) : (
-                <p style={{ fontSize: "18px", fontWeight: 700, fontStyle: "italic", color: "rgba(255,255,255,0.55)", margin: 0 }}>No message text</p>
-              )}
-              {/* No `shadow-md`: html2canvas skips box-shadow, so the drop shadow
-                  showed in the preview and not in the file. A hairline border
-                  separates the photo from the glass in both. */}
-              {imageUrl && (
-                <img
-                  src={imageUrl}
-                  crossOrigin="anonymous"
-                  alt="Anonymous attachment"
-                  className="mt-6 max-h-[300px] w-auto max-w-full rounded-2xl object-contain"
-                  style={{ border: "1px solid rgba(255,255,255,0.16)" }}
-                />
-              )}
-            </div>
-
-            <div className="relative mt-5 flex flex-col items-center justify-center gap-1">
-              <div className="flex items-center gap-2">
-                <GhostMark />
-                <span style={{ fontSize: "16px", fontWeight: 900, letterSpacing: "-0.02em", color: "#ffffff" }}>Whisper</span>
-              </div>
-              <p style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.45em", color: "rgba(255,255,255,0.5)", margin: 0 }}>anonymous q&amp;a</p>
-            </div>
+        {/* The glass container the frame sits in. Outside the capture tree, so
+            this one is free to use a real backdrop blur. */}
+        <div
+          className="relative flex min-h-0 flex-1 flex-col rounded-[2.25rem] p-3"
+          style={{
+            background: "linear-gradient(145deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.05) 60%, rgba(168,85,247,0.08) 100%)",
+            backdropFilter: "blur(40px) saturate(200%)",
+            WebkitBackdropFilter: "blur(40px) saturate(200%)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            boxShadow: "0 25px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(255,255,255,0.05)",
+          }}
+        >
+          <div ref={boxRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+            {frameWidth > 0 && (
+              <StoryFrame message={message} imageUrl={imageUrl} width={frameWidth} frameRef={cardRef} />
+            )}
           </div>
+        </div>
 
-          <div className="mt-5 flex items-center justify-center gap-3">
-            {platforms.map((platform) => (
-              <button key={platform} onClick={() => handlePlatformShare(platform)} disabled={generating} className={`flex h-12 w-12 items-center justify-center rounded-full p-3 text-white transition hover:scale-110 disabled:opacity-50 ${PLATFORM_STYLES[platform]}`}>
-                <PlatformIcon platform={platform} />
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 flex gap-3">
-            <button onClick={handleDownload} disabled={generating} className="flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black transition hover:opacity-90 disabled:opacity-50" style={{ background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.15)", color: "#ffffff" }}>
-              <Download size={18} /> {generating ? "Generating..." : "Save share card"}
+        <div className="mt-4 flex shrink-0 items-center justify-center gap-3">
+          {platforms.map((platform) => (
+            <button key={platform} onClick={() => handlePlatformShare(platform)} disabled={generating} aria-label={`Share to ${platform}`} className={`flex h-12 w-12 items-center justify-center rounded-full p-3 text-white transition hover:scale-110 disabled:opacity-50 ${PLATFORM_STYLES[platform]}`}>
+              <PlatformIcon platform={platform} />
             </button>
-          </div>
+          ))}
+        </div>
 
-          {imageUrl && <button onClick={handleSaveAttachment} disabled={generating} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black transition hover:opacity-90 disabled:opacity-50" style={{ background: "rgba(34,211,238,0.08)", border: "1px solid rgba(34,211,238,0.25)", color: "#22d3ee" }}><ImageIcon size={18} /> {generating ? "Processing..." : "Save original photo"}</button>}
+        <div className="mt-3 shrink-0">
+          <button onClick={handleDownload} disabled={generating} className="flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black transition hover:opacity-90 disabled:opacity-50" style={{ background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.15)", color: "#ffffff" }}>
+            <Download size={18} /> {generating ? "Generating..." : "Save share card"}
+          </button>
 
-          {toast && <div className="mt-3 flex w-full items-center justify-center rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.10)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#ffffff" }}>{toast}</div>}
+          {imageUrl && <button onClick={handleSaveAttachment} disabled={generating} className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-2xl p-4 font-black transition hover:opacity-90 disabled:opacity-50" style={{ background: "rgba(34,211,238,0.08)", border: "1px solid rgba(34,211,238,0.25)", color: "#22d3ee" }}><ImageIcon size={18} /> {generating ? "Processing..." : "Save original photo"}</button>}
+
+          {toast && <div className="mt-2.5 flex w-full items-center justify-center rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.10)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#ffffff" }}>{toast}</div>}
         </div>
       </div>
     </div>
