@@ -34,8 +34,11 @@ const SECTIONS = [
   },
   {
     icon: ScrollText,
-    title: "Report & Block",
-    body: "If you receive a message that violates these guidelines, use the report and block features. Our moderation team reviews all reports and takes appropriate action. False reporting to silence others is also a violation.",
+    title: "Reporting",
+    /* Was "use the report and block features" — there are no such buttons in the
+       app. Contact Support's Report Abuse category is the real path, and pointing
+       at a control that doesn't exist is worse than pointing at nothing. */
+    body: "If you receive a message that violates these guidelines, open Contact Support and choose Report Abuse. Our moderation team reviews all reports and takes appropriate action. You can also delete any whisper from the Whispers tab. False reporting to silence others is also a violation.",
   },
   {
     icon: Shield,

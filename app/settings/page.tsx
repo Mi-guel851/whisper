@@ -8,22 +8,21 @@ import {
   Bell,
   ChevronRight,
   Newspaper,
-  Bookmark,
-  Pin,
   Coins,
-  Ban,
-  Filter,
   History,
   type LucideIcon,
 } from "lucide-react";
 
+/* Saved Messages, Pinned Messages, Blocklist and Blocked Keywords used to sit in
+   this list. Every one of them opened a screen whose only content was "This
+   feature is coming soon", so the menu was advertising four features that did not
+   exist — and a settings list is exactly where someone goes looking when they
+   believe a feature is there. Removed along with their routes. Pinning a message
+   *inside* a chat is unaffected; that has always worked and lives in the chat
+   itself. */
 const MORE_LINKS = [
   { href: "/public-feed", label: "Public Feed", icon: Newspaper },
-  { href: "/saved-messages", label: "Saved Messages", icon: Bookmark },
-  { href: "/pinned-messages", label: "Pinned Messages", icon: Pin },
   { href: "/premium", label: "Coin Store", icon: Coins },
-  { href: "/blocklist", label: "Blocklist", icon: Ban },
-  { href: "/blocked-keywords", label: "Blocked Keywords", icon: Filter },
   { href: "/activity-log", label: "Activity Log", icon: History },
   { href: "/analytics", label: "Analytics", icon: History },
 ];

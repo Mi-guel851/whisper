@@ -6,13 +6,11 @@ import {
   Compass,
   Users,
   Newspaper,
-  Bookmark,
   Lightbulb,
   Shield,
   FileText,
   ScrollText,
   History,
-  Pin,
   LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
@@ -52,11 +50,12 @@ function WavingAnimeAvatar() {
   );
 }
 
+/* Saved Messages and Pinned Messages are deliberately absent: both opened a
+   "coming soon" placeholder, and a tile with a description like "Messages you've
+   saved" reads as a promise. Removed with their routes. */
 const QUICK_LINKS: { href: string; label: string; icon: LucideIcon; desc: string }[] = [
   { href: "/friends?tab=friends", label: "Friends", icon: Users, desc: "Your friends, requests & active users" },
   { href: "/public-feed", label: "Public Feed", icon: Newspaper, desc: "See what everyone's sharing" },
-  { href: "/saved-messages", label: "Saved Messages", icon: Bookmark, desc: "Messages you've saved" },
-  { href: "/pinned-messages", label: "Pinned Messages", icon: Pin, desc: "Your pinned favorites" },
   { href: "/activity-log", label: "Activity Log", icon: History, desc: "Your recent activity" },
   { href: "/feedback", label: "Feedback", icon: Lightbulb, desc: "Tell us what you think" },
   { href: "/contact-support", label: "Contact Support", icon: LifeBuoy, desc: "Get help from our team" },

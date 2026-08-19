@@ -15,16 +15,16 @@ const FAQS = [
     a: "No. When someone sends a message through your Whisper link, their identity is never shared with you. The same applies when you send messages to others — your identity remains private.",
   },
   {
-    q: "How do I favorite or pin a message?",
-    a: "Tap on any message in your Inbox to expand it, then use the Favorite (heart) or Pin buttons. Favorited and pinned messages can be viewed quickly on their dedicated pages.",
+    q: "Can I pin a message?",
+    a: "Yes, inside a chat. Open the conversation, press and hold the message you want to pin, and choose Pin — you'll be asked how long it should stay pinned. Pinned messages appear in a bar at the top of that chat. Anonymous whispers on the Whispers tab can't be pinned or favorited.",
   },
   {
     q: "Can I attach images to messages?",
     a: "Yes. When sending a message through a Whisper link, you can optionally attach an image. Images are processed and displayed anonymously alongside the message text.",
   },
   {
-    q: "How do I block someone or filter keywords?",
-    a: "Visit the Blocklist page to block specific users by username, or the Blocked Keywords page to set up automatic filtering of messages containing certain words or phrases.",
+    q: "Someone is harassing me. What can I do?",
+    a: "Open Contact Support and choose Report Abuse. Include as much detail as you can — our moderation team reviews every report. You can also delete any whisper from the Whispers tab, which removes it and its image permanently. Sender hints show a whisper's approximate location, time and device, but never a name — Whisper has no feature that reveals who sent an anonymous message.",
   },
   {
     q: "What are Whisper Coins?",

@@ -39,14 +39,6 @@ export default function NotificationCard() {
 
         </div>
 
-        <div className="rounded-2xl bg-purple-600/10 p-4">
-
-          <p className="font-semibold text-purple-400">
-            🎉 Premium features coming soon!
-          </p>
-
-        </div>
-
       </div>
 
     </div>
