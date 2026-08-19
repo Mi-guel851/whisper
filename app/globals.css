@@ -2069,6 +2069,83 @@ main[data-surface="dark"]::before {
   border: 2px solid var(--tile-from);
 }
 
+/* The travelling edge light, on every tile.
+   ------------------------------------------------------------------------
+   Same technique as `.edge-lit`: one registered `--edge-angle` drives a conic
+   gradient, and `padding` plus two masks composited with `exclude` punch the
+   middle out so only the rim ring can paint. `--edge-angle` is registered with
+   `inherits: true`, so the animation declared on the tile is what the
+   pseudo-element reads.
+
+   RIM ONLY, NO BLOOM — and that is a deliberate difference from `.edge-lit`.
+   The bloom there is a second, unmasked copy of the gradient run through
+   `filter: blur(16px)`. On one auth card that is free. On eleven tiles it is
+   twenty-two gradient rasterisations per frame instead of eleven, plus eleven
+   separate blur surfaces, and this grid sits one scroll away from the rest of
+   the app on a mid-range phone. The rim is widened slightly to compensate: at
+   1.4px the light reads on its own, and the tile's existing `--tile-glow`
+   shadow already supplies the ambient halo the bloom would have added. */
+.discover-tile {
+  position: relative;
+  isolation: isolate;
+  --edge-angle: 0deg;
+  --tile-edge-width: 1.4px;
+  --tile-edge-opacity: 0.92;
+  animation: edgeSpin 12s linear infinite;
+}
+
+.discover-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: var(--tile-edge-width);
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--edge-angle) at 50% 50%,
+    transparent 0deg,
+    color-mix(in srgb, var(--theme-accent-from) calc(var(--tile-edge-opacity) * 100%), transparent) 52deg,
+    color-mix(in srgb, #ffffff calc(var(--tile-edge-opacity) * 92%), transparent) 78deg,
+    color-mix(in srgb, var(--theme-accent-pink) calc(var(--tile-edge-opacity) * 100%), transparent) 106deg,
+    transparent 178deg,
+    transparent 258deg,
+    color-mix(in srgb, var(--theme-accent-purple) calc(var(--tile-edge-opacity) * 78%), transparent) 302deg,
+    transparent 360deg);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* Eleven rims sweeping in lockstep read as one pulsing block rather than as
+   eleven lit objects, so each tile starts part-way through the cycle. The delay
+   is negative, which offsets the phase without holding the first frame back.
+
+   Five phases across an eleven-item grid that lays out two or three columns
+   wide: 5 shares no factor with 2, 3, or 11, so neighbours almost never land on
+   the same offset in any of the three layouts. */
+.discover-icon-grid > a:nth-child(5n + 2) { animation-delay: -2.4s; }
+.discover-icon-grid > a:nth-child(5n + 3) { animation-delay: -4.8s; }
+.discover-icon-grid > a:nth-child(5n + 4) { animation-delay: -7.2s; }
+.discover-icon-grid > a:nth-child(5n + 5) { animation-delay: -9.6s; }
+
+@media (pointer: coarse) {
+  .discover-tile { --tile-edge-width: 1.6px; }
+}
+
+/* The rim paints above the tile's content so the glass can never dim it, which
+   puts it above the count badge too — and the badge hangs off the very corner
+   the rim travels around. Lifting the badge one layer keeps the light behind
+   it rather than drawing a line across the number. */
+.discover-tile-badge {
+  z-index: 2;
+}
+
 /* --- Marketing headline ------------------------------------------------ */
 
 .typing-text-layer {
@@ -2852,7 +2929,8 @@ main[data-surface="dark"]::before {
 
   /* Freeze the rims at their brightest arc so the effect survives statically. */
   .auth-card,
-  .edge-lit {
+  .edge-lit,
+  .discover-tile {
     animation: none !important;
     --edge-angle: 300deg;
   }

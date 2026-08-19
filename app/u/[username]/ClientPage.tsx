@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import { supabase } from "@/lib/supabase/client";
@@ -28,8 +28,9 @@ type PublicProfileRow = {
  * The card's entrance doubles as the stagger parent, so the panel and its
  * contents arrive as one motion rather than two competing ones.
  *
- * Module scope, not inline: a fresh variants object on every render would
- * restart the cascade on each keystroke in the message box.
+ * Module scope so the object identity is fixed for the life of the module —
+ * the textarea below re-renders this component on every keystroke, and a
+ * variants object rebuilt each time gives Framer new work to diff for nothing.
  */
 const cardIn: Variants = {
   hidden: { opacity: 0, y: 18, scale: 0.985 },
@@ -46,6 +47,12 @@ export default function PublicProfile() {
   const username = params.username as string;
   const { showToast } = useToast();
   const reduced = useSafeReducedMotion();
+
+  /* Resolved once per reduced-motion change rather than at each of the six JSX
+     call sites. `respectMotion` returns its input untouched when motion is
+     allowed, so this only really allocates for users who asked for less. */
+  const cardVariants = useMemo(() => respectMotion(cardIn, reduced), [reduced]);
+  const itemVariants = useMemo(() => respectMotion(fadeUp, reduced), [reduced]);
 
   const [profile, setProfile] = useState<PublicProfileRow | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(true);
@@ -81,7 +88,12 @@ export default function PublicProfile() {
            actually showing is the only one it listens to.
 
            Filtered server-side: an unfiltered `profiles` subscription would push
-           every profile edit in the app to every open link page. */
+           every profile edit in the app to every open link page.
+
+           Degrades quietly. Until
+           202608190001_profiles_realtime_public_fields.sql is applied, profiles
+           isn't in the realtime publication and this channel simply never fires
+           — the bio still renders from the fetch above, just not live. */
         channel = supabase
           .channel(`public-profile-${data.id}-${Date.now()}`)
           .on(
@@ -94,10 +106,11 @@ export default function PublicProfile() {
             },
             (payload) => {
               if (cancelled) return;
-              /* Merged rather than replaced. Realtime sends whatever the table's
-                 REPLICA IDENTITY exposes, which is not guaranteed to be every
-                 column this page selected — merging keeps the avatar from
-                 blanking out on a bio-only edit. */
+              /* Merged, not replaced. `payload.new` carries only the columns
+                 the publication publishes, which is a deliberately narrow list
+                 (see the migration) and could narrow further. Merging means a
+                 partial payload updates what it covers instead of blanking the
+                 avatar on a bio-only edit. */
               setProfile((current) =>
                 current
                   ? { ...current, ...(payload.new as Partial<PublicProfileRow>) }
@@ -273,7 +286,7 @@ export default function PublicProfile() {
       {/* ── GLASS CARD ── */}
       <motion.div
         className="relative z-10 w-full max-w-lg rounded-3xl p-8"
-        variants={respectMotion(cardIn, reduced)}
+        variants={cardVariants}
         initial="hidden"
         animate="visible"
         style={{
@@ -298,7 +311,7 @@ export default function PublicProfile() {
         {/* ── PROFILE HEADER ── */}
         <motion.div
           className="flex items-center gap-4"
-          variants={respectMotion(fadeUp, reduced)}
+          variants={itemVariants}
         >
           {avatarUrl ? (
             <img
@@ -322,8 +335,9 @@ export default function PublicProfile() {
             </div>
           )}
 
-          {/* min-w-0 so a long display name wraps instead of pushing the
-              avatar out of the card. */}
+          {/* min-w-0 is what lets `truncate` below actually engage — a flex
+              child defaults to min-content width and would otherwise push the
+              avatar out of the card rather than clip a long display name. */}
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold leading-tight">
               {displayName || `@${username}`}
@@ -345,7 +359,7 @@ export default function PublicProfile() {
             so an edit made in /profile crossfades in here instead of silently
             swapping under the reader. */}
         {bio && (
-          <motion.div className="mt-5" variants={respectMotion(fadeUp, reduced)}>
+          <motion.div className="mt-5" variants={itemVariants}>
             <motion.p
               key={bio}
               initial={reduced ? false : { opacity: 0, y: -4 }}
@@ -360,7 +374,7 @@ export default function PublicProfile() {
 
         <motion.p
           className="mt-4 text-sm text-gray-300"
-          variants={respectMotion(fadeUp, reduced)}
+          variants={itemVariants}
         >
           Send an anonymous message
         </motion.p>
@@ -368,7 +382,7 @@ export default function PublicProfile() {
         {sent ? (
           <motion.div
             className="mt-8 space-y-6"
-            variants={respectMotion(fadeUp, reduced)}
+            variants={itemVariants}
           >
             <div
               className="rounded-2xl p-6 text-center"
@@ -418,7 +432,7 @@ export default function PublicProfile() {
         ) : (
           <motion.div
             className="space-y-4 mt-6"
-            variants={respectMotion(fadeUp, reduced)}
+            variants={itemVariants}
           >
             {/* ── TEXTAREA ── */}
             <textarea
