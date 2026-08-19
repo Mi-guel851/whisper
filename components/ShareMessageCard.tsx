@@ -291,6 +291,10 @@ function StoryFrame({
             )}
 
             {imageUrl && (
+              /* A plain <img>, not next/image: the optimizer wraps it in sized
+                 spans and can serve it from a different origin, and html2canvas
+                 has to re-resolve both inside its clone. */
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={imageUrl}
                 crossOrigin="anonymous"
