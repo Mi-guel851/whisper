@@ -1,17 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Copy, RefreshCw, Share2, Sparkles, Sun } from "lucide-react";
 
 import EdgeLitCard from "@/components/EdgeLitCard";
 import Button from "@/components/Button";
-import { useToast } from "@/components/ToastProvider";
-import { supabase } from "@/lib/supabase/client";
-import { getCachedSession } from "@/lib/supabase/session";
 import { HAPTIC, vibrate } from "@/lib/haptics";
 import { fadeUp, respectMotion, spring, tween } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
+import useWhisperShare from "@/lib/useWhisperShare";
 import {
   formatPromptDate,
   nextPrompt,
@@ -43,14 +41,13 @@ import {
 const CATEGORY_STORAGE_KEY = "whisper:prompt-category";
 
 export default function DailyWhisperCard() {
-  const { showToast } = useToast();
   const reduced = useSafeReducedMotion();
+  const { sharePrompt, copyPrompt } = useWhisperShare();
 
   const [prompt, setPrompt] = useState<WhisperPrompt | null>(null);
   const [today, setToday] = useState("");
   const [category, setCategory] = useState<PromptCategory>("random");
   const [generating, setGenerating] = useState(false);
-  const [link, setLink] = useState("");
 
   /** Handle for the shuffle icon's spin, so it can be cleared. */
   const spinTimer = useRef<number | null>(null);
