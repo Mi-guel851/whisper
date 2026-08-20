@@ -10,6 +10,7 @@ import { presenceManager } from "@/lib/realtime/presence";
 import DashboardHeader from "@/components/DashboardHeader";
 import LinkCard from "@/components/LinkCard";
 import DailyWhisperCard from "@/components/DailyWhisperCard";
+import LiveActivityStrip from "@/components/LiveActivityStrip";
 import StatsRow from "@/components/StatsRow";
 import ActivityChart from "@/components/ActivityChart";
 import RecentMessages from "@/components/RecentMessages";
@@ -94,6 +95,10 @@ export default function DashboardPage() {
             here is your link, and here is what to say when you send it. A bare
             link asks nothing and gets ignored. */}
         <DailyWhisperCard />
+        {/* Under the prompt, not above the fold: it is context, not content. It
+            renders nothing at all until the numbers are real and worth stating —
+            see the note in the component. */}
+        <LiveActivityStrip />
         <StatsRow />
         <ActivityChart />
         <RecentMessages />
