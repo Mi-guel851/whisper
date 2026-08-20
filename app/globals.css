@@ -2911,6 +2911,38 @@ main[data-surface="dark"]::before {
   box-shadow: var(--elev-1);
 }
 
+/* --------------------------------------------------------------------------
+   Daily Whisper — prompt category chips
+
+   Built on the same tokens as the reply composer above, so the two feel like
+   one product. The inactive state is a hairline fill rather than an outline:
+   eight outlined chips in a row read as a form, while eight filled ones read
+   as a control.
+   -------------------------------------------------------------------------- */
+
+.daily-chip {
+  background: var(--fill-1);
+  border: 1px solid var(--hairline);
+  color: var(--theme-text-muted);
+}
+
+.daily-chip:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 40%, transparent);
+}
+
+.daily-chip-active {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  border: 1px solid transparent;
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+}
+
+/* The chip row scrolls sideways; hide the bar without killing the scroll. */
+.daily-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
 /* ==========================================================================
    8. REDUCED MOTION
    --------------------------------------------------------------------------
