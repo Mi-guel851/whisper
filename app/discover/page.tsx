@@ -6,6 +6,7 @@ import {
   Compass,
   Users,
   Newspaper,
+  Gamepad2,
   Lightbulb,
   Shield,
   FileText,
@@ -55,6 +56,7 @@ function WavingAnimeAvatar() {
    saved" reads as a promise. Removed with their routes. */
 const QUICK_LINKS: { href: string; label: string; icon: LucideIcon; desc: string }[] = [
   { href: "/friends?tab=friends", label: "Friends", icon: Users, desc: "Your friends, requests & active users" },
+  { href: "/games", label: "Whisper Games", icon: Gamepad2, desc: "Questions people answer anonymously" },
   { href: "/public-feed", label: "Public Feed", icon: Newspaper, desc: "See what everyone's sharing" },
   { href: "/activity-log", label: "Activity Log", icon: History, desc: "Your recent activity" },
   { href: "/feedback", label: "Feedback", icon: Lightbulb, desc: "Tell us what you think" },
