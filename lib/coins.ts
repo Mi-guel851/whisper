@@ -3,6 +3,22 @@ export const UNLOCK_CHAT_COST = 30;
 export const SEND_IMAGE_COST = 10;
 export const SEND_VOICE_COST = 5;
 
+/**
+ * Public Feed pricing.
+ *
+ * These two used to be the other way round — posting free, replies 2 coins.
+ * Inverted deliberately: a post is the act with reach (it goes to the whole feed
+ * and carries the author's Whisper link), while a reply is the conversation, and
+ * a feed that charges for conversation gets none. Pricing the post also puts a
+ * cost on spam at the point spam enters.
+ *
+ * `FEED_REPLY_COST` stays as a named zero rather than being deleted: the charge
+ * is derived from it in app/api/coins/feed-post/route.ts, so a future decision to
+ * price replies again is one number here, not a re-plumbing.
+ */
+export const FEED_POST_COST = 2;
+export const FEED_REPLY_COST = 0;
+
 // Base pricing (before local-currency conversion):
 //   Africa + India -> priced in NGN, 100 coins = ₦1,000
 //   Everywhere else -> priced in USD, 100 coins = $1

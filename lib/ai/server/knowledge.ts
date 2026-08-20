@@ -80,12 +80,12 @@ What Whisper actually does:
 - Send anonymously: open someone's Whisper link, type a message, optionally attach one image, send. The recipient never learns who you are.
 - Receive: anonymous whispers land on the Whispers tab. Unread ones are bright with a red dot; opened ones dim.
 - Sender hints: 5 coins to reveal a whisper's metadata (approximate location, time, device, browser). Never a name.
-- Whisper Coins: buy in the Coin Store (Coins tab). Spent on hints, chat unlocks, photos, voice notes and public-feed replies.
+- Whisper Coins: buy in the Coin Store (Coins tab). Spent on hints, chat unlocks, photos, voice notes and public-feed posts.
 - Wallet + transfers: each account has a Whispers wallet address. Coins can be transferred wallet-to-wallet, free, with a receipt.
 - Transaction history: every purchase, spend and transfer, on the Coin Store screen.
 - Chats: private conversations in the Inbox, under anonymous names. Unlock a chat once with coins to send in it. View-once photos and voice notes cost coins.
 - Friends: Discover People, Active users, Requests and Friends tabs.
-- Public Feed: short posts to the whole Whisper community that clear after 24 hours. Replies cost coins.
+- Public Feed: short posts to the whole Whisper community that clear after 24 hours. Posting costs coins; replying is free.
 - Profile: display name, username, bio, avatar.
 - Appearance: System, Light or Dark theme.
 - Settings, Analytics, Activity Log, Help Center, Contact Support, Feedback, Community Guidelines, Privacy Policy, Terms.
@@ -259,7 +259,7 @@ const TOPICS: Record<string, Topic> = {
 
   coins: {
     keywords: ["coin", "coins", "buy", "purchase", "price", "cost", "balance", "store", "paystack", "payment", "top up", "package"],
-    text: `Whisper Coins: the Coins tab is the Coin Store. Your balance is at the top. Four packages: 100 (Starter Pack), 300 (Whisper Bundle — most popular), 500 (Whisper Vault), 1000 (Whisper Fortune). Pricing is 100 coins for ₦1,000 across Africa and India, or the equivalent of $1 per 100 coins elsewhere, shown converted into the local currency at live rates. Payment goes through Paystack, charged in Naira — international cards work and the card network handles conversion. Coins are spent on: sender hints (5), unlocking a chat (30), sending a photo in chat (10), sending a voice note (5), replying on the Public Feed (2). Buying coins requires being signed in with an email.`,
+    text: `Whisper Coins: the Coins tab is the Coin Store. Your balance is at the top. Four packages: 100 (Starter Pack), 300 (Whisper Bundle — most popular), 500 (Whisper Vault), 1000 (Whisper Fortune). Pricing is 100 coins for ₦1,000 across Africa and India, or the equivalent of $1 per 100 coins elsewhere, shown converted into the local currency at live rates. Payment goes through Paystack, charged in Naira — international cards work and the card network handles conversion. Coins are spent on: sender hints (5), unlocking a chat (30), sending a photo in chat (10), sending a voice note (5), posting on the Public Feed (2). Buying coins requires being signed in with an email.`,
   },
 
   wallet: {
@@ -283,7 +283,7 @@ Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent �
 
   feed: {
     keywords: ["feed", "public feed", "post", "posting", "like", "community", "24 hours", "expire"],
-    text: `Public Feed: Discover → Public Feed. Write up to 500 characters and post — posting is free, and your Whisper link is attached automatically so readers can send you anonymous whispers. Posts clear after 24 hours. There's a suggestion and an "AI Write" list of ready-made prompts to fill the box. You can like posts, reply (2 coins per reply), share a post, and delete your own. New posts, likes and replies appear live, and the Discover tile shows a badge for unread feed activity.`,
+    text: `Public Feed: Discover → Public Feed. Write up to 500 characters and post — posting costs 2 coins, and your Whisper link is attached automatically so readers can send you anonymous whispers. Posts clear after 24 hours. There's a suggestion and an "AI Write" list of ready-made prompts to fill the box. You can like posts, reply for free, share a post, and delete your own. New posts, likes and replies appear live, and the Discover tile shows a badge for unread feed activity.`,
   },
 
   profile: {

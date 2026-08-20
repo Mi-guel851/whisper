@@ -2,15 +2,18 @@
 
 import { memo } from "react";
 import { Loader2, Send } from "lucide-react";
-import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 
 /**
  * The inline reply box, shared by root posts and by comments further down a
  * thread — a reply to a reply is composed exactly like a reply to a post, so
  * there is one of these rather than one per depth.
  *
- * Replying costs coins, so the price is stated on the control that spends them
- * instead of appearing as a surprise toast afterwards.
+ * Replies are free. `replyCost` is still a prop rather than being deleted,
+ * because pricing replies again is a plausible future decision — but at zero it
+ * renders nothing at all rather than a coin icon reading "0 to reply", which
+ * would draw attention to a cost that isn't there. The character counter takes
+ * that space instead: it is the only thing about a free reply worth stating up
+ * front.
  */
 
 type FeedReplyComposerProps = {
@@ -22,6 +25,8 @@ type FeedReplyComposerProps = {
   onSend: (postId: string) => void;
 };
 
+const MAX_REPLY_CHARS = 280;
+
 function FeedReplyComposerBase({
   postId,
   value,
@@ -31,6 +36,7 @@ function FeedReplyComposerBase({
   onSend,
 }: FeedReplyComposerProps) {
   const empty = !value.trim();
+  const remaining = MAX_REPLY_CHARS - value.length;
 
   return (
     <div className="feed-reply-box mt-2.5">
@@ -46,16 +52,22 @@ function FeedReplyComposerBase({
           }
         }}
         rows={2}
-        maxLength={280}
+        maxLength={MAX_REPLY_CHARS}
         placeholder="Post your reply"
         aria-label="Write a reply"
         className="feed-reply-input w-full resize-none bg-transparent text-[15px] leading-snug outline-none"
       />
 
       <div className="mt-1.5 flex items-center justify-between gap-3">
-        <span className="feed-reply-cost flex items-center gap-1 text-[11px] font-bold">
-          <WhisperCoinIcon size={13} />
-          {replyCost} to reply
+        <span className="feed-reply-cost text-[11px] font-bold">
+          {replyCost > 0
+            ? `${replyCost} coins to reply`
+            : /* Only surfaces near the ceiling. A counter that is always visible
+                 reads as a limit being enforced; one that appears at 40 left
+                 reads as a hint. */
+              remaining <= 40
+              ? `${remaining} left`
+              : ""}
         </span>
 
         <button

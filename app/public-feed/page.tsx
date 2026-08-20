@@ -6,6 +6,7 @@ import { Send, Sparkles } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
+import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import FeedPostCard from "@/components/feed/FeedPostCard";
 import type { FeedController } from "@/components/feed/types";
@@ -19,7 +20,11 @@ import {
   type FeedPost,
 } from "@/lib/feed";
 
-const REPLY_COST = 2;
+import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
+
+/* Replies are free now and posting is what costs — see lib/coins.ts for why. The
+   old `REPLY_COST` constant is gone rather than set to 0, so nothing can still be
+   rendering "2 coins" next to a reply button. */
 
 /**
  * Columns beyond the original feed schema.
@@ -119,7 +124,6 @@ export default function PublicFeedPage() {
   const [replyTextMap, setReplyTextMap] = useState<Record<string, string>>({});
   const [replySendingMap, setReplySendingMap] = useState<Record<string, boolean>>({});
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({});
-  const [pendingReply, setPendingReply] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const cleanBody = stripLinks(body);
@@ -298,25 +302,36 @@ export default function PublicFeedPage() {
     if (!myId || !ownLink || !cleanBody || posting) return;
 
     setPosting(true);
-    /* Only the base columns are read back. PostgREST runs insert-and-return as
-       one statement, so naming a column the database doesn't have yet fails the
-       whole insert — asking for `parent_post_id` here would make posting
-       impossible on an unmigrated database rather than merely unthreaded. The
-       optional columns aren't needed anyway: a new root post has no parent and
-       no views. */
-    const { data, error } = await supabase
-      .from("public_feed_posts")
-      .insert({ author_id: myId, body: cleanBody, whisper_link: ownLink })
-      .select(BASE_COLUMNS)
-      .single();
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { showToast("Login required"); return; }
 
-    if (error) showToast(error.message);
-    else if (data) {
-      setPosts((current) => upsertPost(current, data as unknown as FeedPost));
+      /* Posted through the server rather than inserted straight from here,
+         because a root post now costs coins and a browser cannot be trusted to
+         debit its own wallet. The route reads the price, charges it, inserts the
+         post, and refunds if the insert fails — so there is no window where the
+         coins are gone and the post isn't there. */
+      const res = await fetch("/api/coins/feed-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ message: cleanBody }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        showToast(json.error || "Couldn't post that.");
+        return;
+      }
+
+      if (json.post) setPosts((current) => upsertPost(current, json.post as FeedPost));
       setBody("");
-      showToast("Posted — your whisper is live for 24 hours.");
+      showToast(`Posted — live for 24 hours. ${FEED_POST_COST} coins charged.`);
+    } catch (error) {
+      console.error(error);
+      showToast("Network error");
+    } finally {
+      setPosting(false);
     }
-    setPosting(false);
   }
 
   /**
@@ -375,17 +390,17 @@ export default function PublicFeedPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { showToast("Login required"); return; }
 
-      const res = await fetch("/api/coins/reply", {
+      const res = await fetch("/api/coins/feed-post", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ message: text, postId }),
+        body: JSON.stringify({ message: text, parentPostId: postId }),
       });
       const json = await res.json();
 
       if (!res.ok) {
         showToast(json.error || "Failed to send reply");
       } else {
-        showToast(`Reply posted publicly — ${REPLY_COST} coins charged`);
+        showToast("Reply posted.");
         if (json.post) setPosts((current) => upsertPost(current, json.post as FeedPost));
         setReplyTextMap((map) => ({ ...map, [postId]: "" }));
         setReplyOpen((map) => ({ ...map, [postId]: false }));
@@ -437,12 +452,23 @@ export default function PublicFeedPage() {
     setExpandedThreads((map) => ({ ...map, [postId]: !map[postId] }));
   }, []);
 
-  const requestSend = useCallback((postId: string) => setPendingReply(postId), []);
+  /* Held in a ref so `requestSend` can keep a stable identity. `sendReply` is a
+     fresh closure every render, and putting it in the dependency list would
+     rebuild `controller` below on every render — which re-renders every post in
+     the feed. The ref always points at the current closure, so nothing goes
+     stale. */
+  const sendReplyRef = useRef(sendReply);
+  sendReplyRef.current = sendReply;
+
+  /* Straight to send: replies are free, so there is no cost to confirm. */
+  const requestSend = useCallback((postId: string) => {
+    void sendReplyRef.current(postId);
+  }, []);
   const requestDelete = useCallback((postId: string) => setDeleteTarget(postId), []);
 
   const controller: FeedController = useMemo(() => ({
     myId,
-    replyCost: REPLY_COST,
+    replyCost: FEED_REPLY_COST,
     likesByPost,
     replyOpen,
     replyText: replyTextMap,
@@ -532,7 +558,11 @@ export default function PublicFeedPage() {
                 className="premium-button premium-button-primary flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black disabled:opacity-50"
               >
                 <Send size={15} />
-                {posting ? "Posting" : "Post"}
+                {/* The price is on the control that spends it. A cost that only
+                    appears in the toast afterwards reads as a charge you weren't
+                    told about, however small it is. */}
+                {posting ? "Posting" : `Post · ${FEED_POST_COST}`}
+                {!posting && <WhisperCoinIcon size={14} />}
               </button>
             </div>
           </form>
@@ -561,21 +591,10 @@ export default function PublicFeedPage() {
         </section>
       </div>
 
-      {pendingReply && (
-        <ConfirmDialog
-          title={`Reply for ${REPLY_COST} coins?`}
-          description={`Posting this reply to the public feed costs ${REPLY_COST} Whisper coins.`}
-          confirmLabel={`Reply (${REPLY_COST} coins)`}
-          tone="default"
-          loading={Boolean(replySendingMap[pendingReply])}
-          onCancel={() => setPendingReply(null)}
-          onConfirm={() => {
-            const target = pendingReply;
-            setPendingReply(null);
-            if (target) void sendReply(target);
-          }}
-        />
-      )}
+      {/* No reply confirmation any more. A dialog earns its place when an action
+          spends money or destroys something; a free reply does neither, and
+          asking twice made replying feel heavier than posting. The delete dialog
+          below stays, because that one is irreversible. */}
 
       {deleteTarget && (
         <ConfirmDialog
