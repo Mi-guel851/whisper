@@ -77,6 +77,39 @@ function isNative(): boolean {
   return nativePlatform;
 }
 
+/**
+ * Whether the Haptics plugin is actually registered in the native project.
+ *
+ * WHY THIS EXISTS: the previous version returned `true` from the native branch
+ * unconditionally, *before* the bridge call had been attempted — and the call
+ * itself was fire-and-forget with a `catch {}`. So on a shell built before
+ * `@capacitor/haptics` was synced into the Android project, every impact threw
+ * into that empty catch, `vibrate()` still reported success, and the web
+ * vibrator was never tried. Silent, and indistinguishable from working.
+ *
+ * `isPluginAvailable` is synchronous, which is the important part: it lets an
+ * unregistered plugin fall through to `navigator.vibrate` *in the same task as
+ * the gesture*, so user activation is still intact. Deciding this from the
+ * async failure instead would arrive too late to vibrate at all.
+ */
+let hapticsPluginAvailable: boolean | null = null;
+
+function nativeHapticsAvailable(): boolean {
+  if (hapticsPluginAvailable === null) {
+    try {
+      hapticsPluginAvailable = Capacitor.isPluginAvailable("Haptics");
+    } catch {
+      hapticsPluginAvailable = false;
+    }
+    if (!hapticsPluginAvailable) {
+      console.warn(
+        "[haptics] the Capacitor Haptics plugin is not registered in this build — falling back to navigator.vibrate. Run `npx cap sync android` and rebuild the APK to get native haptics back."
+      );
+    }
+  }
+  return hapticsPluginAvailable;
+}
+
 type HapticsModule = {
   impact: (options: { style: unknown }) => Promise<void>;
   vibrate: (options: { duration: number }) => Promise<void>;
@@ -137,9 +170,35 @@ function toWebPattern(pattern: HapticPattern): number | number[] {
 }
 
 /**
+ * The web vibrator. Synchronous from top to bottom — `navigator.vibrate` needs
+ * user activation and activation does not survive an `await`, so nothing may be
+ * awaited on any path that reaches this.
+ */
+function webVibrate(pattern: HapticPattern): boolean {
+  const navigatorWithVibrate = navigator as Navigator & {
+    vibrate?: (pattern: number | number[]) => boolean;
+  };
+  if (typeof navigatorWithVibrate.vibrate !== "function") return false;
+
+  /* Chrome cancels a vibration when the document is hidden and rejects one
+     started while hidden, so skip rather than fire into nothing. */
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
+
+  try {
+    return navigatorWithVibrate.vibrate(toWebPattern(pattern)) !== false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fire a haptic. Returns whether the platform accepted it — false means no
  * motor, no permission, or a browser that refused, all of which are normal and
  * none of which are errors worth surfacing to the user.
+ *
+ * A `true` here means *accepted*, not *felt*. If the OS-level touch-feedback
+ * setting is off, Android accepts the request and renders nothing, and no amount
+ * of code can tell the difference or override it.
  *
  * Callers may ignore the result; it exists so a caller that cares can tell
  * "there is no vibrator" from "it fired".
@@ -147,12 +206,15 @@ function toWebPattern(pattern: HapticPattern): number | number[] {
 export function vibrate(pattern: HapticPattern = HAPTIC.tap): boolean {
   if (typeof window === "undefined") return false;
 
-  if (isNative()) {
+  if (isNative() && nativeHapticsAvailable()) {
     /* Fire-and-forget on purpose. The native bridge is asynchronous and the
        caller is on the input path — awaiting it would put the plugin round trip
        between the press and the frame that responds to it. */
     void loadNative().then(async (mod) => {
-      if (!mod) return;
+      if (!mod) {
+        hapticsPluginAvailable = false;
+        return;
+      }
       const { Haptics, ImpactStyle } = mod;
       try {
         const intensity = intensityOf(pattern);
@@ -171,27 +233,17 @@ export function vibrate(pattern: HapticPattern = HAPTIC.tap): boolean {
           }
         }
       } catch {
-        /* A device with haptics disabled throws here. Nothing to recover. */
+        /* A device with haptics disabled throws here, and so does a shell whose
+           plugin is present in JS but unregistered natively. Latch it off so the
+           *next* press takes the web path synchronously, while activation is
+           still live — this press is already lost either way. */
+        hapticsPluginAvailable = false;
       }
     });
     return true;
   }
 
-  /* Web. Synchronous from here down — see the note at the top of the file. */
-  const navigatorWithVibrate = navigator as Navigator & {
-    vibrate?: (pattern: number | number[]) => boolean;
-  };
-  if (typeof navigatorWithVibrate.vibrate !== "function") return false;
-
-  /* Chrome cancels a vibration when the document is hidden and rejects one
-     started while hidden, so skip rather than fire into nothing. */
-  if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
-
-  try {
-    return navigatorWithVibrate.vibrate(toWebPattern(pattern)) !== false;
-  } catch {
-    return false;
-  }
+  return webVibrate(pattern);
 }
 
 export default vibrate;

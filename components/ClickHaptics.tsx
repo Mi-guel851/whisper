@@ -9,11 +9,16 @@ import { HAPTIC, vibrate } from "@/lib/haptics";
    escape hatch for anything pressable that matches none of these, without a
    second listener.
 
+   The last four cover the app's own pressables that are not semantic buttons:
+   tab strips, list rows, and the switch/tab roles. Without them a "tap anything"
+   promise is only kept for about half the surface, which reads as broken rather
+   than as partial.
+
    `:has()` is split out because `closest()` throws a SyntaxError on a selector
    it cannot parse, and one unsupported clause would take the whole handler down
    rather than degrade. Tested once at module load, not per press. */
 const BASE_INTERACTIVE =
-  "button, a, [role='button'], input[type='submit'], input[type='button'], summary, [data-haptic]";
+  "button, a, [role='button'], [role='tab'], [role='switch'], [role='menuitem'], input[type='submit'], input[type='button'], input[type='checkbox'], input[type='radio'], select, summary, [data-haptic]";
 
 const LABEL_INTERACTIVE = "label:has(input[type='file'])";
 
@@ -75,6 +80,10 @@ export default function ClickHaptics() {
     let pendingPointerId: number | null = null;
     let pendingTarget: HTMLElement | null = null;
 
+    /* A press that both `pointerdown` and `pointerup` refused, waiting on the
+       `click` that follows. */
+    let awaitingClick: HTMLElement | null = null;
+
     function clearPending() {
       pendingPointerId = null;
       pendingTarget = null;
@@ -93,6 +102,7 @@ export default function ClickHaptics() {
 
     function handlePointerDown(event: PointerEvent) {
       clearPending();
+      awaitingClick = null;
 
       /* Primary contact only. A second finger landing during a pinch, or the
          right button of a mouse, isn't a press being acknowledged. */
@@ -123,7 +133,33 @@ export default function ClickHaptics() {
         event.clientY >= box.top - RELEASE_SLOP_PX &&
         event.clientY <= box.bottom + RELEASE_SLOP_PX;
 
-      if (released) vibrate(HAPTIC.tap);
+      if (released) {
+        if (vibrate(HAPTIC.tap)) return;
+        /* Even the release was refused. `click` is the last event in the sequence
+           and the one platforms are most permissive about, so hand it over rather
+           than give up — see `handleClick`. */
+        awaitingClick = target;
+      }
+    }
+
+    /**
+     * Last resort.
+     *
+     * `click` carries user activation on every platform and in every browser —
+     * it is the canonical activation-triggering event, more reliable than either
+     * pointer event. It is not used as the *primary* trigger because it fires
+     * after the browser has resolved the gesture, which on touch is 50-100ms
+     * behind the finger landing and reads as lag. But a buzz slightly late beats
+     * no buzz at all, and this is the branch that finally covers browsers whose
+     * activation rules are stricter than the spec's list suggests.
+     */
+    function handleClick(event: MouseEvent) {
+      const target = awaitingClick;
+      awaitingClick = null;
+      if (!target) return;
+      // Only if this click belongs to the press we gave up on.
+      if (!target.contains(event.target as Node) && event.target !== target) return;
+      vibrate(HAPTIC.tap);
     }
 
     /* The gesture turned into a scroll or was taken over by the system. Drop the
@@ -131,17 +167,20 @@ export default function ClickHaptics() {
        where a swipe that happened to start on a button felt like a press. */
     function handlePointerCancel(event: PointerEvent) {
       if (pendingPointerId === event.pointerId) clearPending();
+      awaitingClick = null;
     }
 
     const listen = { capture: true, passive: true } as const;
     document.addEventListener("pointerdown", handlePointerDown, listen);
     document.addEventListener("pointerup", handlePointerUp, listen);
     document.addEventListener("pointercancel", handlePointerCancel, listen);
+    document.addEventListener("click", handleClick, listen);
 
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown, { capture: true });
       document.removeEventListener("pointerup", handlePointerUp, { capture: true });
       document.removeEventListener("pointercancel", handlePointerCancel, { capture: true });
+      document.removeEventListener("click", handleClick, { capture: true });
     };
   }, []);
 
