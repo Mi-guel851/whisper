@@ -161,7 +161,7 @@ export default function DailyWhisperCard() {
       <div className="mt-4 flex gap-3">
         <Button
           className="flex-1"
-          onClick={share}
+          onClick={() => prompt && void sharePrompt(prompt.text)}
           disabled={!prompt}
           icon={<Share2 size={16} />}
         >
@@ -169,7 +169,7 @@ export default function DailyWhisperCard() {
         </Button>
         <Button
           variant="secondary"
-          onClick={() => prompt && copy(prompt.text, "Prompt copied ✓")}
+          onClick={() => prompt && void copyPrompt(prompt.text)}
           disabled={!prompt}
           icon={<Copy size={16} />}
           aria-label="Copy prompt"
