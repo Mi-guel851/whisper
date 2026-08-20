@@ -50,6 +50,44 @@ const WEB_SCALE = 2.6;
 /** Anything at or under this asks for a light tick rather than a real buzz. */
 const LIGHT_IMPACT_MAX_MS = 15;
 
+/* --------------------------------------------------------------------------
+ * The user's own switch
+ * ------------------------------------------------------------------------ */
+
+/** Mirrors the theme preference's storage convention. */
+const ENABLED_KEY = "whisper-haptics";
+
+/**
+ * Read once and cached, because `vibrate()` runs on every press and
+ * `localStorage.getItem` is a synchronous main-thread call that can hit disk.
+ * `setHapticsEnabled` keeps the cache in step, so nothing re-reads storage.
+ */
+let enabledCache: boolean | null = null;
+
+export function isHapticsEnabled(): boolean {
+  if (enabledCache !== null) return enabledCache;
+  if (typeof window === "undefined") return true;
+  try {
+    /* Absent means on. Haptics are the default experience; the switch exists to
+       turn them *off*, so a fresh install must not start silent. */
+    enabledCache = window.localStorage.getItem(ENABLED_KEY) !== "off";
+  } catch {
+    enabledCache = true;
+  }
+  return enabledCache;
+}
+
+export function setHapticsEnabled(enabled: boolean): void {
+  enabledCache = enabled;
+  try {
+    window.localStorage.setItem(ENABLED_KEY, enabled ? "on" : "off");
+  } catch {
+    /* Private mode with storage denied. The in-memory cache still holds for this
+       session, which is the best that can be offered. */
+  }
+}
+
+
 /**
  * Named intents, so call sites stop encoding driver timings. Raw numbers are
  * still accepted — they are what the rescaling above operates on — but new code
@@ -205,6 +243,7 @@ function webVibrate(pattern: HapticPattern): boolean {
  */
 export function vibrate(pattern: HapticPattern = HAPTIC.tap): boolean {
   if (typeof window === "undefined") return false;
+  if (!isHapticsEnabled()) return false;
 
   if (isNative() && nativeHapticsAvailable()) {
     /* Fire-and-forget on purpose. The native bridge is asynchronous and the
@@ -247,3 +286,137 @@ export function vibrate(pattern: HapticPattern = HAPTIC.tap): boolean {
 }
 
 export default vibrate;
+
+/* --------------------------------------------------------------------------
+ * Diagnosis
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Why this exists.
+ *
+ * A haptic that does not fire is the hardest class of bug to chase, because
+ * every possible cause produces the identical symptom: nothing. No motor, a
+ * WebView without the plugin, a browser withholding user activation, an OS
+ * touch-feedback switch turned off — all of them are "I tapped and felt
+ * nothing", and none of them can be told apart by tapping harder.
+ *
+ * So rather than guess again, this reports which branch a press actually takes
+ * and what the platform said when asked. It is the difference between "haptics
+ * are broken" and "the plugin is missing from this build", which are two
+ * different jobs with two different fixes.
+ *
+ * The one thing no code can determine: whether the phone physically buzzed.
+ * Android accepts the request and renders nothing when the system-level touch
+ * feedback setting is off, and reports success either way. That is why the
+ * report ends in a question to the user rather than a verdict.
+ */
+export type HapticsDiagnosis = {
+  /** Which implementation a press would reach. */
+  path: "native-plugin" | "web-vibrator" | "none";
+  /** True when the switch in Settings is on. */
+  enabled: boolean;
+  /** Running inside the Capacitor shell rather than a browser tab. */
+  native: boolean;
+  /** Native only: whether `@capacitor/haptics` is registered in this build. */
+  pluginRegistered: boolean;
+  /** Whether the browser exposes the Vibration API at all. iOS Safari does not. */
+  webVibratorPresent: boolean;
+  /** What the platform returned for a test buzz, if one was fired. */
+  testAccepted: boolean | null;
+  /** Plain-language summary, safe to show a user. */
+  summary: string;
+  /** The thing to try next, or null when the platform is doing its part. */
+  advice: string | null;
+};
+
+/**
+ * Runs a real test buzz and reports what happened.
+ *
+ * MUST be called synchronously from a click handler — it fires an actual
+ * vibration, and `navigator.vibrate` needs user activation that does not survive
+ * an `await`. Calling it from an effect will report a refusal that says nothing
+ * about the device.
+ */
+export function diagnoseHaptics(): HapticsDiagnosis {
+  const enabled = isHapticsEnabled();
+  const native = typeof window !== "undefined" && isNative();
+  const pluginRegistered = native ? nativeHapticsAvailable() : false;
+  const webVibratorPresent =
+    typeof navigator !== "undefined" &&
+    typeof (navigator as Navigator & { vibrate?: unknown }).vibrate === "function";
+
+  const path: HapticsDiagnosis["path"] =
+    native && pluginRegistered
+      ? "native-plugin"
+      : webVibratorPresent
+        ? "web-vibrator"
+        : "none";
+
+  /* Deliberately stronger than a tap: the point is to be unmistakable, so a
+     "did you feel it?" answer means something. */
+  const testAccepted = enabled && path !== "none" ? vibrate(HAPTIC.warning) : null;
+
+  if (!enabled) {
+    return {
+      path,
+      enabled,
+      native,
+      pluginRegistered,
+      webVibratorPresent,
+      testAccepted,
+      summary: "Haptics are switched off.",
+      advice: "Turn the switch above on and test again.",
+    };
+  }
+
+  if (path === "none") {
+    return {
+      path,
+      enabled,
+      native,
+      pluginRegistered,
+      webVibratorPresent,
+      testAccepted,
+      summary: native
+        ? "This build has no haptics plugin, and the WebView exposes no vibrator."
+        : "This browser has no Vibration API — iOS Safari and most desktop browsers don't.",
+      advice: native
+        ? "Rebuild the app after `npx cap sync android`."
+        : "Install Whisper from the Android app for haptics, or open the site in Chrome on Android.",
+    };
+  }
+
+  if (testAccepted === false) {
+    return {
+      path,
+      enabled,
+      native,
+      pluginRegistered,
+      webVibratorPresent,
+      testAccepted,
+      summary: "The browser refused the vibration.",
+      /* Almost always the sticky-activation rule or a hidden tab. Both resolve on
+         a second press, which is why this asks for one rather than declaring a
+         fault. */
+      advice: "Tap Test once more — browsers ignore the first buzz on a fresh page.",
+    };
+  }
+
+  return {
+    path,
+    enabled,
+    native,
+    pluginRegistered,
+    webVibratorPresent,
+    testAccepted,
+    summary:
+      path === "native-plugin"
+        ? "Sent through the native haptics engine."
+        : "Sent to the phone's vibration motor.",
+    /* The honest ending. Everything under our control worked; if nothing was felt
+       the remaining switch is one only the user can reach. */
+    advice:
+      "Felt nothing? Whisper's side worked, so check Android Settings → Sound & vibration → Vibration & haptics and make sure touch feedback is on.",
+  };
+}
+

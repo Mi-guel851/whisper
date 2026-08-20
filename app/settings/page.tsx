@@ -4,6 +4,7 @@ import Link from "next/link";
 import GlassPanel from "@/components/GlassPanel";
 import BackButton from "@/components/BackButton";
 import LogoutButton from "@/components/LogoutButton";
+import HapticsSettingRow from "@/components/HapticsSettingRow";
 import {
   Bell,
   ChevronRight,
@@ -55,7 +56,7 @@ export default function SettingsPage() {
 
         <h1 className="page-title mb-8">Settings</h1>
 
-        <GlassPanel strong className="rounded-3xl p-5 mb-4">
+        <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/5">
           <h2 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1 px-1">
             Preferences
           </h2>
@@ -70,6 +71,11 @@ export default function SettingsPage() {
               Manage
             </Link>
           </div>
+          {/* Given a home here rather than buried in a debug screen because the
+              switch is a real preference, and because the Test button beside it
+              is the only way to tell "Whisper didn't fire" from "Android is set
+              not to buzz" — two failures that feel identical. */}
+          <HapticsSettingRow />
         </GlassPanel>
 
         <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/5">
