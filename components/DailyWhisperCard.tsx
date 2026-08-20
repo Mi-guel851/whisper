@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Copy, RefreshCw, Share2, Sparkles, Sun } from "lucide-react";
 
@@ -51,6 +51,9 @@ export default function DailyWhisperCard() {
   const [category, setCategory] = useState<PromptCategory>("random");
   const [generating, setGenerating] = useState(false);
   const [link, setLink] = useState("");
+
+  /** Handle for the shuffle icon's spin, so it can be cleared. */
+  const spinTimer = useRef<number | null>(null);
 
   /* The prompt is today's until the user shuffles. Tracked so the header can say
      which one they're looking at — "Today's Whisper" is a promise the card
@@ -154,10 +157,24 @@ export default function DailyWhisperCard() {
     setIsToday(false);
     setGenerating(true);
     vibrate(HAPTIC.select);
-    /* Purely cosmetic: the spin needs a beat to be legible, and the new prompt is
-       ready instantly. One timeout, cleared on unmount by the effect below. */
-    window.setTimeout(() => setGenerating(false), 420);
+
+    /* Purely cosmetic: the new prompt is ready instantly, but the spin needs a
+       beat to be legible. Tracked in a ref and cleared on unmount — and cleared
+       before re-arming, so hammering the button doesn't leave one timer to
+       switch the icon off while a later spin is still running. */
+    if (spinTimer.current !== null) window.clearTimeout(spinTimer.current);
+    spinTimer.current = window.setTimeout(() => {
+      spinTimer.current = null;
+      setGenerating(false);
+    }, 420);
   }, [category]);
+
+  useEffect(
+    () => () => {
+      if (spinTimer.current !== null) window.clearTimeout(spinTimer.current);
+    },
+    []
+  );
 
   const pickCategory = useCallback(
     (next: PromptCategory) => {
@@ -267,7 +284,7 @@ export default function DailyWhisperCard() {
         {/* Horizontal scroll rather than a wrap: eight chips wrapped to three
             rows on a phone and pushed the card's own content off the fold. */}
         <div
-          className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+          className="daily-chip-row -mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
           style={{ scrollbarWidth: "none" }}
         >
           {PROMPT_CATEGORIES.map((entry) => {
