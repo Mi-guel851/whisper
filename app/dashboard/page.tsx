@@ -9,6 +9,7 @@ import { presenceManager } from "@/lib/realtime/presence";
 
 import DashboardHeader from "@/components/DashboardHeader";
 import LinkCard from "@/components/LinkCard";
+import DailyWhisperCard from "@/components/DailyWhisperCard";
 import StatsRow from "@/components/StatsRow";
 import ActivityChart from "@/components/ActivityChart";
 import RecentMessages from "@/components/RecentMessages";
@@ -89,6 +90,10 @@ export default function DashboardPage() {
       <div className="relative mx-auto max-w-4xl space-y-5 p-6">
         <DashboardHeader />
         <LinkCard />
+        {/* Directly under the link on purpose: the two read as one thought —
+            here is your link, and here is what to say when you send it. A bare
+            link asks nothing and gets ignored. */}
+        <DailyWhisperCard />
         <StatsRow />
         <ActivityChart />
         <RecentMessages />
