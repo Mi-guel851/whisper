@@ -34,13 +34,30 @@ import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
  *   // ...after the insert resolves without error:
  *   setFlightId((n) => n + 1);
  *   <PaperPlaneFlight flightId={flightId} originRef={buttonRef} />
+ *
+ * If the send button is swapped for a success state — which is the common case —
+ * measure it in your handler first and pass `origin` instead of `originRef`; see
+ * the note on that prop for why a ref cannot work there.
  */
+
+type Origin = { x: number; y: number };
 
 type PaperPlaneFlightProps = {
   /** Increment to launch. `0` means "never sent yet" and animates nothing. */
   flightId: number;
   /** The send button, so the plane departs from and returns to the real icon. */
-  originRef: React.RefObject<HTMLElement | null>;
+  originRef?: React.RefObject<HTMLElement | null>;
+  /**
+   * Explicit launch point in viewport coordinates, which wins over `originRef`.
+   *
+   * Needed whenever the send button is replaced by a success state, because both
+   * updates land in the same React batch: by the time this effect runs the button
+   * is already detached, and `getBoundingClientRect()` on a detached node returns
+   * all zeros — the plane would launch from the top-left corner of the screen.
+   * So a caller in that situation measures the button inside its own handler,
+   * while it is still on screen, and passes the point in here.
+   */
+  origin?: Origin | null;
 };
 
 /** Desktop duration, in seconds. The spec's 5s, which suits a wide viewport. */
@@ -52,9 +69,11 @@ const COMPACT_DURATION = 2.6;
 /** Viewport width under which the compact timing is used. */
 const COMPACT_MAX_WIDTH = 640;
 
-type Origin = { x: number; y: number };
-
-export default function PaperPlaneFlight({ flightId, originRef }: PaperPlaneFlightProps) {
+export default function PaperPlaneFlight({
+  flightId,
+  originRef,
+  origin: originProp,
+}: PaperPlaneFlightProps) {
   const reduced = useSafeReducedMotion();
   const [origin, setOrigin] = useState<Origin | null>(null);
   const [compact, setCompact] = useState(false);
@@ -63,14 +82,21 @@ export default function PaperPlaneFlight({ flightId, originRef }: PaperPlaneFlig
   useEffect(() => {
     if (flightId <= 0) return;
 
-    const node = originRef.current;
-    if (!node) return;
+    /* A point measured by the caller wins: it was taken while the button was
+       still on screen, which a ref read here can no longer guarantee. */
+    if (originProp) {
+      setOrigin(originProp);
+    } else {
+      const node = originRef?.current;
+      if (!node) return;
 
-    /* Measured at launch, not on mount. The button moves — the composer grows as
-       text wraps, the keyboard opens, the page scrolls — so a position captured
-       earlier would send the plane off from where the button used to be. */
-    const box = node.getBoundingClientRect();
-    setOrigin({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+      /* Measured at launch, not on mount. The button moves — the composer grows as
+         text wraps, the keyboard opens, the page scrolls — so a position captured
+         earlier would send the plane off from where the button used to be. */
+      const box = node.getBoundingClientRect();
+      setOrigin({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    }
+
     setCompact(window.innerWidth < COMPACT_MAX_WIDTH);
 
     const seconds = reduced ? 0.5 : window.innerWidth < COMPACT_MAX_WIDTH ? COMPACT_DURATION : FULL_DURATION;
@@ -89,7 +115,7 @@ export default function PaperPlaneFlight({ flightId, originRef }: PaperPlaneFlig
         clearTimer.current = null;
       }
     };
-  }, [flightId, originRef, reduced]);
+  }, [flightId, originRef, originProp, reduced]);
 
   if (!origin) return null;
 

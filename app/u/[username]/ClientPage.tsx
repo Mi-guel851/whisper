@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import { supabase } from "@/lib/supabase/client";
 import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
 import AmbientFloaters from "@/components/AmbientFloaters";
+import PaperPlaneFlight from "@/components/PaperPlaneFlight";
 import { fadeUp, respectMotion, spring, tween } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import { ImagePlus, X, User } from "lucide-react";
@@ -61,6 +62,14 @@ export default function PublicProfile() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+
+  /* The send-button celebration. `flightId` only ever moves after the insert
+     comes back clean, so the plane can never fly for a message that failed. The
+     origin is captured alongside it because the button is gone by the next
+     render — see PaperPlaneFlight's `origin` prop. */
+  const sendButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [flightId, setFlightId] = useState(0);
+  const [flightOrigin, setFlightOrigin] = useState<{ x: number; y: number } | null>(null);
 
   const receiverId = profile?.id ?? "";
   const avatarUrl = profile?.avatar_url ?? null;
@@ -227,6 +236,12 @@ export default function PublicProfile() {
     showToast("Message sent anonymously! 🎉");
     setMessage("");
     removeImage();
+
+    /* Measured here, before `setSent` detaches the button on the next render. */
+    const box = sendButtonRef.current?.getBoundingClientRect();
+    if (box) setFlightOrigin({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    setFlightId((n) => n + 1);
+
     setSent(true);
   }
 
@@ -497,6 +512,7 @@ export default function PublicProfile() {
 
             {/* ── SEND BUTTON ── */}
             <motion.button
+              ref={sendButtonRef}
               type="button"
               onClick={sendMessage}
               disabled={loading}
@@ -513,6 +529,11 @@ export default function PublicProfile() {
           </motion.div>
         )}
       </motion.div>
+
+      {/* Outside the sent/unsent branch on purpose: the button it launches from
+          is unmounted by the time the plane is in the air, so anything rendered
+          inside that branch would be torn down mid-flight. */}
+      <PaperPlaneFlight flightId={flightId} origin={flightOrigin} />
     </main>
   );
 }
