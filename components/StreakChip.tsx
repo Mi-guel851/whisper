@@ -9,7 +9,6 @@ import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import { spring } from "@/lib/motion";
 import GlassPanel from "./GlassPanel";
 import StreakCard from "./StreakCard";
-import { vibrate, HAPTIC } from "@/lib/haptics";
 
 /**
  * The streak indicator in the dashboard header.
@@ -67,12 +66,10 @@ export default function StreakChip() {
     <div ref={wrapRef} className="relative">
       <button
         type="button"
-        onClick={() => {
-          /* Synchronous, straight out of the handler: `navigator.vibrate` needs
-             user activation and activation does not survive an await. */
-          vibrate(HAPTIC.tap);
-          setOpen((v) => !v);
-        }}
+        /* No vibrate() call here on purpose: ClickHaptics already buzzes every
+           interactive element from one delegated pointerdown listener, so a local
+           call would drive the motor twice for a single press. */
+        onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={`${streak.current} day streak. Show progress`}
         className="relative inline-flex h-10 items-center gap-1.5 rounded-2xl border border-white/10 bg-white/5 px-2.5 text-white transition hover:bg-white/10"

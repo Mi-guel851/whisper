@@ -10,6 +10,7 @@ import { enablePushNotifications } from "@/lib/push";
 import { useToast } from "@/components/ToastProvider";
 import Button from "./Button";
 import NotificationBell from "./NotificationBell";
+import StreakChip from "./StreakChip";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -123,12 +124,15 @@ export default function DashboardHeader() {
   }
 
   return (
-    <div className="flex items-center justify-between">
-      <div>
+    <div className="flex items-center justify-between gap-3">
+      {/* min-w-0 is what lets the truncate below engage: a flex child defaults to
+          min-content width, so without it a long display name would push the
+          controls off the right edge instead of clipping itself. */}
+      <div className="min-w-0 flex-1">
         <p className="eyebrow text-gray-300">{getGreeting()}</p>
         <h1 className="page-title mt-1 flex items-center gap-2 text-white">
-          Hey, {name || "there"}
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-sm">
+          <span className="truncate">Hey, {name || "there"}</span>
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-sm">
             <Image src="/ghost.png" alt="Whisper" width={18} height={18} />
           </span>
         </h1>
@@ -141,7 +145,12 @@ export default function DashboardHeader() {
           on a light canvas. `Button` carries the theme-aware variants, the
           press spring, and the ripple, so the toggle presses like every other
           control instead of being the one dead target on the screen. */}
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
+        {/* The streak reads as status, so it lives in the chrome beside the bell
+            rather than as another card in an already-dense dashboard column. It
+            renders nothing until the streak is real, so this group is two
+            controls wide until the check-in answers. */}
+        <StreakChip />
         <NotificationBell />
         <Button
           variant={pushEnabled ? "primary" : "secondary"}
