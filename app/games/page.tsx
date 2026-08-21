@@ -7,6 +7,7 @@ import { Check, Copy, Gamepad2, Share2 } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
+import ShareMessageCard from "@/components/ShareMessageCard";
 import { HAPTIC, vibrate } from "@/lib/haptics";
 import {
   respectMotion,
@@ -16,7 +17,7 @@ import {
 } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import useWhisperShare from "@/lib/useWhisperShare";
-import { gameGradient, WHISPER_GAMES, type WhisperGame } from "@/lib/whisperGames";
+import { gameActionSurface, gameGradient, WHISPER_GAMES, type WhisperGame } from "@/lib/whisperGames";
 
 /**
  * Whisper Games.
@@ -29,11 +30,28 @@ import { gameGradient, WHISPER_GAMES, type WhisperGame } from "@/lib/whisperGame
  */
 export default function GamesPage() {
   const reduced = useSafeReducedMotion();
-  const { sharePrompt, copyPrompt, ready } = useWhisperShare();
+  const { sharePrompt, copyPrompt, ready, link, username } = useWhisperShare();
 
   /* Which card just confirmed a copy. Held per-id rather than as a boolean so two
      quick copies on different cards don't tick the wrong one. */
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  /* The game whose share card is open. The whole game, not its id, because the
+     card needs its question and its gradient — and a lookup by id would be a
+     second source of truth for something already in hand. */
+  const [shareGame, setShareGame] = useState<WhisperGame | null>(null);
+
+  function handleShare(game: WhisperGame) {
+    vibrate(HAPTIC.tap);
+    /* No link, no card: a share card whose whole purpose is to carry a link
+       would be a picture of nothing. `sharePrompt` already says what to do about
+       it, so the button stays honest rather than opening an empty card. */
+    if (!ready) {
+      void sharePrompt(game.prompt);
+      return;
+    }
+    setShareGame(game);
+  }
 
   async function handleCopy(game: WhisperGame) {
     const ok = await copyPrompt(game.prompt);
@@ -98,25 +116,31 @@ export default function GamesPage() {
                     <h2 className="text-[15px] font-black leading-tight text-white">
                       {game.title}
                     </h2>
-                    <p className="mt-0.5 text-[12px] leading-snug theme-text-muted">
+                    <p className="mt-0.5 text-[12px] leading-snug theme-text-subtle">
                       {game.tagline}
                     </p>
                   </div>
                 </div>
 
-                <p className="mt-3 text-[13px] leading-snug text-white/80">
+                {/* The question itself, so it goes through a theme token rather
+                    than `text-white/80`. Tailwind's opacity modifier compiles to
+                    a literal white, and the compatibility bridge only rewrites
+                    the bare `.text-white` — so an /80 stayed white against the
+                    light theme's white card. */}
+                <p className="mt-3 text-[13px] leading-snug theme-text-muted">
                   &ldquo;{game.prompt}&rdquo;
                 </p>
 
                 <div className="mt-3.5 flex items-center gap-2">
                   <motion.button
                     type="button"
-                    onClick={() => {
-                      vibrate(HAPTIC.tap);
-                      void sharePrompt(game.prompt);
-                    }}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-black text-black"
-                    style={{ background: gameGradient(game, 120) }}
+                    onClick={() => handleShare(game)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-black"
+                    /* Colour inline rather than `text-white`: the bridge resolves
+                       that class to the theme's foreground, which is near-black
+                       in light theme — on a deep gradient the label would then
+                       disappear on the other side of the toggle. */
+                    style={{ background: gameActionSurface(game), color: "#ffffff" }}
                     whileTap={reduced ? undefined : { scale: 0.97 }}
                     transition={spring.snappy}
                   >
@@ -128,7 +152,7 @@ export default function GamesPage() {
                     type="button"
                     onClick={() => void handleCopy(game)}
                     aria-label={`Copy the ${game.title} prompt`}
-                    className="glass-control flex h-10 w-10 items-center justify-center rounded-2xl text-white/80"
+                    className="glass-control flex h-10 w-10 items-center justify-center rounded-2xl theme-text-muted"
                     whileTap={reduced ? undefined : { scale: 0.92 }}
                     transition={spring.snappy}
                   >
@@ -153,6 +177,21 @@ export default function GamesPage() {
       </div>
 
       <BottomNavigation />
+
+      {/* The question goes out as a story card tinted to the tile it was tapped
+          on, rather than as a line of text. A pasted sentence is scrolled past; a
+          card is posted. The handle sits in the glass half because that is the
+          part a viewer has to read to answer. */}
+      {shareGame && (
+        <ShareMessageCard
+          prompt={shareGame.prompt}
+          accent={shareGame.gradient}
+          message={username ? `@${username}` : ""}
+          shareUrl={link}
+          shareText={`${shareGame.prompt}\n\nTell me anonymously 👇`}
+          onClose={() => setShareGame(null)}
+        />
+      )}
     </main>
   );
 }

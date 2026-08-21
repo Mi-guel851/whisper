@@ -31,6 +31,7 @@ export type ShareOutcome = "shared" | "copied" | "cancelled" | "no-link" | "fail
 export function useWhisperShare() {
   const { showToast } = useToast();
   const [link, setLink] = useState("");
+  const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,7 +57,13 @@ export function useWhisperShare() {
       /* `window.location.origin` rather than a hardcoded domain: this has to be
          right on the Vercel deployment, on a preview URL, and inside the
          Capacitor WebView, which loads the live origin. */
-      if (data?.username) setLink(`${window.location.origin}/u/${data.username}`);
+      if (data?.username) {
+        setLink(`${window.location.origin}/u/${data.username}`);
+        /* Kept alongside the link because the share card prints the handle, not
+           the URL — a full link set at story-card size wraps across three lines
+           and reads as a paste, where "@name" reads as an invitation. */
+        setUsername(data.username);
+      }
       setLoading(false);
     }
 
@@ -142,8 +149,8 @@ export function useWhisperShare() {
   }, [link, copyText, showToast]);
 
   return useMemo(
-    () => ({ link, loading, ready: Boolean(link), sharePrompt, copyPrompt, copyLink, composeMessage }),
-    [link, loading, sharePrompt, copyPrompt, copyLink, composeMessage]
+    () => ({ link, username, loading, ready: Boolean(link), sharePrompt, copyPrompt, copyLink, composeMessage }),
+    [link, username, loading, sharePrompt, copyPrompt, copyLink, composeMessage]
   );
 }
 

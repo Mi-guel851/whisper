@@ -1,11 +1,40 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import html2canvas from "html2canvas-pro";
 import { X, Download, Image as ImageIcon } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 
 type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
+
+/**
+ * Whisper's own cyan → violet → pink, used for the prompt band and the canvas
+ * glow when a caller doesn't name its own.
+ */
+const DEFAULT_ACCENT = ["#22d3ee", "#8b5cf6", "#ec4899"];
+
+/** The invitation on an anonymous whisper. Game and prompt cards pass their own. */
+const DEFAULT_PROMPT = "send me anonymous messages!";
+
+/**
+ * `#rrggbb` → `rgba(r, g, b, a)`.
+ *
+ * Done in JS rather than with `color-mix()` for one reason: html2canvas reads
+ * computed styles, and Chrome does not always resolve `color-mix()` inside a
+ * gradient when it serializes one — so the stop that looks right in the preview
+ * can come back as nothing in the exported PNG. A literal rgba() cannot be
+ * misread. Non-hex input is returned untouched so a caller passing an already
+ * valid colour keyword still works.
+ */
+function withAlpha(color: string, alpha: number): string {
+  const hex = color.trim();
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 /* ---------------------------------------------------------------------------
    One layout, two sizes.
@@ -140,11 +169,15 @@ function StoryFrame({
   imageUrl,
   width,
   frameRef,
+  prompt,
+  accent,
 }: {
   message: string;
   imageUrl?: string | null;
   width: number;
   frameRef: React.RefObject<HTMLDivElement | null>;
+  prompt: string;
+  accent: string[];
 }) {
   /* One factor for the whole tree, applied as plain px in inline styles — so the
      computed values html2canvas reads are already absolute, with no container
@@ -152,6 +185,20 @@ function StoryFrame({
   const s = width / CANVAS_W;
   const u = (n: number) => `${n * s}px`;
   const hasImage = Boolean(imageUrl);
+
+  /* Two stops or three, both read as one sweep. A caller with a two-stop brand
+     colour — a game tile, say — gets its own hue across the band without having
+     to invent a middle. */
+  const band = accent.length > 1 ? accent : [accent[0], accent[0]];
+  const bandStops = band
+    .map((stop, index) => `${stop} ${Math.round((index / (band.length - 1)) * 100)}%`)
+    .join(", ");
+
+  /* The canvas glow, keyed off the same three colours the band uses so a tinted
+     card is tinted all the way through rather than a coloured strip pasted onto
+     Whisper's default backdrop. Alphas stay where they were — low enough that
+     this stays black with a colour in it. */
+  const glow = [band[0], band[band.length - 1], band[Math.floor(band.length / 2)]];
 
   return (
     <div
@@ -188,9 +235,9 @@ function StoryFrame({
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(78% 42% at 12% 3%, rgba(34,211,238,0.13) 0%, rgba(34,211,238,0) 62%), " +
-            "radial-gradient(84% 44% at 93% 70%, rgba(236,72,153,0.12) 0%, rgba(236,72,153,0) 64%), " +
-            "radial-gradient(70% 38% at 50% 101%, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0) 66%)",
+            `radial-gradient(78% 42% at 12% 3%, ${withAlpha(glow[0], 0.13)} 0%, ${withAlpha(glow[0], 0)} 62%), ` +
+            `radial-gradient(84% 44% at 93% 70%, ${withAlpha(glow[1], 0.12)} 0%, ${withAlpha(glow[1], 0)} 64%), ` +
+            `radial-gradient(70% 38% at 50% 101%, ${withAlpha(glow[2], 0.12)} 0%, ${withAlpha(glow[2], 0)} 66%)`,
         }}
       />
 
@@ -233,8 +280,9 @@ function StoryFrame({
         >
           {/* The prompt. Left-aligned and set large, as in the reference, so it
               reads as the invitation the card is built around rather than as a
-              caption. The gradient is Whisper's cyan → purple → pink instead of
-              the reference's pink → orange. */}
+              caption. The band carries whatever colour the caller sends — a game
+              question arrives tinted to the tile it was tapped on; an anonymous
+              whisper falls back to Whisper's cyan → violet → pink. */}
           <div
             style={{
               flexShrink: 0,
@@ -242,20 +290,24 @@ function StoryFrame({
               display: "flex",
               alignItems: "center",
               padding: `${u(52)} ${u(56)}`,
-              background: "linear-gradient(118deg, #22d3ee 0%, #8b5cf6 52%, #ec4899 100%)",
+              background: `linear-gradient(118deg, ${bandStops})`,
             }}
           >
             <p
               style={{
                 margin: 0,
-                fontSize: u(46),
+                /* A game question is a sentence, not a four-word invitation, so
+                   the band steps down a size once it gets long rather than
+                   growing the band and squeezing the card below it. */
+                fontSize: u(prompt.length > 64 ? 36 : prompt.length > 42 ? 41 : 46),
                 lineHeight: 1.18,
                 fontWeight: 900,
                 letterSpacing: "-0.015em",
                 color: "#ffffff",
+                overflowWrap: "anywhere",
               }}
             >
-              send me anonymous messages!
+              {prompt}
             </p>
           </div>
 
@@ -425,12 +477,60 @@ function StoryFrame({
   );
 }
 
-export default function ShareMessageCard({ message, imageUrl, onClose }: { message: string; imageUrl?: string | null; onClose: () => void }) {
+export default function ShareMessageCard({
+  message,
+  imageUrl,
+  onClose,
+  prompt = DEFAULT_PROMPT,
+  accent = DEFAULT_ACCENT,
+  shareUrl,
+  shareText,
+}: {
+  message: string;
+  imageUrl?: string | null;
+  onClose: () => void;
+  /** The invitation across the coloured band. A game passes its question here. */
+  prompt?: string;
+  /** Two or three hex stops. Tints the band and the canvas glow. */
+  accent?: string[];
+  /** The link that travels with the card. Defaults to this deployment's origin. */
+  shareUrl?: string;
+  /** Caption for the platform hand-off. Defaults to a line about the message. */
+  shareText?: string;
+}) {
   const cardRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const [frameWidth, setFrameWidth] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState("");
+
+  /* The portal host, resolved in the initial state rather than in an effect so
+     the card paints on its first commit — an effect would cost a frame of empty
+     overlay every time it opens. `undefined` on the server, where there is no
+     document; this component only ever mounts behind a click, so that branch is
+     for safety rather than for a real server render. */
+  const [host] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : document.body
+  );
+
+  /* Escape closes, and the page behind cannot scroll while it is open. Both are
+     new consequences of portalling to <body>: the card used to be a child of the
+     card that opened it, which is also why it was mis-sized — see the note on
+     the return. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
 
   /**
    * Fits the story frame to whatever height the modal has left over.
@@ -640,8 +740,15 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
     setGenerating(false);
     if (!blob) { flashToast("Couldn't build the card. Try again."); return; }
 
-    const shareText = message ? `"${message}" — anonymous whisper 👻` : "I got an anonymous message on Whisper 👻";
-    const shareUrl = "https://whisper.app";
+    const caption =
+      shareText ??
+      (message ? `"${message}" — anonymous whisper 👻` : "I got an anonymous message on Whisper 👻");
+    /* Was a hardcoded `https://whisper.app`, which is not this app — the WhatsApp
+       and X fallbacks were posting a dead domain. The origin is right on Vercel,
+       on a preview URL and inside the Capacitor WebView, and a caller with a real
+       destination (a user's own Whisper link) passes it. */
+    const destination =
+      shareUrl || (typeof window === "undefined" ? "" : window.location.origin);
     const file = new File([blob], "whisper-message.png", { type: "image/png" });
 
     if (Capacitor.isNativePlatform()) {
@@ -654,7 +761,7 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
           const base64Data = (reader.result as string).split(",")[1];
           const fileName = `whisper-share-${Date.now()}.png`;
           const savedFile = await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Documents, recursive: true });
-          await Share.share({ title: "Whisper", text: shareText, url: savedFile.uri });
+          await Share.share({ title: "Whisper", text: caption, url: savedFile.uri });
         };
         return;
       } catch (err) {
@@ -664,7 +771,7 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
 
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: "Whisper", text: shareText });
+        await navigator.share({ files: [file], title: "Whisper", text: caption });
         return;
       } catch {}
     }
@@ -673,11 +780,11 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
     flashToast("Image saved — attach it when sharing! 👻");
 
     if (platform === "whatsapp") {
-      window.open(`https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`, "_blank");
+      window.open(`https://wa.me/?text=${encodeURIComponent(`${caption}\n${destination}`)}`, "_blank");
       return;
     }
     if (platform === "x") {
-      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, "_blank");
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(destination)}`, "_blank");
       return;
     }
 
@@ -689,7 +796,29 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
 
   const platforms: Platform[] = ["instagram", "snapchat", "whatsapp", "x", "tiktok"];
 
-  return (
+  if (!host) return null;
+
+  /* ---------------------------------------------------------------------------
+     Portalled to <body>, and that is the fix for two bugs that looked unrelated.
+
+     This card is opened from inside `EdgeLitCard` on the dashboard. `.edge-lit`
+     sets `isolation: isolate`, which creates a stacking context — so `z-[999]`
+     here only ever competed with that card's own children, and the bottom nav's
+     `z-50` in the root context painted straight over the modal. That is the "nav
+     bar is transparent" report: the nav was not translucent, it was on top.
+
+     And `.edge-lit-inner` sets `backdrop-filter`, which makes it the containing
+     block for `position: fixed` descendants. So `inset-0` and `height: 100dvh`
+     resolved against a card a few hundred pixels tall instead of the viewport,
+     and the bottom of the column — the platform row and the save buttons — fell
+     outside the box. That is the "share card is too long" report.
+
+     Raising the z-index cannot fix either one; a z-index cannot escape a stacking
+     context, and a containing block is not a paint-order question at all. Moving
+     the node out of that subtree fixes both at once, and keeps working wherever
+     the card is opened from next.
+     --------------------------------------------------------------------------- */
+  return createPortal(
     <div
       className="fixed inset-0 z-[999] flex flex-col px-4"
       style={{
@@ -737,7 +866,14 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
         >
           <div ref={boxRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
             {frameWidth > 0 && (
-              <StoryFrame message={message} imageUrl={imageUrl} width={frameWidth} frameRef={cardRef} />
+              <StoryFrame
+                message={message}
+                imageUrl={imageUrl}
+                width={frameWidth}
+                frameRef={cardRef}
+                prompt={prompt}
+                accent={accent}
+              />
             )}
           </div>
         </div>
@@ -760,6 +896,7 @@ export default function ShareMessageCard({ message, imageUrl, onClose }: { messa
           {toast && <div className="mt-2.5 flex w-full items-center justify-center rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.10)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#ffffff" }}>{toast}</div>}
         </div>
       </div>
-    </div>
+    </div>,
+    host
   );
 }

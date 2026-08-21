@@ -102,3 +102,27 @@ export function gameById(id: string): WhisperGame | undefined {
 export function gameGradient(game: WhisperGame, angle = 135): string {
   return `linear-gradient(${angle}deg, ${game.gradient[0]}, ${game.gradient[1]})`;
 }
+
+/**
+ * The Share button's surface: the same gradient, deepened, so white ink sits on
+ * it in either theme.
+ *
+ * The 44px tile keeps the vivid stops — that contrast between eight hues is what
+ * makes the grid scannable at a glance. A 13px label cannot live on them. The
+ * label was dark ink, and dark ink on a saturated mid-tone is the one
+ * combination that measures acceptable and reads as mush: the worst case in this
+ * set is the indigo end of "Would You Rather" at 4.7:1, technically AA and
+ * genuinely hard to read on a dark-adapted screen, which is exactly the
+ * complaint. Flipping to white ink on the vivid stops is no better — white on
+ * cyan is 1.8:1.
+ *
+ * So the button's own field drops instead. Mixing each stop 72% into the app's
+ * near-black keeps the hue and its direction while pulling the luminance down
+ * far enough that white clears 7:1 on all eight games, in both themes. Jewel
+ * tones rather than neon, which is also the more premium reading of the same
+ * colour.
+ */
+export function gameActionSurface(game: WhisperGame, angle = 120): string {
+  const deepen = (stop: string) => `color-mix(in srgb, ${stop} 72%, #0a0a12)`;
+  return `linear-gradient(${angle}deg, ${deepen(game.gradient[0])}, ${deepen(game.gradient[1])})`;
+}

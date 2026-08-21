@@ -6,6 +6,7 @@ import { Copy, RefreshCw, Share2, Sparkles, Sun } from "lucide-react";
 
 import EdgeLitCard from "@/components/EdgeLitCard";
 import Button from "@/components/Button";
+import ShareMessageCard from "@/components/ShareMessageCard";
 import { HAPTIC, vibrate } from "@/lib/haptics";
 import { fadeUp, respectMotion, spring, tween } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
