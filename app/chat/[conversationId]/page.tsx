@@ -716,7 +716,7 @@ export default function ChatPage() {
       } else {
         container.scrollTop = container.scrollHeight - container.clientHeight;
       }
-    }
+    };
 
     land();
     /* Landing above the newest message leaves the jump-to-latest button on
