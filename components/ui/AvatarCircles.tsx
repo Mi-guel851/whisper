@@ -12,15 +12,18 @@ import { Check, Lock } from "lucide-react";
  *
  * * **Display** (default) — a stack of faces with a `+N` bubble once the list runs
  *   past `max`. Used for social proof.
- * * **Selectable** — the same stack, but each circle is a radio-ish button. Used by
- *   the avatar picker, where the overlap is doing real work: it shows at a glance
- *   that these are one set you pick *from*, and it fits a large set into a strip
- *   instead of a grid that would push the form off the screen.
+ * * **Selectable** — the same stack, but each circle is a radio-ish button. The
+ *   overlap does real work here: it reads as one set you pick *from*, and it fits a
+ *   large set into a strip instead of a grid that would push a form off the screen.
  *
- * A circle can be marked `taken`, which renders it locked and unselectable. That is
- * presentation only — the actual guarantee that two people cannot hold the same
- * avatar is a unique constraint in the database, because a disabled button is a
- * suggestion and a unique index is a fact. See `AvatarPicker`.
+ * A circle can be marked `taken`, which renders it locked and unselectable.
+ *
+ * NOTE: selectable mode currently has no caller. Whisper's avatars are generated
+ * from the user id (`lib/generatedAvatar.ts`) and its anonymous names are assigned
+ * by the database (`lib/anonNames.ts`) — neither is picked from a list, so nothing
+ * on the site chooses an identity from a strip today. `taken` is kept because if a
+ * pickable set ever ships, presentation is only half of it: a disabled button is a
+ * suggestion, and the guarantee has to be a unique index.
  */
 
 export type AvatarItem = {

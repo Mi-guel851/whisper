@@ -10,7 +10,7 @@ import GlassPanel from "@/components/GlassPanel";
 import FriendsHeader from "@/components/FriendsHeader";
 import ChatRow from "@/components/inbox/ChatRow";
 import InboxSkeleton from "@/components/inbox/InboxSkeleton";
-import { anonymousDisplayName } from "@/lib/anonymousIdentity";
+import { useAnonNames } from "@/lib/anonNames";
 import { messagePreviewText } from "@/lib/messagePreview";
 import { presenceManager } from "@/lib/realtime/presence";
 import { typingManager } from "@/lib/realtime/typing";
@@ -314,8 +314,16 @@ export default function InboxPage() {
     return c.user_a === myId ? c.user_b : c.user_a;
   }
 
+  /* Every row's counterpart in one array, so the whole list resolves its names
+     in a single request instead of one per row. */
+  const otherIds = useMemo(
+    () => conversations.map((c) => (c.user_a === myId ? c.user_b : c.user_a)),
+    [conversations, myId]
+  );
+  const nameOf = useAnonNames(otherIds);
+
   function labelFor(c: ConversationRow) {
-    return anonymousDisplayName(otherUserId(c));
+    return nameOf(otherUserId(c));
   }
 
   function isUnread(c: ConversationRow) {
@@ -341,11 +349,11 @@ export default function InboxPage() {
     return conversations.filter((c) => {
       const other = c.user_a === myId ? c.user_b : c.user_a;
       return (
-        anonymousDisplayName(other).toLowerCase().includes(needle) ||
+        nameOf(other).toLowerCase().includes(needle) ||
         (previews[c.id]?.content || "").toLowerCase().includes(needle)
       );
     });
-  }, [conversations, myId, previews, query]);
+  }, [conversations, myId, nameOf, previews, query]);
 
   /* Sets for O(1) lookup inside the map. The arrays come from state and change
      often (presence, typing), but the check `array.includes(id)` is O(n) and

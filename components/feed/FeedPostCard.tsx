@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import Link from "next/link";
-import { anonymousDisplayName } from "@/lib/anonymousIdentity";
+import { useAnonNames } from "@/lib/anonNames";
 import { compactCount, countDescendants, timeAgo, type FeedPostNode } from "@/lib/feed";
 import FeedAvatar from "./FeedAvatar";
 import FeedActionBar from "./FeedActionBar";
@@ -58,6 +58,9 @@ function FeedPostCardBase({
   threadOpen = false,
 }: FeedPostCardProps) {
   const isRoot = depth === 0;
+  /* Two ids per card, but requests inside the same commit coalesce into one
+     query — so a whole thread costs one round trip, not one per post. */
+  const nameOf = useAnonNames([node.author_id, parentAuthorId]);
   const likes = controller.likesByPost[node.id] || [];
   const liked = likes.some((like) => like.user_id === controller.myId);
   const replyCount = countDescendants(node);
@@ -87,7 +90,7 @@ function FeedPostCardBase({
         <div className="min-w-0 flex-1 pb-0.5">
           <div className="flex items-baseline gap-1.5 text-[15px] leading-tight">
             <span className="feed-author truncate font-black">
-              {anonymousDisplayName(node.author_id)}
+              {nameOf(node.author_id)}
             </span>
             <span className="feed-dot shrink-0" aria-hidden>·</span>
             <time
@@ -106,7 +109,7 @@ function FeedPostCardBase({
             <p className="feed-replying-to mt-0.5 truncate text-[13px]">
               Replying to{" "}
               <span className="feed-replying-to-name font-bold">
-                {anonymousDisplayName(parentAuthorId)}
+                {nameOf(parentAuthorId)}
               </span>
             </p>
           )}

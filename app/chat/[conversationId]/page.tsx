@@ -8,7 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST, SEND_VOICE_COST } from "@/lib/coins";
-import { anonymousDisplayName } from "@/lib/anonymousIdentity";
+import { anonNameOf, resolveAnonName } from "@/lib/anonNames";
 import { typingManager } from "@/lib/realtime/typing";
 import { presenceManager } from "@/lib/realtime/presence";
 import { useToast } from "@/components/ToastProvider";
@@ -444,6 +444,7 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
     let reactionChannel: ReturnType<typeof supabase.channel> | null = null;
     let unsubscribeTyping: (() => void) | undefined;
@@ -464,7 +465,14 @@ export default function ChatPage() {
 
       const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
       setOtherUserId(otherUserId);
-      setOtherLabel(anonymousDisplayName(otherUserId));
+      /* The stored handle when it's already been fetched (a thread opened from
+         the Inbox), or the stored handle fetched now. The fallback renders
+         instantly; `resolveAnonName` swaps it the moment the row lands, so the
+         header never shows a name the database doesn't own. */
+      setOtherLabel(anonNameOf(otherUserId));
+      void resolveAnonName(otherUserId).then((name) => {
+        if (!cancelled) setOtherLabel(name);
+      });
 
       unsubscribePresence = presenceManager.subscribe((users) => {
         setOtherUserOnline(users.some((user) => user.id === otherUserId));
@@ -590,6 +598,7 @@ export default function ChatPage() {
     init().then((cleanup) => { cleanupVisibility = cleanup; });
 
     return () => {
+      cancelled = true;
       cleanupVisibility?.();
       unsubscribePresence?.();
       unsubscribeTyping?.();

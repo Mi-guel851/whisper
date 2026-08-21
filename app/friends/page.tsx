@@ -16,7 +16,7 @@ import PersonRow from "@/components/PersonRow";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import type { SegmentedTab } from "@/components/SegmentedTabs";
 import { useToast } from "@/components/ToastProvider";
-import { anonymousDisplayName as anonymousName } from "@/lib/anonymousIdentity";
+import { useAnonNames } from "@/lib/anonNames";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { staggerContainer } from "@/lib/motion";
 
@@ -283,6 +283,20 @@ function FriendsPageContent() {
   const activeNow = useMemo(
     () => onlineUserIds.filter((id) => id !== myId),
     [onlineUserIds, myId]
+  );
+
+  /* Every id any tab on this screen can render, resolved in one batch. All four
+     lists go through one request rather than one per list, and switching tabs
+     costs nothing because the names are already cached. */
+  const anonymousName = useAnonNames(
+    useMemo(
+      () => [
+        ...people.map((profile) => profile.id),
+        ...activeNow,
+        ...friends.map((friend) => friend.friend_id),
+      ],
+      [people, activeNow, friends]
+    )
   );
 
   // The count lives on the tab as a badge, not baked into the label string —
@@ -605,6 +619,19 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
   title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing";
   busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onlineSet: ReadonlySet<string>;
 }) {
+  /* Its own batch rather than a prop threaded down from the page: the resolver
+     caches per tab-lifetime, so asking twice for the same id costs one map
+     lookup and no second request. */
+  const anonymousName = useAnonNames(
+    useMemo(
+      () =>
+        requests.map((request) =>
+          mode === "incoming" ? request.sender_id : request.receiver_id
+        ),
+      [requests, mode]
+    )
+  );
+
   return (
     <div>
       <h2 className="section-title mb-3">{title}</h2>

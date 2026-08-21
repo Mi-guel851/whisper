@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useMemo } from "react";
-import { anonymousDisplayName } from "@/lib/anonymousIdentity";
+import { useAnonNames } from "@/lib/anonNames";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 
 type FriendHeaderProps = {
@@ -11,6 +11,7 @@ type FriendHeaderProps = {
 };
 
 function FriendsHeader({ friendIds, onlineUserIds, onSelect }: FriendHeaderProps) {
+  const nameOf = useAnonNames(friendIds);
   const onlineIds = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
   const friends = useMemo(
     () => [...new Set(friendIds)]
@@ -55,7 +56,7 @@ function FriendsHeader({ friendIds, onlineUserIds, onSelect }: FriendHeaderProps
                     className="friends-name mt-2 block max-w-20 truncate text-center text-xs"
                     style={{ color: "#ffffff", fontWeight: 800 }}
                   >
-                    {anonymousDisplayName(id)}
+                    {nameOf(id)}
                   </span>
                 </>
               );
@@ -66,7 +67,7 @@ function FriendsHeader({ friendIds, onlineUserIds, onSelect }: FriendHeaderProps
                   type="button"
                   onClick={() => onSelect(id)}
                   className="group w-20 shrink-0 rounded-2xl px-1 py-2 transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:bg-white/[0.1]"
-                  aria-label={`Open chat with ${anonymousDisplayName(id)}`}
+                  aria-label={`Open chat with ${nameOf(id)}`}
                 >
                   {content}
                 </button>
