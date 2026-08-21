@@ -8,6 +8,7 @@ import OrbitChips from "./home/OrbitChips";
 import Avatar from "./home/Avatar";
 import CountUp from "./home/CountUp";
 import { ButtonLink } from "./Button";
+import ShimmerButton from "./ui/ShimmerButton";
 import { ease, respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
 
@@ -62,9 +63,19 @@ export default function Hero() {
           variants={respectMotion(staggerItem, reduced)}
           className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-center lg:justify-start"
         >
-          <ButtonLink href="/signup" size="lg" iconRight={<ArrowRight size={18} />}>
-            Create My Link
-          </ButtonLink>
+          {/* The one CTA on the page that keeps moving. The frame owns the width
+              so the button can fill it; `ButtonLink` keeps its own ripple, press
+              spring and focus ring — the shimmer is purely additive. */}
+          <ShimmerButton className="w-full sm:w-auto">
+            <ButtonLink
+              href="/signup"
+              size="lg"
+              iconRight={<ArrowRight size={18} />}
+              className="w-full"
+            >
+              Create My Link
+            </ButtonLink>
+          </ShimmerButton>
           <ButtonLink
             href="/#how-it-works"
             variant="outline"

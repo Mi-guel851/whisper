@@ -2969,3 +2969,381 @@ main[data-surface="dark"]::before {
 
   .skeleton::after { animation: none !important; }
 }
+
+/* ==========================================================================
+   9. MOTION PRIMITIVES
+   --------------------------------------------------------------------------
+   The stylesheet half of `components/ui/*`. Each block here is the paint for one
+   primitive; the component owns the logic and parks the animation when it
+   scrolls out of view.
+
+   House rules for this section:
+   - transform / opacity / background-position only, so everything composites
+   - no blend modes
+   - every looping animation must survive the reduced-motion block above, which
+     slams `animation-duration` to 0.01ms and pins iteration count to 1. A loop
+     that ends somewhere other than where it started therefore must not depend on
+     running at all — see the marquee note.
+   ========================================================================== */
+
+/* --- Marquee ------------------------------------------------------------- */
+/* The track travels exactly one copy plus one gap, so copy 2 lands where copy 1
+   began and the reset is invisible.
+
+   Reduced motion is handled in the component, not here: freezing this animation
+   would leave the track parked at -100% with its content off-screen. The
+   component swaps in `.marquee-static` — a real scroll rail — instead. */
+
+@keyframes marqueeTrack {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(-100% - var(--marquee-gap, 1rem))); }
+}
+
+.marquee-host {
+  display: flex;
+  align-items: center;
+  gap: var(--marquee-gap, 1rem);
+  overflow: hidden;
+  width: 100%;
+}
+
+.marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  align-items: stretch;
+  gap: var(--marquee-gap, 1rem);
+  min-width: max-content;
+  animation: marqueeTrack var(--marquee-duration, 42s) linear infinite;
+  will-change: transform;
+}
+
+/* Off-screen. Paused rather than unmounted, so it resumes mid-stride. */
+.marquee-track[data-paused="true"] { animation-play-state: paused; }
+
+/* Read-on-hover. Has to hit every copy at once or they desynchronise. */
+.marquee-hoverable:hover .marquee-track { animation-play-state: paused; }
+
+.marquee-static {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  width: 100%;
+}
+.marquee-static::-webkit-scrollbar { display: none; }
+.marquee-static > * { scroll-snap-align: center; }
+
+/* --- Tilt card ----------------------------------------------------------- */
+/* Perspective lives on the host so the child rotates inside a stable frustum;
+   on the rotating element itself, the vanishing point swings with it. */
+
+.tilt-host {
+  perspective: 800px;
+  transform-style: preserve-3d;
+}
+
+.tilt-host-inline { display: inline-flex; }
+
+.tilt-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* Inherited so a radius passed to the host reaches the glare, which clips to
+     its own `border-radius: inherit` — without this a rounded tile gets a square
+     highlight over its corners. */
+  border-radius: inherit;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.tilt-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--tilt-glare-opacity, 0);
+  transition: opacity 220ms var(--ease-soft, ease);
+  background: radial-gradient(
+    240px circle at var(--tilt-glare-x, 50%) var(--tilt-glare-y, 50%),
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0) 62%
+  );
+}
+
+:root[data-theme="light"] .tilt-glare {
+  background: radial-gradient(
+    240px circle at var(--tilt-glare-x, 50%) var(--tilt-glare-y, 50%),
+    rgba(255, 255, 255, 0.7),
+    rgba(255, 255, 255, 0) 62%
+  );
+}
+
+/* --- Shimmer button ------------------------------------------------------ */
+/* Its own angle property. `--edge-angle` is `inherits: true` and drives
+   EdgeLitCard, so reusing it here would let a shimmer nested inside a lit card
+   fight its ancestor's rim over one variable. */
+
+@property --shimmer-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes shimmerSpin {
+  to { --shimmer-angle: 360deg; }
+}
+
+/* Parked at the far edge for most of the cycle, so the sweep is an occasional
+   glint rather than a strobe. */
+@keyframes shimmerGloss {
+  0%        { transform: translateX(-140%) skewX(-18deg); }
+  38%, 100% { transform: translateX(320%)  skewX(-18deg); }
+}
+
+.shimmer-frame {
+  position: relative;
+  display: inline-flex;
+  isolation: isolate;
+  padding: 2px;
+  border-radius: calc(var(--radius-lg) + 2px);
+  overflow: hidden;
+  /* That 2px inset is the entire visible rim, so the frame adds no background
+     of its own — the spark behind it *is* the border. */
+  background: transparent;
+}
+
+.shimmer-spark {
+  position: absolute;
+  /* Oversized past the box: a conic sized to the rectangle runs visibly thin
+     across the diagonals as it turns. */
+  inset: -60%;
+  z-index: 0;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--shimmer-angle),
+    transparent 0deg,
+    var(--theme-accent-from) 45deg,
+    var(--theme-accent-purple) 105deg,
+    var(--theme-accent-pink) 155deg,
+    transparent 220deg,
+    transparent 360deg
+  );
+  animation: shimmerSpin var(--shimmer-speed, 3.6s) linear infinite;
+  will-change: transform;
+}
+
+.shimmer-content {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.shimmer-gloss {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 38%;
+  /* Above the content on purpose: the gloss crosses the face of the button,
+     not the space behind it. */
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 80%
+  );
+  transform: translateX(-140%) skewX(-18deg);
+  animation: shimmerGloss var(--shimmer-gloss-speed, 4.8s) var(--ease-soft, ease) infinite;
+  will-change: transform;
+}
+
+/* --- Morphing text ------------------------------------------------------- */
+/* Both strings share one grid cell, so the host sizes itself to the widest of
+   them and nothing shifts when they swap. */
+
+.morph-host {
+  display: inline-grid;
+  place-items: center;
+  line-height: 1.1;
+}
+
+.morph-layer {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  will-change: opacity, filter;
+}
+
+/* --- Special text -------------------------------------------------------- */
+/* One wide gradient with a bright band in it, clipped to the glyphs and slid
+   across. Scoped to a single word deliberately — see the component's note on
+   what a per-character filter cascade cost this headline. */
+
+@keyframes specialShine {
+  from { background-position: 130% 50%; }
+  to   { background-position: -30% 50%; }
+}
+
+.special-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--theme-accent-from) 0%,
+    var(--theme-accent-purple) 26%,
+    #ffffff 42%,
+    var(--theme-accent-pink) 58%,
+    var(--theme-accent-purple) 82%,
+    var(--theme-accent-from) 100%
+  );
+  background-size: 260% 100%;
+  background-position: 130% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: specialShine var(--special-speed, 6s) var(--ease-soft, ease) infinite;
+  will-change: background-position;
+}
+
+/* Light theme's accents are already dark on white, so a white band there reads
+   as a hole punched through the word. The highlight lifts toward the accent
+   instead of toward paper. */
+:root[data-theme="light"] .special-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--theme-accent-purple) 0%,
+    var(--theme-accent-pink) 26%,
+    #ff8fd0 42%,
+    var(--theme-accent-pink) 58%,
+    var(--theme-accent-purple) 82%,
+    var(--theme-accent-purple) 100%
+  );
+}
+
+.special-text[data-paused="true"] { animation-play-state: paused; }
+
+/* --- Avatar circles ------------------------------------------------------ */
+
+.avatar-circles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+}
+
+.avatar-circle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--theme-card);
+  /* The ring is what separates a circle from the one it overlaps, so it has to
+     match whatever the stack is sitting on. Defaults to a card surface, which is
+     where these usually live; override `--avatar-ring` on the page background. */
+  box-shadow: 0 0 0 2px var(--avatar-ring, var(--theme-card)), var(--elev-2);
+}
+
+.avatar-circle + .avatar-circle,
+.avatar-circle + .avatar-circle-more {
+  margin-left: calc(var(--avatar-overlap, 12px) * -1);
+}
+
+.avatar-circle-pick {
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+  will-change: transform;
+}
+
+.avatar-circle-pick:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--avatar-ring, var(--theme-card)),
+    0 0 0 4px var(--theme-accent-purple);
+}
+
+.avatar-circle-on {
+  box-shadow:
+    0 0 0 2px var(--avatar-ring, var(--theme-card)),
+    0 0 0 4px var(--theme-accent-purple),
+    0 8px 20px rgba(139, 92, 246, 0.35);
+}
+
+.avatar-circle-taken { cursor: not-allowed; }
+
+.avatar-circle-veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(4, 4, 10, 0.62);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.avatar-circle-tick {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--theme-accent-purple);
+  color: #ffffff;
+  box-shadow: 0 0 0 2px var(--avatar-ring, var(--theme-card));
+}
+
+.avatar-circle-more {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--theme-text-secondary);
+  background: var(--theme-surface);
+}
+
+/* --- Exploding input ----------------------------------------------------- */
+/* The layer is inert scaffolding; the sparks inside are positioned and animated
+   imperatively by the component, so typing never re-renders React. */
+
+.explode-host { position: relative; }
+
+.explode-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+  border-radius: inherit;
+}
+
+.explode-spark {
+  position: absolute;
+  border-radius: 9999px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* Off-screen twin of the field, measured once per emission to find the caret's
+   pixel position — no API reports it inside a textarea. Visually hidden rather
+   than `display: none`, which would report no geometry at all. */
+.explode-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  z-index: -1;
+}

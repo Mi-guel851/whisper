@@ -16,6 +16,8 @@ import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { useEventCallback } from "@/lib/useEventCallback";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoicePlayer from "@/components/chat/VoicePlayer";
+import PaperPlaneFlight from "@/components/PaperPlaneFlight";
+import ExplodingInput from "@/components/ui/ExplodingInput";
 import type { VoiceRecording } from "@/lib/useVoiceRecorder";
 import { messagePreviewText } from "@/lib/messagePreview";
 import { Capacitor, registerPlugin } from "@capacitor/core";
@@ -389,11 +391,20 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /* The send button, so the paper plane departs from and returns to the real
+     icon rather than an arbitrary point. */
+  const sendButtonRef = useRef<HTMLButtonElement | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageNodes = useRef<Map<string, HTMLDivElement>>(new Map());
   const atBottomRef = useRef(true);
   const messagesRef = useRef<Message[]>([]);
   const myIdRef = useRef<string>("");
+
+  /* Paper-plane celebration state. `flightId` only moves after the insert comes
+     back clean; `flightOrigin` is measured in the handler while the button is
+     still on screen. */
+  const [flightId, setFlightId] = useState(0);
+  const [flightOrigin, setFlightOrigin] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
@@ -694,6 +705,16 @@ export default function ChatPage() {
     }
     if (!hasMessage || !myId) return;
     const content = input.trim();
+
+    /* Measured here, before the input clears. Emptying it swaps the send button
+       out for the voice recorder in the same React batch, and a rect read from a
+       detached node is all zeros — the plane would launch from the top-left of
+       the screen. See PaperPlaneFlight's note on `origin`. */
+    const sendBox = sendButtonRef.current?.getBoundingClientRect();
+    const launchPoint = sendBox
+      ? { x: sendBox.left + sendBox.width / 2, y: sendBox.top + sendBox.height / 2 }
+      : null;
+
     setInput("");
     const replyId = replyingTo?.id || null;
     setReplyingTo(null);
@@ -704,6 +725,13 @@ export default function ChatPage() {
       reply_to_id: replyId,
     });
     if (error) { showToast(error.message); return; }
+
+    /* Only now. Celebrating a send that failed is worse than not celebrating. */
+    if (launchPoint) {
+      setFlightOrigin(launchPoint);
+      setFlightId((n) => n + 1);
+    }
+
     await supabase.from("conversations").update({
       last_message_at: new Date().toISOString(),
       last_message_sender_id: myId,
@@ -1233,15 +1261,19 @@ export default function ChatPage() {
               <button type="button" onClick={() => { setShowEmojiPicker((open) => !open); setShowAttachSheet(false); }} className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition" aria-label="Emoji" aria-expanded={showEmojiPicker}>
                 <Smile size={21} />
               </button>
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message" : "Unlock chat to send messages"}
-                disabled={!chatUnlocked}
-                rows={1}
-                className="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
-              />
+              {/* The wrapper takes over the flex sizing so the composer still
+                  grows exactly as it did; the textarea just fills it. */}
+              <ExplodingInput targetRef={textareaRef} className="flex min-w-0 flex-1">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message" : "Unlock chat to send messages"}
+                  disabled={!chatUnlocked}
+                  rows={1}
+                  className="max-h-32 w-full min-w-0 resize-none overflow-y-auto bg-transparent px-1 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </ExplodingInput>
               <button type="button" onClick={() => { setShowAttachSheet((open) => !open); setShowEmojiPicker(false); }} disabled={uploadingPhoto} title={`Attach an image (${SEND_IMAGE_COST} coins)`} aria-label="Attach" className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60" aria-expanded={showAttachSheet}>
                 <Paperclip size={20} />
               </button>
@@ -1250,7 +1282,7 @@ export default function ChatPage() {
               </button>
             </div>
             {!recordingVoice && (input.trim().length > 0 || pendingPhoto) ? (
-              <button type="submit" disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)} aria-label={pendingPhoto ? `Send photo for ${SEND_IMAGE_COST} coins` : "Send message"} className={`chat-send-circle chat-send-circle-press flex h-[52px] shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-[52px]"}`}>
+              <button ref={sendButtonRef} type="submit" disabled={!chatUnlocked || (pendingPhoto ? uploadingPhoto : false)} aria-label={pendingPhoto ? `Send photo for ${SEND_IMAGE_COST} coins` : "Send message"} className={`chat-send-circle chat-send-circle-press flex h-[52px] shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${pendingPhoto ? "gap-1.5 px-4" : "w-[52px]"}`}>
                 {pendingPhoto ? (
                   uploadingPhoto ? <Loader2 size={18} className="animate-spin" /> : (<><Coins size={17} /><span className="text-sm font-black">{SEND_IMAGE_COST}</span></>)
                 ) : (
@@ -1319,6 +1351,10 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+      {/* Outside the composer on purpose: the send button unmounts the moment the
+          input clears, so anything rendered inside that branch would be torn down
+          while the plane was still in the air. */}
+      <PaperPlaneFlight flightId={flightId} origin={flightOrigin} />
     </main>
   );
 }

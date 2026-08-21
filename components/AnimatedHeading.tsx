@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { motion } from "framer-motion";
 import { ease } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+import SpecialText from "./ui/SpecialText";
 
 const LEAD = "Honest conversations start with";
 const ACCENT = "Whisper.";
@@ -35,7 +36,7 @@ export default function AnimatedHeading({ className = "" }: { className?: string
           <motion.span
             // inline-block so the transform applies; the space that follows is
             // a real text node outside it, so the browser can still wrap here.
-            className={`inline-block ${accent ? "theme-accent-text" : ""}`}
+            className="inline-block"
             initial={
               reduced
                 ? { opacity: 0 }
@@ -48,7 +49,11 @@ export default function AnimatedHeading({ className = "" }: { className?: string
               ease: ease.outExpo,
             }}
           >
-            {word}
+            {/* The accent word keeps a highlight travelling through it after the
+                entrance finishes. `SpecialText` carries the gradient itself —
+                including the static `theme-accent-text` fallback under reduced
+                motion — so the class no longer belongs on the wrapper. */}
+            {accent ? <SpecialText>{word}</SpecialText> : word}
           </motion.span>
           {index < words.length - 1 && " "}
         </Fragment>

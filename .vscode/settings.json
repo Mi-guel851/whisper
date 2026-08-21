@@ -1,3 +1,8 @@
 {
-    "chat.disableAIFeatures": false
+  "chat.disableAIFeatures": false,
+  "deno.enable": false,
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
+  "deno.unstable": []
 }

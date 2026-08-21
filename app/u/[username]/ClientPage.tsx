@@ -8,6 +8,9 @@ import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
 import AmbientFloaters from "@/components/AmbientFloaters";
 import PaperPlaneFlight from "@/components/PaperPlaneFlight";
+import WhisperWordCloud from "@/components/WhisperWordCloud";
+import ExplodingInput from "@/components/ui/ExplodingInput";
+import ShimmerButton from "@/components/ui/ShimmerButton";
 import { fadeUp, respectMotion, spring, tween } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import { ImagePlus, X, User } from "lucide-react";
@@ -70,6 +73,10 @@ export default function PublicProfile() {
   const sendButtonRef = useRef<HTMLButtonElement | null>(null);
   const [flightId, setFlightId] = useState(0);
   const [flightOrigin, setFlightOrigin] = useState<{ x: number; y: number } | null>(null);
+
+  /* Handed to `ExplodingInput`, which reads the caret from it directly rather
+     than through React state — the sparks must not cost a render per keystroke. */
+  const messageRef = useRef<HTMLTextAreaElement | null>(null);
 
   const receiverId = profile?.id ?? "";
   const avatarUrl = profile?.avatar_url ?? null;
@@ -278,6 +285,11 @@ export default function PublicProfile() {
           in a JS animation loop that has to tick while someone is typing. */}
       <AmbientFloaters />
 
+      {/* ── AMBIENT WORD WALL ──
+          Behind the card, so the glass diffuses whatever it overlaps. See the
+          component for why there are exactly four lines. */}
+      <WhisperWordCloud />
+
       {/* ── FLOATING WHISPER LOGO IN BACKGROUND ──
           `whisper-logo-float` is the glow plus a slow rise-and-tilt. Two
           separate animations on purpose: folding them into one keyframe set
@@ -425,19 +437,25 @@ export default function PublicProfile() {
               >
                 Send another
               </motion.button>
-              <motion.button
-                onClick={() =>
-                  window.open("https://whisper-anonymous.vercel.app/signup")
-                }
-                whileTap={reduced ? undefined : { scale: 0.97 }}
-                transition={spring.snappy}
-                className="flex-1 rounded-2xl p-4 font-bold text-white transition hover:opacity-90"
-                style={{
-                  background: "linear-gradient(135deg, #22d3ee, #a855f7)",
-                }}
-              >
-                Get your link
-              </motion.button>
+              {/* The shimmer frame is the flex child now, so it owns the width
+                  and the button fills it. This is the one CTA a visitor who
+                  isn't a user yet is meant to notice, so it's the one place on
+                  the page that keeps moving. */}
+              <ShimmerButton className="flex-1">
+                <motion.button
+                  onClick={() =>
+                    window.open("https://whisper-anonymous.vercel.app/signup")
+                  }
+                  whileTap={reduced ? undefined : { scale: 0.97 }}
+                  transition={spring.snappy}
+                  className="w-full rounded-2xl p-4 font-bold text-white transition hover:opacity-90"
+                  style={{
+                    background: "linear-gradient(135deg, #22d3ee, #a855f7)",
+                  }}
+                >
+                  Get your link
+                </motion.button>
+              </ShimmerButton>
             </div>
 
             <p className="text-center text-xs text-gray-500">
@@ -450,25 +468,31 @@ export default function PublicProfile() {
             variants={itemVariants}
           >
             {/* ── TEXTAREA ── */}
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Type your anonymous message..."
-              className="h-32 w-full rounded-2xl p-4 outline-none resize-none text-white placeholder:text-gray-500 transition"
-              style={{
-                background: "rgba(0,0,0,0.25)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                backdropFilter: "blur(8px)",
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.border =
-                  "1px solid rgba(168,85,247,0.5)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.border =
-                  "1px solid rgba(255,255,255,0.08)";
-              }}
-            />
+            {/* `ExplodingInput` only adds a spark layer over the box — the
+                textarea below is unchanged, and the wrapper is present under
+                reduced motion too so the spacing never differs. */}
+            <ExplodingInput targetRef={messageRef} className="rounded-2xl">
+              <textarea
+                ref={messageRef}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Type your anonymous message..."
+                className="h-32 w-full rounded-2xl p-4 outline-none resize-none text-white placeholder:text-gray-500 transition"
+                style={{
+                  background: "rgba(0,0,0,0.25)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  backdropFilter: "blur(8px)",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.border =
+                    "1px solid rgba(168,85,247,0.5)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.border =
+                    "1px solid rgba(255,255,255,0.08)";
+                }}
+              />
+            </ExplodingInput>
 
             {/* ── IMAGE ATTACHMENT ── */}
             {imagePreview ? (

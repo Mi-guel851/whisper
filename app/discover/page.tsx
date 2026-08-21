@@ -18,6 +18,7 @@ import {
 
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
+import TiltCard from "@/components/ui/TiltCard";
 import { supabase } from "@/lib/supabase/client";
 import { getCachedSession } from "@/lib/supabase/session";
 import { presenceManager } from "@/lib/realtime/presence";
@@ -169,45 +170,50 @@ export default function DiscoverPage() {
             const isFriendsLink = link.href.startsWith("/friends");
             const isFeedLink = link.href === "/public-feed";
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="discover-tile group relative flex min-w-0 flex-col items-center gap-2 rounded-2xl px-3 py-4 text-center"
-              >
-                {/* The label lives *inside* the fill, so the whole thing is one
-                    pressable object — same as the Share button on the
-                    dashboard. Previously the caption sat outside on the page
-                    background, which made the coloured part read as an icon
-                    badge rather than as a button. */}
-                <span className="discover-tile-icon relative flex h-9 w-9 items-center justify-center rounded-xl">
-                  {isFriendsLink ? (
-                    <WavingAnimeAvatar />
-                  ) : (
-                    <Icon size={17} strokeWidth={1.9} className="relative" />
-                  )}
+              /* The tilt wraps the tile rather than replacing it, so the existing
+                 edge-lit rim, badges and press styling are all untouched. It
+                 tracks a mouse only — see TiltCard — so on a phone these behave
+                 exactly as they did. */
+              <TiltCard key={link.href} maxDegrees={8} className="rounded-2xl">
+                <Link
+                  href={link.href}
+                  className="discover-tile group relative flex h-full min-w-0 flex-col items-center gap-2 rounded-2xl px-3 py-4 text-center"
+                >
+                  {/* The label lives *inside* the fill, so the whole thing is one
+                      pressable object — same as the Share button on the
+                      dashboard. Previously the caption sat outside on the page
+                      background, which made the coloured part read as an icon
+                      badge rather than as a button. */}
+                  <span className="discover-tile-icon relative flex h-9 w-9 items-center justify-center rounded-xl">
+                    {isFriendsLink ? (
+                      <WavingAnimeAvatar />
+                    ) : (
+                      <Icon size={17} strokeWidth={1.9} className="relative" />
+                    )}
 
-                  {isFriendsLink && onlineFriendCount > 0 && (
-                    <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-400 px-1 text-[9px] font-black text-[#062019]">
-                      {onlineFriendCount}
-                    </span>
-                  )}
-                  {isFeedLink && unreadFeedCount > 0 && (
-                    <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
-                      {unreadFeedCount > 9 ? "9+" : unreadFeedCount}
-                    </span>
-                  )}
-                </span>
-
-                <span className="discover-tile-label line-clamp-2 text-[12px] font-bold leading-tight">
-                  {link.label}
-                </span>
-                {isFriendsLink && onlineFriendCount > 0 && (
-                  <span className="discover-tile-meta text-[10px] font-bold">
-                    {onlineFriendCount} active now
+                    {isFriendsLink && onlineFriendCount > 0 && (
+                      <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-400 px-1 text-[9px] font-black text-[#062019]">
+                        {onlineFriendCount}
+                      </span>
+                    )}
+                    {isFeedLink && unreadFeedCount > 0 && (
+                      <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                        {unreadFeedCount > 9 ? "9+" : unreadFeedCount}
+                      </span>
+                    )}
                   </span>
-                )}
-                <span className="sr-only">{link.desc}</span>
-              </Link>
+
+                  <span className="discover-tile-label line-clamp-2 text-[12px] font-bold leading-tight">
+                    {link.label}
+                  </span>
+                  {isFriendsLink && onlineFriendCount > 0 && (
+                    <span className="discover-tile-meta text-[10px] font-bold">
+                      {onlineFriendCount} active now
+                    </span>
+                  )}
+                  <span className="sr-only">{link.desc}</span>
+                </Link>
+              </TiltCard>
             );
           })}
         </section>
