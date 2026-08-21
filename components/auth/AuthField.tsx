@@ -55,6 +55,13 @@ export default function AuthField({
           required={required}
           autoComplete={autoComplete}
           inputMode={inputMode}
+          /* Opts out of the app-wide caret sparks (`components/TypingSparks`).
+             `type="password"` is excluded there automatically, but the reveal
+             toggle above flips this field to `type="text"` — and sparks mark the
+             caret, which is a visible character count on a secret the user just
+             chose to show on screen. Marked on the field itself so it holds in
+             both states. */
+          data-no-sparks={isPassword || undefined}
         />
 
         {isPassword && (

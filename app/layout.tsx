@@ -8,6 +8,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 import NotificationProvider from "@/components/NotificationProvider";
 import PushNotificationsProvider from "@/components/PushNotificationsProvider";
 import ClickHaptics from "@/components/ClickHaptics";
+import TypingSparks from "@/components/TypingSparks";
 import AppUrlHandler from "@/components/AppUrlHandler";
 import OfflineHandler from "@/components/OfflineHandler";
 import WhispersAiAssistant from "@/components/ai/WhispersAiAssistant";
@@ -97,6 +98,11 @@ export default function RootLayout({
         <OfflineHandler />
         <AppUrlHandler />
         <ClickHaptics />
+        {/* Both are delegated listeners on `document`, mounted once: taps get a
+            haptic, keystrokes get caret sparks. Neither renders anything, and
+            neither needs a single line of wiring in the 31 fields and hundreds of
+            buttons they cover. */}
+        <TypingSparks />
         <ThemeProvider>
           <ToastProvider>
             <NotificationProvider>

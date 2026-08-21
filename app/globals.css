@@ -3347,3 +3347,17 @@ main[data-surface="dark"]::before {
   overflow: hidden;
   z-index: -1;
 }
+
+/* The app-wide version of the same effect (`components/TypingSparks`), whose pool
+   lives in `body` for the whole session rather than for the life of one field.
+
+   Deliberately no `will-change` here, unlike `.explode-spark`: twenty nodes
+   hinting for a compositor layer on every page of the app is twenty layers held
+   for a session to serve a burst that lasts half a second. A running WAAPI
+   transform/opacity animation is composited on its own anyway, so the hint buys
+   nothing and the idle cost is real. */
+.typing-spark {
+  position: absolute;
+  border-radius: 9999px;
+  opacity: 0;
+}
