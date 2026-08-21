@@ -62,8 +62,13 @@ export default function HapticsSettingRow() {
             <Vibrate size={17} />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-medium text-white/90">Vibration</span>
-            <span className="block text-[11px] text-white/40">Buzz on every tap</span>
+            {/* Theme tokens, not `text-white/90`. Tailwind's opacity modifier
+                compiles to its own class, which the compatibility bridge in
+                globals.css never matches — it only rewrites bare `.text-white`.
+                So an `/N` variant stays literal white and vanishes against the
+                light theme's white glass. */}
+            <span className="block text-sm font-medium text-white">Vibration</span>
+            <span className="block text-[11px] theme-text-subtle">Buzz on every tap</span>
           </span>
         </span>
 
@@ -71,7 +76,7 @@ export default function HapticsSettingRow() {
           <button
             type="button"
             onClick={() => setReport(diagnoseHaptics())}
-            className="rounded-full bg-white/5 px-3 py-1.5 text-[11px] font-bold text-white/70 transition hover:bg-white/10 hover:text-white"
+            className="rounded-full bg-white/5 px-3 py-1.5 text-[11px] font-bold theme-text-muted transition hover:bg-white/10"
           >
             Test
           </button>
@@ -82,14 +87,28 @@ export default function HapticsSettingRow() {
             aria-checked={enabled}
             aria-label="Vibration on tap"
             onClick={toggle}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+            /* `no-press` and `border-0 p-0` are both load-bearing, and both were
+               the "disfigured when on" bug:
+
+               - A `<button>` carries UA padding (`1px 6px` in Chrome). The knob
+                 below is absolutely positioned with no `left`, so it resolved to
+                 its *static* position — inset by that 6px. Off, it floated a
+                 third of the way in; on, `x: 22` pushed it 4px past the track's
+                 right edge, so the white pill bulged out of the purple one.
+                 Zeroing the padding and giving the knob an explicit `left-0.5`
+                 makes both ends deterministic instead of inherited.
+               - The app-wide press rule scales any button to 0.97. On a 44×24
+                 pill that reads as the switch buckling, and a switch already has
+                 its own feedback: the knob moving. */
+            className={`no-press relative box-border h-6 w-11 shrink-0 rounded-full border-0 p-0 transition-colors ${
               enabled ? "bg-purple-500" : "bg-white/15"
             }`}
           >
             <motion.span
-              className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow"
-              /* Animating `left` would relayout every frame; `x` is composited. */
-              animate={{ x: enabled ? 22 : 2 }}
+              className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow"
+              /* Animating `left` would relayout every frame; `x` is composited.
+                 20px of travel, not 22: 44 track − 20 knob − 2 left − 2 right. */
+              animate={{ x: enabled ? 20 : 0 }}
               transition={reduced ? { duration: 0 } : spring.snappy}
             />
           </button>
@@ -101,9 +120,9 @@ export default function HapticsSettingRow() {
           initial={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={tween.base}
-          className="mt-2.5 rounded-xl bg-white/[0.04] px-3 py-2 text-[11px] leading-relaxed text-white/55"
+          className="mt-2.5 rounded-xl bg-white/5 px-3 py-2 text-[11px] leading-relaxed theme-text-subtle"
         >
-          <span className="font-semibold text-white/75">{report.summary}</span>
+          <span className="font-semibold theme-text-muted">{report.summary}</span>
           {report.advice ? <> {report.advice}</> : null}
         </motion.p>
       )}

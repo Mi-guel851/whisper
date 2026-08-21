@@ -41,14 +41,30 @@ import {
 
 const CATEGORY_STORAGE_KEY = "whisper:prompt-category";
 
+/**
+ * The share card's tint.
+ *
+ * "Generated according to their button colour": the button the user actually
+ * presses here is `premium-button-primary`, Whisper's violet → pink. Unlike the
+ * games grid there is no per-prompt hue to borrow — `PROMPT_CATEGORIES` carries a
+ * label and an emoji and nothing else — so the card takes the button's own two
+ * stops rather than inventing a ninth palette.
+ */
+const DAILY_ACCENT = ["#8b5cf6", "#ec4899"];
+
 export default function DailyWhisperCard() {
   const reduced = useSafeReducedMotion();
-  const { sharePrompt, copyPrompt } = useWhisperShare();
+  const { sharePrompt, copyPrompt, ready, link, username } = useWhisperShare();
 
   const [prompt, setPrompt] = useState<WhisperPrompt | null>(null);
   const [today, setToday] = useState("");
   const [category, setCategory] = useState<PromptCategory>("random");
   const [generating, setGenerating] = useState(false);
+
+  /* Whether the story card is open. A boolean rather than the prompt, because
+     the card reads `prompt` straight from state — copying it here would let the
+     two drift if a shuffle landed while the card was open. */
+  const [shareOpen, setShareOpen] = useState(false);
 
   /** Handle for the shuffle icon's spin, so it can be cleared. */
   const spinTimer = useRef<number | null>(null);
@@ -121,6 +137,24 @@ export default function DailyWhisperCard() {
     vibrate(HAPTIC.tap);
   }, []);
 
+  /**
+   * Open the story card for the prompt on screen.
+   *
+   * With no link there is nothing for the card to carry, so the button routes to
+   * `sharePrompt` instead — which surfaces the "set a username" toast. A card
+   * that opened onto an unshareable question would be a dead end dressed up as a
+   * feature.
+   */
+  const handleShare = useCallback(() => {
+    if (!prompt) return;
+    vibrate(HAPTIC.tap);
+    if (!ready) {
+      void sharePrompt(prompt.text);
+      return;
+    }
+    setShareOpen(true);
+  }, [prompt, ready, sharePrompt]);
+
   return (
     <EdgeLitCard radius="3xl" intensity={0.4} speed={17} innerClassName="p-6">
       <div className="flex items-center justify-between gap-3">
@@ -162,7 +196,7 @@ export default function DailyWhisperCard() {
       <div className="mt-4 flex gap-3">
         <Button
           className="flex-1"
-          onClick={() => prompt && void sharePrompt(prompt.text)}
+          onClick={handleShare}
           disabled={!prompt}
           icon={<Share2 size={16} />}
         >
@@ -229,6 +263,22 @@ export default function DailyWhisperCard() {
           })}
         </div>
       </div>
+
+      {/* The prompt leaves as a card rather than a caption. `ShareMessageCard`
+          portals to <body>, which matters here: this card lives inside an
+          `EdgeLitCard`, whose `isolation: isolate` and `backdrop-filter` would
+          otherwise trap the modal's stacking context and its `position: fixed`
+          box inside this padded panel. */}
+      {shareOpen && prompt && (
+        <ShareMessageCard
+          prompt={prompt.text}
+          accent={DAILY_ACCENT}
+          message={username ? `@${username}` : ""}
+          shareUrl={link}
+          shareText={`${prompt.text}\n\nTell me anonymously 👇`}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </EdgeLitCard>
   );
 }

@@ -32,14 +32,20 @@ import { Capacitor } from "@capacitor/core";
 
 /**
  * Below this an Android vibrator has not finished spinning up. Measured on a
- * mid-range LRA: 22ms is technically a pulse and practically nothing, which is
- * why the first attempt at this file still felt dead. 30ms is the point where a
- * tap reads as deliberate feedback rather than as a glitch.
+ * mid-range LRA: 22ms is technically a pulse and practically nothing, and 30ms —
+ * where this sat — is the point where a tap stops reading as a glitch. "Not a
+ * glitch" turned out to be a low bar. A press you can feel *through the case,
+ * while walking, without paying attention* needs roughly 45ms, so that is the
+ * floor now. Nothing in the app asks for less.
  */
-const WEB_FLOOR_MS = 30;
+const WEB_FLOOR_MS = 42;
 
-/** Above this a "tap" stops reading as feedback and starts reading as a buzz. */
-const WEB_CEILING_MS = 60;
+/**
+ * Above this a "tap" stops reading as feedback and starts reading as a buzz.
+ * Raised with the floor — at a 42ms floor the old 60ms ceiling left barely any
+ * room between a tap and a confirmation, so every intent felt the same.
+ */
+const WEB_CEILING_MS = 95;
 
 /**
  * Native durations are written for an OS that renders a tuned waveform. A raw
@@ -47,8 +53,32 @@ const WEB_CEILING_MS = 60;
  */
 const WEB_SCALE = 2.6;
 
-/** Anything at or under this asks for a light tick rather than a real buzz. */
-const LIGHT_IMPACT_MAX_MS = 15;
+/* --------------------------------------------------------------------------
+ * Native impact bands
+ * --------------------------------------------------------------------------
+ * An intent is mapped to one of Capacitor's three impact styles rather than to a
+ * raw duration, because the OS renders a tuned waveform for each and a raw
+ * duration on Android is a flat one-shot that feels cheap next to it.
+ *
+ * WHY THE BANDS MOVED: `tap` used to land under the Light threshold, so every
+ * button in the app fired `ImpactStyle.Light` — the weakest cue either platform
+ * offers, and on Android often below what an LRA renders at all. That is the
+ * "haptics are low" complaint. A button press is now a Medium, which is what
+ * iOS itself uses for a control that commits something, and Light is reserved
+ * for a call site that explicitly asks for something fainter than a button.
+ * ------------------------------------------------------------------------ */
+
+/** At or under this, a call site is asking for a faint tick, not a press. */
+const LIGHT_IMPACT_MAX_MS = 12;
+
+/** A button press. The default, and the strongest cue that still reads as crisp. */
+const MEDIUM_IMPACT_MAX_MS = 24;
+
+/**
+ * Above this the caller wants a real buzz rather than an impact, so the duration
+ * is passed through to the motor instead of being quantised to a style.
+ */
+const HEAVY_IMPACT_MAX_MS = 44;
 
 /* --------------------------------------------------------------------------
  * The user's own switch
@@ -92,16 +122,21 @@ export function setHapticsEnabled(enabled: boolean): void {
  * Named intents, so call sites stop encoding driver timings. Raw numbers are
  * still accepted — they are what the rescaling above operates on — but new code
  * should reach for these.
+ *
+ * The numbers are deliberately larger than they were. Read them against the
+ * bands above: `tap` sits in the Medium band and lands at 52ms on the web,
+ * `select` reaches Heavy at 73ms, and the two patterns keep their gaps so a
+ * confirmation still reads as two events rather than one long buzz.
  */
 export const HAPTIC = {
-  /** Every button press. The most frequent, so the shortest. */
-  tap: 12,
+  /** Every button press. The most frequent, so the shortest — but not the faintest. */
+  tap: 20,
   /** A state committed: recording started, item selected. */
-  select: 18,
+  select: 28,
   /** Two-pulse confirmation: locked, saved, sent. */
-  success: [10, 30, 10],
+  success: [18, 34, 18],
   /** Rejected or destroyed: cancelled recording, failed send. */
-  warning: [14, 40, 14],
+  warning: [26, 44, 26],
 } as const;
 
 /**
@@ -257,19 +292,32 @@ export function vibrate(pattern: HapticPattern = HAPTIC.tap): boolean {
       const { Haptics, ImpactStyle } = mod;
       try {
         const intensity = intensityOf(pattern);
-        if (intensity <= LIGHT_IMPACT_MAX_MS) {
-          await Haptics.impact({ style: ImpactStyle.Light });
-        } else if (typeof pattern === "number") {
-          await Haptics.vibrate({ duration: pattern });
-        } else {
+
+        if (typeof pattern !== "number") {
           /* CoreHaptics and Android's VibrationEffect both express a multi-pulse
              cue better as repeated impacts than as one long buzz, and this keeps
-             the rhythm the pattern was written for. */
+             the rhythm the pattern was written for. The style follows the
+             pattern's own weight, so a warning lands harder than a success. */
+          const style =
+            intensity > HEAVY_IMPACT_MAX_MS ? ImpactStyle.Heavy : ImpactStyle.Medium;
           for (let index = 0; index < pattern.length; index += 2) {
-            await Haptics.impact({ style: ImpactStyle.Medium });
+            await Haptics.impact({ style });
             const gap = pattern[index + 1];
             if (gap) await new Promise((resolve) => setTimeout(resolve, gap));
           }
+          return;
+        }
+
+        if (intensity <= LIGHT_IMPACT_MAX_MS) {
+          await Haptics.impact({ style: ImpactStyle.Light });
+        } else if (intensity <= MEDIUM_IMPACT_MAX_MS) {
+          await Haptics.impact({ style: ImpactStyle.Medium });
+        } else if (intensity <= HEAVY_IMPACT_MAX_MS) {
+          await Haptics.impact({ style: ImpactStyle.Heavy });
+        } else {
+          /* Past Heavy there is no stronger style, so a caller asking for more
+             than that wants an actual sustained buzz. */
+          await Haptics.vibrate({ duration: pattern });
         }
       } catch {
         /* A device with haptics disabled throws here, and so does a shell whose
