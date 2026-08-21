@@ -74,10 +74,6 @@ export default function PublicProfile() {
   const [flightId, setFlightId] = useState(0);
   const [flightOrigin, setFlightOrigin] = useState<{ x: number; y: number } | null>(null);
 
-  /* Handed to `ExplodingInput`, which reads the caret from it directly rather
-     than through React state — the sparks must not cost a render per keystroke. */
-  const messageRef = useRef<HTMLTextAreaElement | null>(null);
-
   const receiverId = profile?.id ?? "";
   const avatarUrl = profile?.avatar_url ?? null;
   const displayName = profile?.display_name ?? null;
@@ -468,12 +464,12 @@ export default function PublicProfile() {
             variants={itemVariants}
           >
             {/* ── TEXTAREA ── */}
-            {/* `ExplodingInput` only adds a spark layer over the box — the
-                textarea below is unchanged, and the wrapper is present under
-                reduced motion too so the spacing never differs. */}
-            <ExplodingInput targetRef={messageRef} className="rounded-2xl">
+            {/* The wrapper is the box only — it matches the textarea's radius so
+                the two share one silhouette. The cubes that burst off the caret
+                come from the app-wide emitter in the root layout, whose layer is
+                fixed to the viewport and so is never clipped by this box. */}
+            <ExplodingInput className="rounded-2xl">
               <textarea
-                ref={messageRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Type your anonymous message..."

@@ -1287,8 +1287,11 @@ export default function ChatPage() {
                 <Smile size={21} />
               </button>
               {/* The wrapper takes over the flex sizing so the composer still
-                  grows exactly as it did; the textarea just fills it. */}
-              <ExplodingInput targetRef={textareaRef} className="flex min-w-0 flex-1">
+                  grows exactly as it did; the textarea just fills it. The cubes
+                  come from the app-wide emitter mounted in the root layout —
+                  they used to come from here, clipped to this 44px box, which is
+                  why the effect was invisible. */}
+              <ExplodingInput className="flex min-w-0 flex-1">
                 <textarea
                   ref={textareaRef}
                   value={input}

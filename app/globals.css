@@ -3312,52 +3312,42 @@ main[data-surface="dark"]::before {
 }
 
 /* --- Exploding input ----------------------------------------------------- */
-/* The layer is inert scaffolding; the sparks inside are positioned and animated
-   imperatively by the component, so typing never re-renders React. */
+/* Only the host box survives here. `.explode-layer`, `.explode-spark` and
+   `.explode-mirror` are gone with the per-field emitter that created them: that
+   layer was `inset: 0; overflow: hidden` inside a 44px composer, and a burst
+   that travels 30px upward from a caret 21px down was clipped away before it was
+   ever visible. Emission now comes from the app-wide layer below, which is
+   `position: fixed` over the viewport and cannot be clipped by anything.
+
+   The class stays because it is the composers' layout box — see
+   `components/ui/ExplodingInput`. */
 
 .explode-host { position: relative; }
 
-.explode-layer {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 3;
-  border-radius: inherit;
-}
+/* --- Typing cubes -------------------------------------------------------- */
+/* Purple cubes off the caret (`components/TypingSparks`). One pool in `body` for
+   the whole session, positioned and animated imperatively, so typing never
+   re-renders React.
 
-.explode-spark {
-  position: absolute;
-  border-radius: 9999px;
-  opacity: 0;
-  will-change: transform, opacity;
-}
-
-/* Off-screen twin of the field, measured once per emission to find the caret's
-   pixel position — no API reports it inside a textarea. Visually hidden rather
-   than `display: none`, which would report no geometry at all. */
-.explode-mirror {
-  position: absolute;
-  top: 0;
-  left: 0;
-  visibility: hidden;
-  pointer-events: none;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  overflow: hidden;
-  z-index: -1;
-}
-
-/* The app-wide version of the same effect (`components/TypingSparks`), whose pool
-   lives in `body` for the whole session rather than for the life of one field.
-
-   Deliberately no `will-change` here, unlike `.explode-spark`: twenty nodes
-   hinting for a compositor layer on every page of the app is twenty layers held
-   for a session to serve a burst that lasts half a second. A running WAAPI
-   transform/opacity animation is composited on its own anyway, so the hint buys
-   nothing and the idle cost is real. */
+   Deliberately no `will-change`: twenty-four nodes hinting for a compositor layer
+   on every page of the app is twenty-four layers held for a session to serve a
+   burst that lasts half a second. A running WAAPI transform/opacity animation is
+   composited on its own anyway, so the hint buys nothing and the idle cost is
+   real. */
 .typing-spark {
   position: absolute;
-  border-radius: 9999px;
+  /* Just enough to read as a milled edge rather than a rounded blob. A circle
+     cannot show a tumble; a square with a lit corner can. */
+  border-radius: 2px;
   opacity: 0;
+  /* The lit corner is painted as a gradient from JS so it tracks the theme; this
+     is the shading that sells the third dimension — a bright top rim and a
+     shadow underneath. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 3px rgba(76, 29, 149, 0.45);
+  /* The tumble is a rotate3d, so the element needs to be its own 3D context for
+     the layer's `perspective` to apply to it. */
+  transform-style: preserve-3d;
+  backface-visibility: visible;
 }

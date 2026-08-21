@@ -4,19 +4,29 @@ import { useEffect } from "react";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 
 /**
- * Sparks off the caret, everywhere in the app.
+ * Cubes bursting off the caret, everywhere in the app.
  *
- * `components/ui/ExplodingInput` does this for one field at a time, by wrapping
- * it. That is the right shape for the two composers it was built for — the chat
- * box and the anonymous-message box, which want their own tuning — but the app
- * has thirty-one text fields across eighteen files, and wrapping each one means
+ * This is the only emitter. `components/ui/ExplodingInput` used to own a second
+ * one, scoped to a single field by wrapping it — and that shape is why the chat
+ * composer looked like it had no effect at all. Its spark layer was
+ * `position: absolute; inset: 0; overflow: hidden` inside the composer, and the
+ * composer is one line tall: about 44px. The caret sits ~21px down and the cubes
+ * fly *upward* 16–28px, so every one of them crossed the top edge of its own
+ * clipping box within a few frames and was cut off. The effect ran the whole
+ * time; almost none of it was ever on screen.
+ *
+ * No amount of tuning fixes that, because the box is 44px and the burst needs
+ * more room than the box has. The fix is to stop scoping the layer to the field:
+ * one `position: fixed` layer over the whole viewport, above every modal, that
+ * nothing can clip. Which is what this is.
+ *
+ * So: one `input` listener on `document`, one pool of cube nodes, one caret
+ * mirror, mounted once in the root layout. Every field that exists now gets it,
+ * and so does every field added later, with no wiring — the app has thirty-one
+ * text fields across eighteen files, and wrapping each one would mean
  * thirty-one refs, thirty-one wrappers, and a layout risk per file for an effect
- * that is identical every time.
- *
- * So this is the delegated version: one `input` listener on `document`, one pool
- * of spark nodes, one caret mirror, mounted once in the root layout. Every field
- * that exists now gets it, and so does every field added later, with no wiring.
- * It follows `components/ClickHaptics`, which solves the same problem for taps.
+ * that is identical every time. It follows `components/ClickHaptics`, which
+ * solves the same problem for taps.
  *
  * How it stays free:
  *
@@ -25,7 +35,7 @@ import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
  *   Animations API — so typing costs no React work at all, in any field.
  * * **One pool, reused round-robin.** No node is created or destroyed while
  *   someone types.
- * * **Throttled emission.** Fast typing produces a trickle, not a spark per
+ * * **Throttled emission.** Fast typing produces a trickle, not a burst per
  *   character. A person types into one field at a time, so one global throttle
  *   is enough.
  * * **One layout read per emission.** Locating a caret inside a `textarea` needs
@@ -34,14 +44,12 @@ import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
  *
  * What is deliberately excluded, and why:
  *
- * * **Password and one-time-code fields.** Sparks mark the caret, which is a
+ * * **Password and one-time-code fields.** Cubes mark the caret, which is a
  *   visible count of how many characters have been typed — a shoulder-surfing
  *   tell on exactly the fields where that matters. Secret entry is also not a
  *   moment that wants celebrating.
  * * **Fields with no meaningful caret** — checkbox, file, range, date, and
  *   `number` (whose selection API is not available on it in Chrome).
- * * **Anything already inside `.explode-host`.** Those are the two hand-tuned
- *   composers; double sparks would just look heavier there than everywhere else.
  * * **`data-no-sparks`** on a field or any ancestor, as the explicit opt-out.
  *
  * Under reduced motion nothing is attached and no DOM is created.
@@ -58,16 +66,23 @@ const SPARKABLE_TYPES = new Set([
 ]);
 
 /** Pool size. Larger looks denser under fast typing and costs more nodes. */
-const POOL_SIZE = 20;
+const POOL_SIZE = 24;
 
-/** Sparks released per emission. */
-const PER_BURST = 2;
+/** Cubes released per keystroke. Three reads as a burst; two read as a drip. */
+const PER_BURST = 3;
 
-/** Minimum ms between emissions. */
-const THROTTLE_MS = 55;
+/** Minimum ms between emissions. Below a comfortable typing interval (~150ms),
+    so ordinary typing gets a burst on every key and only a deliberate sprint
+    across the keyboard gets thinned out. */
+const THROTTLE_MS = 45;
 
 /** Above every modal and toast in the app; below the route loader at 2000. */
 const LAYER_Z = 1300;
+
+/** Perspective on the layer, so the tumble reads as a cube and not a spinning
+    square. Shallow enough that a cube 300px away still looks like the same
+    object as one under the caret. */
+const PERSPECTIVE_PX = 560;
 
 /* Style properties the mirror has to match for its text to wrap and advance
    exactly like the real field's. Anything that affects glyph advance or line
@@ -110,8 +125,8 @@ function isSparkable(node: EventTarget | null): node is Field {
 function allowed(field: Field) {
   if (field.readOnly || field.disabled) return false;
   if (field.closest("[data-no-sparks]")) return false;
-  // Already has its own, tuned, spark layer.
-  if (field.closest(".explode-host")) return false;
+  /* `.explode-host` is NOT excluded. It used to be, on the assumption that those
+     two composers ran their own layer — they did, and it was the clipped one. */
   return true;
 }
 
@@ -126,18 +141,23 @@ export default function TypingSparks() {
        for. Typing keeps working; it just does not sparkle. */
     if (typeof Element.prototype.animate !== "function") return;
 
-    /* ---- spark layer ---- */
+    /* ---- cube layer ----
+       `fixed` and full-viewport, which is the whole reason this works where the
+       per-field version did not: a burst that needs 30px of room in a 44px
+       composer has nowhere to go, and here it has the screen. */
     const layer = document.createElement("div");
     layer.setAttribute("aria-hidden", "true");
-    layer.style.cssText = `position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:${LAYER_Z};`;
+    layer.style.cssText =
+      `position:fixed;inset:0;pointer-events:none;overflow:hidden;` +
+      `z-index:${LAYER_Z};perspective:${PERSPECTIVE_PX}px;`;
     document.body.appendChild(layer);
 
     const pool: HTMLSpanElement[] = [];
     for (let index = 0; index < POOL_SIZE; index += 1) {
-      const spark = document.createElement("span");
-      spark.className = "typing-spark";
-      layer.appendChild(spark);
-      pool.push(spark);
+      const cube = document.createElement("span");
+      cube.className = "typing-spark";
+      layer.appendChild(cube);
+      pool.push(cube);
     }
     let cursor = 0;
 
@@ -224,52 +244,81 @@ export default function TypingSparks() {
     let last = 0;
     const lengths = new WeakMap<Field, number>();
 
-    /* The accent as a live custom property rather than a resolved colour. The
-       layer sits in `body`, so it inherits from `:root` and the sparks follow a
-       theme switch with no invalidation step and no `getComputedStyle` per
-       emission. */
-    const SPARK_COLOR = "var(--theme-accent-purple, #8b5cf6)";
+    /* The cube's lit face, as live custom properties rather than resolved colour.
+       The layer sits in `body`, so it inherits from `:root` and the cubes follow
+       a theme switch with no invalidation step and no `getComputedStyle` per
+       emission. The white corner is what makes a flat square read as a solid with
+       a light on it. */
+    const CUBE_FACE =
+      "linear-gradient(135deg, rgba(255,255,255,0.92) 0%, " +
+      "var(--theme-accent-purple, #8b5cf6) 46%, " +
+      "var(--theme-accent-from, #6d28d9) 100%)";
 
     function emit(field: Field) {
       const point = caretPoint(field);
       if (!point) return;
 
-      /* Half a line down from the caret's top edge, so the sparks come off the
+      /* Half a line down from the caret's top edge, so the cubes come off the
          middle of the text rather than out of its ascender. */
       const originY = point.y + point.line * 0.45;
 
       for (let index = 0; index < PER_BURST; index += 1) {
-        const spark = pool[cursor];
+        const cube = pool[cursor];
         cursor = (cursor + 1) % pool.length;
 
         /* A node still in flight is cancelled rather than allowed to stack — two
            overlapping animations on one element fight over the transform. */
-        spark.getAnimations().forEach((animation) => animation.cancel());
+        cube.getAnimations().forEach((animation) => animation.cancel());
 
         /* Deterministic-ish spread from the pool index: a fan rather than random
            scatter, which reads as intentional and avoids Math.random churn. */
         const angle = -Math.PI / 2 + (((index + cursor) % 7) - 3) * 0.34;
-        const distance = 16 + ((cursor * 7) % 13);
-        const size = 3 + ((cursor * 3) % 3);
+        const distance = 22 + ((cursor * 7) % 16);
+        const size = 5 + ((cursor * 3) % 4);
 
-        spark.style.left = `${point.x}px`;
-        spark.style.top = `${originY}px`;
-        spark.style.width = `${size}px`;
-        spark.style.height = `${size}px`;
-        spark.style.background = SPARK_COLOR;
+        /* A fixed tumble axis per cube, varied across the pool. Same axis at both
+           ends of the animation so it spins about one line rather than wobbling
+           through an interpolated axis change. */
+        const ax = 1;
+        const ay = 0.35 + ((cursor * 11) % 7) * 0.09;
+        const az = 0.2 + ((cursor * 5) % 5) * 0.12;
+        const spin = 260 + ((cursor * 53) % 300);
 
-        spark.animate(
+        const dx = Math.cos(angle) * distance;
+        const dy = Math.sin(angle) * distance;
+
+        cube.style.left = `${point.x}px`;
+        cube.style.top = `${originY}px`;
+        cube.style.width = `${size}px`;
+        cube.style.height = `${size}px`;
+        cube.style.backgroundImage = CUBE_FACE;
+
+        /* Pops out, then falls slightly short of where it was thrown — an
+           explosion with a little weight behind it rather than a fountain. */
+        cube.animate(
           [
-            { transform: "translate(-50%, -50%) scale(1)", opacity: 0.9 },
             {
-              transform: `translate(calc(-50% + ${Math.cos(angle) * distance}px), calc(-50% + ${
-                Math.sin(angle) * distance
-              }px)) scale(0.2)`,
+              offset: 0,
+              transform: `translate(-50%, -50%) rotate3d(${ax}, ${ay}, ${az}, 0deg) scale(0.35)`,
+              opacity: 1,
+            },
+            {
+              offset: 0.3,
+              transform: `translate(calc(-50% + ${dx * 0.52}px), calc(-50% + ${
+                dy * 0.62
+              }px)) rotate3d(${ax}, ${ay}, ${az}, ${spin * 0.34}deg) scale(1.12)`,
+              opacity: 1,
+            },
+            {
+              offset: 1,
+              transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${
+                dy + distance * 0.34
+              }px)) rotate3d(${ax}, ${ay}, ${az}, ${spin}deg) scale(0.22)`,
               opacity: 0,
             },
           ],
           {
-            duration: 520 + ((cursor * 37) % 180),
+            duration: 560 + ((cursor * 37) % 200),
             easing: "cubic-bezier(0.16, 1, 0.3, 1)",
             fill: "none",
           }
@@ -321,8 +370,8 @@ export default function TypingSparks() {
       document.removeEventListener("input", handleInput, { capture: true });
       document.removeEventListener("focusin", handleFocusIn, { capture: true });
       window.removeEventListener("resize", invalidate);
-      pool.forEach((spark) => {
-        spark.getAnimations().forEach((animation) => animation.cancel());
+      pool.forEach((cube) => {
+        cube.getAnimations().forEach((animation) => animation.cancel());
       });
       layer.remove();
       mirror.remove();
