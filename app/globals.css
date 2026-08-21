@@ -3207,18 +3207,29 @@ main[data-surface="dark"]::before {
   color: transparent;
   -webkit-text-fill-color: transparent;
   animation: specialShine var(--special-speed, 6s) var(--ease-soft, ease) infinite;
-  will-change: background-position;
+  /* Negative offsets stagger the words so one band appears to cross the whole
+     headline; see the component's note. */
+  animation-delay: var(--special-delay, 0s);
+  /* No `will-change`. `background-position` cannot be composited, so the hint
+     cannot save the paint — it only asks the browser to hold layers for the
+     largest text on the page for as long as the page is open. */
 }
 
 /* Light theme's accents are already dark on white, so a white band there reads
    as a hole punched through the word. The highlight lifts toward the accent
-   instead of toward paper. */
+   instead of toward paper.
+
+   The peak is a saturated pink rather than a tint. It used to be #ff8fd0, which
+   was fine when this treatment covered the eight characters of "Whisper." — now
+   that it sweeps the whole headline, a pale band on white would drop the most
+   important text on the page below the 3:1 large-text contrast floor at whatever
+   point the band happens to be. #e0409a clears it and still reads as a lift. */
 :root[data-theme="light"] .special-text {
   background-image: linear-gradient(
     100deg,
     var(--theme-accent-purple) 0%,
     var(--theme-accent-pink) 26%,
-    #ff8fd0 42%,
+    #e0409a 42%,
     var(--theme-accent-pink) 58%,
     var(--theme-accent-purple) 82%,
     var(--theme-accent-purple) 100%

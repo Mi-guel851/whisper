@@ -89,9 +89,9 @@ export default function ComingSoonGate() {
           className="auth-footnote"
           variants={respectMotion(fadeUp, reduced)}
         >
-          Want a heads-up when we open?{" "}
+          Want a heads-up when we are live?{" "}
           <Link href="/contact-support" className="auth-link">
-            Tell us
+            Whisper to us now
           </Link>
         </motion.p>
       </motion.div>
