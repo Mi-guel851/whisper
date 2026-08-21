@@ -701,7 +701,11 @@ export default function ChatPage() {
         ).length
       : 0;
 
-    function land() {
+    /* An arrow function, not a `function` declaration, and that is load-bearing:
+       TypeScript discards the `container`/`content` narrowing above inside a
+       hoisted declaration — it can't prove the body doesn't run before the guard
+       — but keeps it for a closure created after the guard. */
+    const land = () => {
       const anchor = firstUnread ? messageNodes.current.get(firstUnread.id) : null;
       if (anchor) {
         /* Rect deltas rather than `offsetTop`, because a bubble's offset parent is
