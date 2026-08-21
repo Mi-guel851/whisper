@@ -45,6 +45,12 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  /* Deliberately no `interactiveWidget` override. `resizes-content` would fix the
+     Android keyboard for the chat composer, but it changes the layout viewport on
+     all ~45 routes — every `position: fixed` bottom bar would rise to sit above
+     the keyboard instead of hiding behind it. `lib/useViewportFrame` measures
+     `visualViewport` instead, which shrinks under Chrome's default
+     `resizes-visual` as well as under iOS, and only on the screens that opt in. */
 };
 
 export default function RootLayout({

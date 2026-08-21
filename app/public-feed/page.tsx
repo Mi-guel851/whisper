@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, MessageSquareDashed } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
 import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import FeedPostCard from "@/components/feed/FeedPostCard";
+import EmptyState from "@/components/ui/EmptyState";
 import type { FeedController } from "@/components/feed/types";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
@@ -458,6 +459,9 @@ export default function PublicFeedPage() {
      the feed. The ref always points at the current closure, so nothing goes
      stale. */
   const sendReplyRef = useRef(sendReply);
+  /* The empty state's call to action points back at the composer on this same
+     screen, so it focuses the real field rather than navigating anywhere. */
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   sendReplyRef.current = sendReply;
 
   /* Straight to send: replies are free, so there is no cost to confirm. */
@@ -499,6 +503,7 @@ export default function PublicFeedPage() {
         <GlassPanel strong className="mb-6 rounded-3xl p-5">
           <form onSubmit={createPost}>
             <textarea
+              ref={composerRef}
               value={body}
               onChange={(event) => setBody(event.target.value)}
               maxLength={500}
@@ -574,8 +579,19 @@ export default function PublicFeedPage() {
           {loading ? (
             <FeedSkeleton />
           ) : postTree.length === 0 ? (
-            <GlassPanel className="rounded-3xl p-10 text-center theme-text-muted">
-              No posts yet. Start the conversation.
+            <GlassPanel className="rounded-3xl">
+              <EmptyState
+                icon={<MessageSquareDashed size={26} />}
+                title="The feed is quiet"
+                description="Posts here disappear after 24 hours, so there is nothing to catch up on yet. Say the first thing."
+                action={{
+                  label: "Write a post",
+                  onClick: () => {
+                    composerRef.current?.focus();
+                    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  },
+                }}
+              />
             </GlassPanel>
           ) : (
             postTree.map((post) => (

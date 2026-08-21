@@ -10,11 +10,12 @@ import GlassPanel from "@/components/GlassPanel";
 import FriendsHeader from "@/components/FriendsHeader";
 import ChatRow from "@/components/inbox/ChatRow";
 import InboxSkeleton from "@/components/inbox/InboxSkeleton";
+import EmptyState from "@/components/ui/EmptyState";
 import { useAnonNames } from "@/lib/anonNames";
 import { messagePreviewText } from "@/lib/messagePreview";
 import { presenceManager } from "@/lib/realtime/presence";
 import { typingManager } from "@/lib/realtime/typing";
-import { Search, X } from "lucide-react";
+import { Search, X, MessagesSquare, SearchX } from "lucide-react";
 
 type ConversationRow = {
   id: string;
@@ -491,15 +492,22 @@ export default function InboxPage() {
         {loading ? (
           <InboxSkeleton />
         ) : conversations.length === 0 ? (
-          <GlassPanel className="rounded-3xl p-10 text-center">
-            <p className="text-xl">No conversations yet.</p>
-            <p className="mt-2 text-sm text-gray-400">
-              Go to Friends to find someone active and start chatting.
-            </p>
+          <GlassPanel className="rounded-3xl">
+            <EmptyState
+              icon={<MessagesSquare size={26} />}
+              title="No conversations yet"
+              description="Anyone who whispers you shows up here. Find someone active in Friends and start the first one."
+              action={{ label: "Find people", href: "/friends" }}
+            />
           </GlassPanel>
         ) : filtered.length === 0 ? (
-          <GlassPanel className="rounded-3xl p-8 text-center text-sm text-gray-400">
-            No chats match &ldquo;{query}&rdquo;.
+          <GlassPanel className="rounded-3xl">
+            <EmptyState
+              icon={<SearchX size={26} />}
+              title="No matches"
+              description={<>Nothing here matches &ldquo;{query}&rdquo;.</>}
+              className="py-8"
+            />
           </GlassPanel>
         ) : (
           <GlassPanel className="overflow-hidden rounded-3xl">

@@ -335,8 +335,15 @@ html {
 }
 
 body {
+  /* The insets below are padding on this element, so a bare `100dvh` minimum makes
+     the body *taller* than the viewport by the inset total — twenty to thirty-odd
+     pixels of scroll on every screen in the app, including screens whose content
+     fits. That phantom scroll is what makes a page feel loose under the thumb, and
+     on a screen with its own scrolling list it reads as the whole page wobbling.
+     Subtracting the insets makes the minimum exactly one viewport, insets
+     included. */
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   margin: 0;
   background: var(--theme-bg);
   /* Full screen content protection */
@@ -352,6 +359,21 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-synthesis-weight: none;
+}
+
+/* Every screen in the app is `min-h-screen`, and Tailwind's version of that is
+   `min-height: 100vh` — one *full* viewport, inside a `body` that then adds the
+   safe-area insets as padding. The document therefore ends up taller than the
+   viewport by the inset total on every route, even ones whose content fits on
+   screen: twenty to thirty-odd pixels of slack that make a page feel loose under
+   the thumb, and that a screen with its own scrolling list has to fight for the
+   drag. Redefining the utility once fixes all of them; the alternative was
+   editing thirty files to say the same thing.
+
+   Unlayered, so it wins over Tailwind's `@layer utilities` output regardless of
+   source order. */
+.min-h-screen {
+  min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
 
 /* Headings inherit the optical tracking from the scale rather than being
@@ -1177,6 +1199,81 @@ main[data-surface="dark"]::before {
   --chat-chip-text:      #5f6684;
   --chat-quote-bg:       rgba(109, 63, 224, 0.07);
   --chat-quote-text:     #4b5273;
+}
+
+/* ── Empty states ────────────────────────────────────────────────────────────
+   The medallion behind an empty state's icon. Two layers of tint plus a hairline
+   ring, so it reads as a lit disc rather than a flat circle — and both layers are
+   mixed from `--theme-accent-purple`, so it follows a theme change without a
+   second rule. See `components/ui/EmptyState`. */
+.empty-medallion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 9999px;
+  color: var(--theme-accent-purple);
+  background:
+    radial-gradient(
+      circle at 50% 32%,
+      color-mix(in srgb, var(--theme-accent-purple) 26%, transparent) 0%,
+      transparent 72%
+    ),
+    color-mix(in srgb, var(--theme-accent-purple) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-purple) 22%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 40%, transparent),
+    0 10px 24px -14px color-mix(in srgb, var(--theme-accent-purple) 55%, transparent);
+}
+
+/* ── Viewport frames ─────────────────────────────────────────────────────────
+   A screen that fills the viewport exactly and never lets the document move,
+   which is what makes a chat feel like an app instead of a web page. Driven by
+   `lib/useViewportFrame`; see that file for why `100dvh` alone is not enough. */
+
+/* While a frame is mounted the document cannot scroll at all. `body` normally
+   carries the safe-area insets *and* a `100dvh` minimum, so a full-height child
+   makes the document taller than the viewport by the inset total — a couple of
+   dozen pixels the whole page can be dragged through, under a list that is
+   already scrolling. Two scrollers fighting over one drag is the wobble. */
+html.viewport-locked,
+html.viewport-locked body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewport-frame {
+  /* The measured height is the visual viewport minus whatever `body`'s padding
+     is taking, so the frame ends where the keyboard begins. The fallback is only
+     for the first paint before the hook has measured. */
+  height: var(
+    --app-frame-height,
+    calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))
+  );
+  /* Belt and braces: a frame that overflows would push its own composer out of
+     reach, and with the document locked there would be no way to scroll to it. */
+  max-height: var(
+    --app-frame-height,
+    calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))
+  );
+  overflow: hidden;
+}
+
+/* The one scroller inside a frame. */
+.frame-scroll {
+  overflow-y: auto;
+  /* Nothing above this element scrolls, so a flick that reaches the end has
+     nowhere to hand the gesture on to — without this it chains to the document
+     and drags the whole frame. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  /* `html` sets `scroll-behavior: smooth`, and it is not inherited, but it does
+     apply to programmatic scrolls on any ancestor a `scrollIntoView` walks. Kept
+     explicit here so pinning to the newest message is instant rather than an
+     animation the user watches. */
+  scroll-behavior: auto;
 }
 
 .chat-canvas {

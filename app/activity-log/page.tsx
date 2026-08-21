@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, Monitor, Smartphone, Clock3 } from "lucide-react";
 import BackButton from "@/components/BackButton";
+import GlassPanel from "@/components/GlassPanel";
+import EmptyState from "@/components/ui/EmptyState";
 import { supabase } from "@/lib/supabase/client";
 
 type ActivityEntry = {
@@ -174,9 +176,13 @@ export default function ActivityLogPage() {
             Loading recent login activity...
           </div>
         ) : entries.length === 0 ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-center text-sm text-gray-300">
-            No login activity recorded yet.
-          </div>
+          <GlassPanel className="rounded-3xl">
+            <EmptyState
+              icon={<ShieldCheck size={26} />}
+              title="No sign-ins recorded"
+              description="Every login shows up here with the device and browser used, so anything unfamiliar is easy to spot."
+            />
+          </GlassPanel>
         ) : (
           <div className="space-y-3">
             {entries.map((entry) => (

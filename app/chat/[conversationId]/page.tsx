@@ -14,6 +14,7 @@ import { presenceManager } from "@/lib/realtime/presence";
 import { useToast } from "@/components/ToastProvider";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import { useEventCallback } from "@/lib/useEventCallback";
+import useViewportFrame from "@/lib/useViewportFrame";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoicePlayer from "@/components/chat/VoicePlayer";
 import PaperPlaneFlight from "@/components/PaperPlaneFlight";
@@ -385,9 +386,11 @@ export default function ChatPage() {
   const [showAttachSheet, setShowAttachSheet] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [unseenCount, setUnseenCount] = useState(0);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  /* The content box inside the scroller. Watched on open, because its height is
+     what keeps changing after first paint. */
+  const messagesContentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -408,13 +411,6 @@ export default function ChatPage() {
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
-    }
-  }, [input]);
 
   useEffect(() => {
     if (!myId || !chatUnlocked) return;
@@ -608,10 +604,55 @@ export default function ChatPage() {
     };
   }, [conversationId, router, markMessagesRead]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
-    setUnseenCount(0);
+  /* Pins the list to its newest message, without animating and without touching
+     any scroller but this one. `bottomRef.scrollIntoView` used to do this, and it
+     was the reason opening a thread felt unreliable: it walks *every* scrollable
+     ancestor including the document, which has `scroll-behavior: smooth`, so an
+     "auto" jump still played as a visible slide; and asking a zero-height
+     sentinel inside a `min-h-full` flex child to align itself lands short often
+     enough to notice. One assignment to the one element that scrolls is exact. */
+  const pinToBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight - container.clientHeight;
   }, []);
+
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        if (behavior === "smooth") {
+          container.scrollTo({ top: container.scrollHeight - container.clientHeight, behavior: "smooth" });
+        } else {
+          container.scrollTop = container.scrollHeight - container.clientHeight;
+        }
+      }
+      atBottomRef.current = true;
+      setAtBottom(true);
+      setUnseenCount(0);
+    },
+    []
+  );
+
+  /* Locks the document and republishes the frame height whenever the keyboard or
+     the browser chrome changes it. The callback is the other half of the fix: the
+     keyboard opening takes height away from the list, so without re-pinning, the
+     message you are replying to slides up out of view exactly as you start
+     typing — which is the "it goes under my keyboard" symptom from the list's
+     side rather than the composer's. */
+  useViewportFrame(() => {
+    if (atBottomRef.current) pinToBottom();
+  });
+
+  useEffect(() => {
+    const field = textareaRef.current;
+    if (!field) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(field.scrollHeight, 160)}px`;
+    /* A composer growing to a second line takes that line out of the list. Re-pin
+       so the newest message stays put instead of drifting up per keystroke. */
+    if (atBottomRef.current) pinToBottom();
+  }, [input, pinToBottom]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -631,20 +672,97 @@ export default function ChatPage() {
 
   const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
   const previousLastId = useRef<string | null>(null);
+  const openedRef = useRef(false);
+
+  /* Landing the thread. Opening a chat used to be a 50ms guess, and 50ms is
+     before the layout is finished: the doodle background, the avatars and every
+     image bubble resolve a frame or two later and each one makes the list taller,
+     so the jump was measured against a list shorter than the one the user ended
+     up looking at and parked well above the newest message.
+
+     Instead of guessing, watch the content box and re-land every time it grows,
+     until it stops growing. And land on the first message that hasn't been read
+     rather than always at the very bottom, so a thread with a backlog opens at
+     the start of what's new — with a little headroom above it, so the last
+     already-read message is visible and the jump makes sense. */
+  useEffect(() => {
+    if (loading || openedRef.current) return;
+    const container = messagesContainerRef.current;
+    const content = messagesContentRef.current;
+    if (!container || !content) return;
+    openedRef.current = true;
+
+    const firstUnread = messagesRef.current.find(
+      (message) => message.sender_id !== myIdRef.current && !message.read_at
+    );
+    const unreadCount = firstUnread
+      ? messagesRef.current.filter(
+          (message) => message.sender_id !== myIdRef.current && !message.read_at
+        ).length
+      : 0;
+
+    function land() {
+      const anchor = firstUnread ? messageNodes.current.get(firstUnread.id) : null;
+      if (anchor) {
+        /* Rect deltas rather than `offsetTop`, because a bubble's offset parent is
+           whichever wrapper happens to be positioned, not reliably the scroller's
+           content box. */
+        const offset = anchor.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        container.scrollTop = Math.max(0, container.scrollTop + offset - 72);
+      } else {
+        container.scrollTop = container.scrollHeight - container.clientHeight;
+      }
+    }
+
+    land();
+    /* Landing above the newest message leaves the jump-to-latest button on
+       screen; give it the real number of messages waiting below so it says
+       something true rather than appearing bare. The scroll handler clears it as
+       soon as the user reaches the bottom. */
+    if (unreadCount > 0) setUnseenCount(unreadCount);
+
+    let lastHeight = content.scrollHeight;
+    const observer = new ResizeObserver(() => {
+      if (content.scrollHeight === lastHeight) return;
+      lastHeight = content.scrollHeight;
+      land();
+    });
+    observer.observe(content);
+
+    /* The moment the user touches the list, it is theirs. Without this, an image
+       finishing its load a second in would yank them back to the landing spot. */
+    function release() {
+      observer.disconnect();
+    }
+    container.addEventListener("pointerdown", release, { passive: true, once: true });
+    container.addEventListener("wheel", release, { passive: true, once: true });
+
+    /* Long enough for images and fonts to settle, short enough that the observer
+       is gone before the user could plausibly have scrolled somewhere on purpose
+       and be dragged back. */
+    const stop = setTimeout(release, 1200);
+    return () => {
+      clearTimeout(stop);
+      container.removeEventListener("pointerdown", release);
+      container.removeEventListener("wheel", release);
+      observer.disconnect();
+    };
+  }, [loading]);
 
   useEffect(() => {
     if (loading || !lastMessageId) return;
-    const isNew = previousLastId.current !== null && previousLastId.current !== lastMessageId;
     const firstPaint = previousLastId.current === null;
+    const isNew = !firstPaint && previousLastId.current !== lastMessageId;
     previousLastId.current = lastMessageId;
-    if (firstPaint || atBottomRef.current) {
-      const timer = setTimeout(() => scrollToBottom(firstPaint ? "auto" : "smooth"), 50);
-      return () => clearTimeout(timer);
-    }
-    if (isNew) {
-      const incoming = messages[messages.length - 1];
-      if (incoming.sender_id !== myId) setUnseenCount((count) => count + 1);
-    }
+    /* First paint belongs to the effect above — it has the unread anchor and it
+       keeps re-landing while the layout settles. */
+    if (firstPaint || !isNew) return;
+    const incoming = messages[messages.length - 1];
+    /* Your own message always brings you back down, the way it does in WhatsApp.
+       Someone else's only does if you were already at the bottom; otherwise it
+       counts towards the badge on the jump-to-latest button. */
+    if (atBottomRef.current || incoming.sender_id === myId) scrollToBottom("smooth");
+    else setUnseenCount((count) => count + 1);
   }, [lastMessageId, loading, messages, myId, scrollToBottom]);
 
   const registerMessageRef = useCallback((id: string, node: HTMLDivElement | null) => {
@@ -1062,14 +1180,22 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <main className="chat-canvas flex h-screen items-center justify-center">
+      <main className="chat-canvas viewport-frame flex items-center justify-center">
         <p className="chat-meta">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="chat-canvas relative flex h-screen flex-col overflow-hidden">
+    /* A frame, not `h-screen`. `100vh` is the large viewport and never shrinks for
+       a keyboard, so the composer used to sit behind it; and a full-viewport child
+       of a `body` that carries the safe-area insets makes the document itself
+       scrollable by the inset total, which is what stopped this page feeling
+       static. `.viewport-frame` is sized from the visual viewport instead, and
+       `lib/useViewportFrame` locks the document while it is mounted. Safe because
+       `TemplateTransition` animates opacity only — nothing above this becomes a
+       containing block. */
+    <main className="chat-canvas viewport-frame relative flex flex-col">
       <div className="relative z-10 flex h-full flex-col">
         <div className="chat-chrome flex-shrink-0 border-b px-2 py-2">
           {searchOpen ? (
@@ -1122,8 +1248,8 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div ref={messagesContainerRef} className="relative flex-1 overflow-y-auto">
-          <div className="relative min-h-full px-3 py-4 md:px-6">
+        <div ref={messagesContainerRef} className="frame-scroll relative flex-1">
+          <div ref={messagesContentRef} className="relative min-h-full px-3 py-4 md:px-6">
             <ChatDoodleBackground />
             {!chatUnlocked && (
               <div className="chat-bubble rounded-3xl p-6 text-center">
@@ -1202,7 +1328,6 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
-            <div ref={bottomRef} />
           </div>
         </div>
 

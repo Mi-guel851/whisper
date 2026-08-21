@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Clock, MessageCircle, UserPlus, Users, X } from "lucide-react";
+import { Check, Clock, Compass, Ghost, MessageCircle, UserPlus, Users, X } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { supabase } from "@/lib/supabase/client";
@@ -14,6 +14,7 @@ import BrandedLoader from "@/components/BrandedLoader";
 import GlassPanel from "@/components/GlassPanel";
 import PersonRow from "@/components/PersonRow";
 import SegmentedTabs from "@/components/SegmentedTabs";
+import EmptyState from "@/components/ui/EmptyState";
 import type { SegmentedTab } from "@/components/SegmentedTabs";
 import { useToast } from "@/components/ToastProvider";
 import { useAnonNames } from "@/lib/anonNames";
@@ -85,6 +86,9 @@ function normalizeRequestRows(rows: RawFriendRequestRow[]): FriendRequestRow[] {
  * A list surface for `PersonRow`s, with an empty state that fills the same
  * slot. Every tab on this screen renders one of these, so "no results" can't
  * drift into four different-looking blank panels.
+ *
+ * The panel is bare of padding on purpose: `empty` is an `EmptyState`, which
+ * brings its own.
  */
 function PersonList({
   children,
@@ -96,11 +100,7 @@ function PersonList({
   isEmpty: boolean;
 }) {
   if (isEmpty) {
-    return (
-      <GlassPanel className="rounded-2xl px-6 py-10 text-center">
-        {empty}
-      </GlassPanel>
-    );
+    return <GlassPanel className="rounded-2xl">{empty}</GlassPanel>;
   }
 
   return (
@@ -437,12 +437,11 @@ function FriendsPageContent() {
             <PersonList
               isEmpty={people.length === 0}
               empty={
-                <>
-                  <p className="card-title">No one new right now</p>
-                  <p className="mt-1 text-sm theme-text-muted">
-                    You have already reached everyone on Whisper. Check back soon.
-                  </p>
-                </>
+                <EmptyState
+                  icon={<Compass size={26} />}
+                  title="No one new right now"
+                  description="You have reached everyone on Whisper for now. New people show up here as they join."
+                />
               }
             >
               {people.map((profile) => {
@@ -508,11 +507,11 @@ function FriendsPageContent() {
             <PersonList
               isEmpty={activeNow.length === 0}
               empty={
-                <>
-                  <p className="mb-2 text-2xl">👻</p>
-                  <p className="card-title">No one else is online</p>
-                  <p className="mt-1 text-sm theme-text-muted">Check back soon.</p>
-                </>
+                <EmptyState
+                  icon={<Ghost size={26} />}
+                  title="No one else is online"
+                  description="Active friends appear here the moment they open Whisper. Check back soon."
+                />
               }
             >
               {activeNow.map((id) => {
@@ -565,8 +564,8 @@ function FriendsPageContent() {
         {/* ── Requests ── */}
         {tab === "requests" && (
           <section className="mt-6 space-y-6">
-            <RequestList title="Requests" empty="No incoming requests." requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
-            <RequestList title="Sent requests" empty="No sent requests." requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
+            <RequestList title="Requests" empty="No incoming requests" requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
+            <RequestList title="Sent requests" empty="No sent requests" requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
           </section>
         )}
 
@@ -576,12 +575,12 @@ function FriendsPageContent() {
             <PersonList
               isEmpty={friends.length === 0}
               empty={
-                <>
-                  <p className="card-title">No friends yet</p>
-                  <p className="mt-1 text-sm theme-text-muted">
-                    Add someone from Discover to start a private chat.
-                  </p>
-                </>
+                <EmptyState
+                  icon={<Users size={26} />}
+                  title="No friends yet"
+                  description="Add someone from Discover and you can chat privately, without either of you giving up a name."
+                  action={{ label: "Open Discover", onClick: () => setActiveTab("discover") }}
+                />
               }
             >
               {friends.map((friend) => (
@@ -637,7 +636,18 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
       <h2 className="section-title mb-3">{title}</h2>
       <PersonList
         isEmpty={requests.length === 0}
-        empty={<p className="text-sm theme-text-muted">{empty}</p>}
+        empty={
+          <EmptyState
+            icon={mode === "incoming" ? <UserPlus size={26} /> : <Clock size={26} />}
+            title={empty}
+            description={
+              mode === "incoming"
+                ? "When someone asks to be friends, their request lands here for you to accept."
+                : "Requests you send stay here until they are accepted, so you can always cancel one."
+            }
+            className="py-8"
+          />
+        }
       >
         {requests.map((request) => {
           const profileId = mode === "incoming" ? request.sender_id : request.receiver_id;
