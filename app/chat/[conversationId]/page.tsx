@@ -818,6 +818,15 @@ export default function ChatPage() {
       showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
       return;
     }
+
+    /* Measured before the upload starts, for the same reason as the text path:
+       `setUploadingPhoto(true)` turns the send button into a spinner, and a rect
+       from a detached node is all zeros. See PaperPlaneFlight's note on `origin`. */
+    const sendBox = sendButtonRef.current?.getBoundingClientRect();
+    const launchPoint = sendBox
+      ? { x: sendBox.left + sendBox.width / 2, y: sendBox.top + sendBox.height / 2 }
+      : null;
+
     setUploadingPhoto(true);
     try {
       const { data: wallet, error: walletError } = await supabase.from("coins").select("balance").eq("user_id", myId).maybeSingle();
@@ -849,6 +858,13 @@ export default function ChatPage() {
         is_view_once: true,
       });
       if (insertError) { showToast(insertError.message); return; }
+
+      /* A photo is the same event as a message, so it gets the same send-off.
+         After the insert, never before it. */
+      if (launchPoint) {
+        setFlightOrigin(launchPoint);
+        setFlightId((n) => n + 1);
+      }
 
       await supabase.from("conversations").update({
         last_message_at: new Date().toISOString(),
