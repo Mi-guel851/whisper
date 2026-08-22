@@ -24,8 +24,15 @@ import {
    time and serve one visitor's city to every visitor after them. */
 export const dynamic = "force-dynamic";
 
-/** No database, no Node APIs — this only reads headers, so it can run at the edge. */
-export const runtime = "edge";
+/* Node rather than edge, deliberately. The route only reads headers so it *could*
+   run at the edge, but `countryName` below depends on `Intl.DisplayNames` having
+   full ICU region data — guaranteed on Node 18+, not something to bet a
+   user-visible country name on in a V8-isolate runtime. Nothing is lost: the
+   client starts this request on mount and has the answer long before send, so the
+   few milliseconds edge would save are milliseconds nobody is waiting on. Vercel
+   attaches the `x-vercel-ip-*` headers at the edge before invoking the function,
+   so they are all present here. */
+export const runtime = "nodejs";
 
 /**
  * ISO-3166-1 alpha-2 → country name.
