@@ -325,7 +325,29 @@ const MessageBubble = memo(function MessageBubbleBase({
                   {bubbleTime(msg.created_at)}
                   {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
                 </span>
-                <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+                {/* WHY `break-words` AND NOT `overflow-wrap: anywhere`
+                    ────────────────────────────────────────────────────────────
+                    This said `break-words [overflow-wrap:anywhere]`, and the
+                    `anywhere` was why a short message came out as a narrow column
+                    with words split down the middle — "Wassu / p" — instead of
+                    staying on one line the way WhatsApp does.
+
+                    The two values look interchangeable and are not. Both break an
+                    unbreakable run of characters to stop it overflowing, but only
+                    `anywhere` contributes those break opportunities to the element's
+                    *min-content* size, which collapses min-content to roughly one
+                    character. The bubble is a shrink-to-fit flex item capped at 80%,
+                    so it takes its width from its content — and with a min-content of
+                    one character the browser was free to make it as narrow as it
+                    liked, then break mid-word to fit.
+
+                    `break-word` leaves min-content as the longest word, so the bubble
+                    is sized by its text and only wraps when the text genuinely reaches
+                    the 80% cap. A pasted URL still breaks rather than overflowing.
+                    `whitespace-pre-wrap` is what keeps a deliberate newline — a wrap
+                    now only happens because the user asked for one or the line is
+                    actually full. */}
+                <p className="whitespace-pre-wrap break-words">{msg.content}</p>
               </div>
             )}
           </div>
