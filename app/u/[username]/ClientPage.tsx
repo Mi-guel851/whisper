@@ -13,6 +13,11 @@ import ExplodingInput from "@/components/ui/ExplodingInput";
 import ShimmerButton from "@/components/ui/ShimmerButton";
 import { fadeUp, respectMotion, spring, tween } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
+import {
+  captureSenderContext,
+  EMPTY_SENDER_CONTEXT,
+  type SenderContext,
+} from "@/lib/senderContext";
 import { ImagePlus, X, User } from "lucide-react";
 import Image from "next/image";
 
@@ -73,6 +78,29 @@ export default function PublicProfile() {
   const sendButtonRef = useRef<HTMLButtonElement | null>(null);
   const [flightId, setFlightId] = useState(0);
   const [flightOrigin, setFlightOrigin] = useState<{ x: number; y: number } | null>(null);
+
+  /**
+   * The sender's coarse location and device, for the recipient's paid Hint.
+   *
+   * WHY IT IS STARTED HERE AND NOT INSIDE `sendMessage`
+   *
+   * Pressing send should feel instantaneous, and this needs one request to our
+   * own origin. Started on mount, it resolves in the seconds the visitor spends
+   * typing, so by the time they press send the value is already sitting in this
+   * ref and the insert pays nothing for it. Awaiting the same promise at send
+   * time covers the one case that is left — somebody who pastes a message and
+   * sends immediately — and `captureSenderContext` carries its own short timeout
+   * and never rejects, so a slow or blocked endpoint costs the hint a field
+   * rather than costing the user their whisper.
+   *
+   * A ref rather than state on purpose: nothing renders from it, and putting it
+   * in state would re-render a page whose textarea already re-renders on every
+   * keystroke.
+   */
+  const senderContextRef = useRef<Promise<SenderContext> | null>(null);
+  useEffect(() => {
+    senderContextRef.current = captureSenderContext();
+  }, []);
 
   const receiverId = profile?.id ?? "";
   const avatarUrl = profile?.avatar_url ?? null;
@@ -220,6 +248,18 @@ export default function PublicProfile() {
       senderUsername = senderProfile?.username || null;
     }
 
+    /* Resolved, not re-fetched: this is the promise started on mount, so on a
+       normal send it is already settled and this line costs nothing. The fallback
+       is for the case where the ref has somehow not been populated — a send that
+       beats the mount effect — and keeps the insert's shape identical either way. */
+    const context = (await senderContextRef.current) ?? EMPTY_SENDER_CONTEXT;
+    const senderColumns = {
+      sender_country: context.country,
+      sender_state: context.state,
+      sender_city: context.city,
+      sender_device: context.device,
+    };
+
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
       message: message.trim() ? message : null,
@@ -227,6 +267,15 @@ export default function PublicProfile() {
       sender_user_id: session?.user.id || null,
       sender_username: senderUsername,
       sender_email_name: sanitizeGmailName(session?.user.email),
+      /* The four columns the recipient's paid Hint reads. Every one is nullable
+         and the capture never throws, so a visitor behind a proxy that strips the
+         geo headers still sends successfully — their hint just says "Unknown" for
+         the location, which is honest. Before this, *every* hint said that.
+
+         Spread rather than assigned field-by-field so the row and
+         `SenderContext` cannot drift: adding a fact to the hint is a change in
+         two files, not three. */
+      ...senderColumns,
     });
 
     setLoading(false);
