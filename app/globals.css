@@ -1762,11 +1762,12 @@ html.viewport-locked body {
   transition: filter 180ms var(--ease-out-quint), opacity 180ms var(--ease-out-quint);
 }
 
-/* Only the receded chrome loses its input. The bubbles keep theirs so the tap
-   that closes the menu can land anywhere, and so a second long-press can move
-   the menu straight to another message without an intermediate dismiss. */
+/* Only the receded chrome loses its input outright. The thread keeps its own so
+   the full-bleed dismiss layer above the blurred bubbles can take the tap — which
+   is what makes "tap anywhere to put it back" work the way it does on iOS. */
 .chat-context-active > .chat-chrome,
-.chat-context-active > form {
+.chat-context-active > form,
+.chat-context-active .chat-context-recede {
   pointer-events: none;
 }
 

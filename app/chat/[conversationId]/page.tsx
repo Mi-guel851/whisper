@@ -1283,6 +1283,24 @@ export default function ChatPage() {
           and every bubble except the held one. See the block in globals.css for why
           it is one class here rather than a prop on each bubble. */}
       <div className={`relative z-10 flex h-full flex-col ${actionMenuFor ? "chat-context-active" : ""}`}>
+        {/* The dismiss layer, covering the whole frame rather than just the thread.
+            iOS makes the entire screen inert behind a message menu and lets a tap
+            anywhere put it back; scoping this to the scroller would have left the
+            receded header visibly greyed out but doing nothing at all when tapped,
+            which reads as a frozen app. z-20 puts it over the static chrome and the
+            blurred bubbles while staying under the held bubble's z-30, so the menu
+            itself is still reachable. `touch-action: none` freezes the scroll
+            underneath for the reason iOS does: the menu is anchored to the bubble,
+            and a stray swipe would carry both off screen mid-decision. */}
+        {actionMenuFor && (
+          <button
+            type="button"
+            aria-label="Close message actions"
+            onClick={() => setActionMenuFor(null)}
+            className="absolute inset-0 z-20 cursor-default"
+            style={{ touchAction: "none" }}
+          />
+        )}
         <div className="chat-chrome flex-shrink-0 border-b px-2 py-2">
           {searchOpen ? (
             <div className="flex items-center gap-1">
@@ -1368,7 +1386,7 @@ export default function ChatPage() {
             {loading ? (
               <ChatSkeleton />
             ) : messages.length === 0 ? (
-              <p className="chat-meta mt-10 text-center">Say hi 👻 — they won&apos;t know who you are.</p>
+              <p className="chat-context-recede chat-meta mt-10 text-center">Say hi 👻 — they won&apos;t know who you are.</p>
             ) : (
               messages.map((msg, index) => {
                 const previous = index > 0 ? messages[index - 1] : null;
@@ -1419,7 +1437,7 @@ export default function ChatPage() {
               })
             )}
             {otherTyping && (
-              <div className="mt-3 flex items-end gap-2">
+              <div className="chat-context-recede mt-3 flex items-end gap-2">
                 <div className="chat-bubble rounded-2xl rounded-bl-sm px-4 py-3">
                   <span className="flex items-center gap-1.5" aria-label={`${otherLabel} is typing`}>
                     <span className="h-2 w-2 animate-bounce rounded-full bg-[var(--chat-meta)] [animation-delay:-0.2s]" />
@@ -1432,7 +1450,10 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {!atBottom && (
+        {/* Hidden rather than blurred while a message is held: it is a floating
+            control on its own layer, so receding it would leave a soft grey disc
+            competing with the reaction bar for the same corner. */}
+        {!atBottom && !actionMenuFor && (
           <div className="pointer-events-none relative z-20">
             <button type="button" onClick={() => scrollToBottom()} className="chat-chrome pointer-events-auto absolute bottom-3 right-4 flex h-11 w-11 items-center justify-center rounded-full border shadow-lg" style={{ color: "var(--chat-icon)" }} aria-label={unseenCount ? `${unseenCount} new messages, scroll to latest` : "Scroll to latest"}>
               <ChevronDown size={20} />
@@ -1446,7 +1467,7 @@ export default function ChatPage() {
         )}
 
         {pendingPhoto && (
-          <div className="chat-field mx-3 mb-2 flex flex-shrink-0 items-center gap-3 rounded-xl px-3 py-2 md:mx-6">
+          <div className="chat-context-recede chat-field mx-3 mb-2 flex flex-shrink-0 items-center gap-3 rounded-xl px-3 py-2 md:mx-6">
             <img src={pendingPhoto.previewUrl} alt="Selected photo" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
             <p className="chat-meta flex-1 truncate text-xs">Ready to send — costs {SEND_IMAGE_COST} coins</p>
             <button type="button" onClick={cancelPendingPhoto} disabled={uploadingPhoto} className="chat-icon disabled:opacity-60">
@@ -1456,7 +1477,7 @@ export default function ChatPage() {
         )}
 
         {replyingTo && (
-          <div className="chat-field mx-3 mb-2 flex flex-shrink-0 items-center justify-between rounded-xl px-3 py-2 md:mx-6" style={{ borderLeft: "3px solid var(--theme-accent-purple)" }}>
+          <div className="chat-context-recede chat-field mx-3 mb-2 flex flex-shrink-0 items-center justify-between rounded-xl px-3 py-2 md:mx-6" style={{ borderLeft: "3px solid var(--theme-accent-purple)" }}>
             <p className="chat-meta truncate text-xs">Replying to: {messagePreviewText(replyingTo)}</p>
             <button onClick={() => setReplyingTo(null)} className="chat-icon" aria-label="Cancel reply">
               <X size={14} />
