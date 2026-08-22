@@ -1,12 +1,10 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { ArrowDownLeft, ArrowUpRight, Check, Copy, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Modal from "@/components/Modal";
 import { copyText } from "@/lib/clipboard";
 import { useMediaQuery } from "@/lib/useMediaQuery";
-import { spring, tween } from "@/lib/motion";
 import { WalletReceipt, formatTransferTimestamp } from "@/lib/wallet";
 
 type WalletReceiptModalProps = {

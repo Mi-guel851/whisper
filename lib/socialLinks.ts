@@ -2,20 +2,27 @@
  * Whisper's own social accounts.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- *  DROP YOUR REAL LINKS IN THE `url` FIELDS BELOW. That is the only edit needed.
- *  Until at least one is filled in, the daily follow prompt does not appear.
+ *  ⚠ THE FOUR `url` FIELDS BELOW CURRENTLY POINT AT EACH PLATFORM'S HOME PAGE,
+ *    NOT AT WHISPER'S PROFILES. Append your handle to each one — that is the
+ *    only edit needed, and it is four lines.
  * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * They are set to the bare platform URLs rather than left empty because the daily
+ * follow prompt hides itself entirely when nothing resolves, and an empty config
+ * is why it never appeared. A bare URL is a working redirect — the tile opens X,
+ * Instagram, Facebook or TikTok — it just doesn't land on Whisper's account yet.
+ * The `handle` fields are left blank on purpose so each tile shows the platform's
+ * name instead of an invented @handle; fill them in alongside the URLs.
  *
  * Everything that links out to a Whisper account reads from this one array — the
  * daily follow prompt, and anything added later — so a handle only ever has to
  * change in one place.
  *
  * An entry with no URL from either source is filtered out by `activeSocialLinks()`
- * rather than rendered as a dead button. That is deliberate: a tile that opens
- * nothing is worse than a tile that isn't there, and the prompt suppresses itself
- * entirely if none of them resolve — so nothing half-built can reach a user before
- * the accounts exist. If the prompt is not showing up, this file (or the env vars
- * below) is the reason, and `activeSocialLinks` logs why in development.
+ * rather than rendered as a dead button, and the prompt suppresses itself entirely
+ * if none of them resolve. So emptying a `url` is the way to remove a platform
+ * from the prompt: delete the entry or blank the URL, don't leave a tile that
+ * opens nothing.
  *
  * ── TWO WAYS TO SET A LINK ───────────────────────────────────────────────────
  *
@@ -37,8 +44,8 @@
  *     at build time, so an existing deployment will not pick them up on its own.
  *
  * An env var wins over the hardcoded value, so a link can be corrected in Vercel
- * without a commit. The `NEXT_PUBLIC_` prefix is required for the browser to see
- * them, and it is safe here — these are public profile URLs, not secrets.
+ * without a commit — which is the fastest way to fix the four placeholders above
+ * without touching this file.
  *
  * Handles are shown to the user under each tile, so keep them in step with the
  * URLs. Leave `handle` empty and the tile just shows the platform name.
@@ -57,26 +64,27 @@ export type SocialLink = {
 export const SOCIAL_LINKS: SocialLink[] = [
   {
     platform: "x",
-    // ↓ your X / Twitter profile
-    url: "",
+    // ↓ REPLACE: add your handle — "https://x.com/whisperapp"
+    url: "https://x.com",
     handle: "",
   },
   {
     platform: "instagram",
-    // ↓ your Instagram profile
-    url: "",
+    // ↓ REPLACE: add your handle — "https://instagram.com/whisperapp"
+    url: "https://instagram.com",
     handle: "",
   },
   {
     platform: "facebook",
-    // ↓ your Facebook page
-    url: "",
+    // ↓ REPLACE: add your page — "https://facebook.com/whisperapp"
+    url: "https://facebook.com",
     handle: "",
   },
   {
     platform: "tiktok",
-    // ↓ optional — remove this entry if Whisper has no TikTok
-    url: "",
+    // ↓ REPLACE: add your handle — "https://tiktok.com/@whisperapp"
+    //   or delete this whole entry if Whisper has no TikTok.
+    url: "https://tiktok.com",
     handle: "",
   },
 ];
