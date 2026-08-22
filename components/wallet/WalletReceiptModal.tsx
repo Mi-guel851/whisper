@@ -134,10 +134,7 @@ export default function WalletReceiptModal({
         <div className="px-5 pb-6 pt-6 sm:px-6">
           {/* Status seal */}
           <div className="flex flex-col items-center text-center">
-            <motion.div
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={spring.bouncy}
+            <div
               className="grid h-16 w-16 place-items-center rounded-full"
               style={{
                 background: `color-mix(in srgb, ${accent} 16%, transparent)`,
@@ -145,24 +142,16 @@ export default function WalletReceiptModal({
               }}
             >
               <StatusIcon size={30} strokeWidth={2.6} style={{ color: accent }} />
-            </motion.div>
+            </div>
 
-            <motion.p
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...tween.base, delay: 0.07 }}
+            <p
               className="eyebrow mt-4 tracking-[0.28em]"
               style={{ color: accent }}
             >
               {success ? "Successful" : "Failed"}
-            </motion.p>
+            </p>
 
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...tween.base, delay: 0.11 }}
-              className="mt-2 flex items-center gap-2"
-            >
+            <div className="mt-2 flex items-center gap-2">
               <DirectionIcon
                 size={22}
                 style={{ color: success ? accent : "var(--theme-text-muted)" }}
@@ -181,13 +170,10 @@ export default function WalletReceiptModal({
               >
                 coins
               </span>
-            </motion.div>
+            </div>
 
             {!success && receipt.failure_reason && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ ...tween.base, delay: 0.14 }}
+              <p
                 className="mt-3 rounded-xl px-3 py-2 text-[0.8125rem] font-medium"
                 style={{
                   color: "var(--theme-error)",
@@ -195,7 +181,7 @@ export default function WalletReceiptModal({
                 }}
               >
                 {receipt.failure_reason}
-              </motion.p>
+              </p>
             )}
           </div>
 
@@ -218,10 +204,7 @@ export default function WalletReceiptModal({
             />
           </div>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ ...tween.base, delay: 0.16 }}
+          <div
             className="divide-y"
             style={{ borderColor: "var(--theme-glass-border)" }}
           >
@@ -247,7 +230,7 @@ export default function WalletReceiptModal({
                 emphasis
               />
             )}
-          </motion.div>
+          </div>
 
           {/* Reference sits apart from the rows — it's the one value a user
               copies out, so it gets its own affordance. */}
