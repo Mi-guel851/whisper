@@ -63,7 +63,14 @@ export default function StreakCard({ streak, className = "" }: StreakCardProps) 
           animate={reduced || !lit ? undefined : { scale: [1, 1.045, 1] }}
           transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Flame size={23} className={lit ? "text-orange-300" : "text-white/35"} />
+          {/* `text-white opacity-*` rather than `text-white/35`. Tailwind's
+              opacity modifier compiles to its own class (`.text-white\/35`), and
+              the theme compatibility bridge in globals.css only rewrites the bare
+              `.text-white` — so every `/N` variant stayed literally white and this
+              panel's dimmer text disappeared on the light theme, which is what
+              `GlassPanel strong` renders as. Opacity is theme-independent, so it
+              gives the same fade without leaving the bridge. */}
+          <Flame size={23} className={lit ? "text-orange-300" : "text-white opacity-40"} />
         </motion.span>
 
         <div className="min-w-0 flex-1">
@@ -77,7 +84,7 @@ export default function StreakCard({ streak, className = "" }: StreakCardProps) 
             >
               {streak.current}
             </motion.span>
-            <span className="text-sm font-bold text-white/70">
+            <span className="text-sm font-bold theme-text-muted">
               day{streak.current === 1 ? "" : "s"}
             </span>
           </div>
@@ -87,7 +94,7 @@ export default function StreakCard({ streak, className = "" }: StreakCardProps) 
         </div>
 
         {streak.longest >= 3 && (
-          <span className="flex shrink-0 items-center gap-1 self-start rounded-full bg-white/[0.06] px-2 py-1 text-[10.5px] font-bold text-white/60">
+          <span className="flex shrink-0 items-center gap-1 self-start rounded-full bg-white/[0.06] px-2 py-1 text-[10.5px] font-bold theme-text-muted">
             <Trophy size={10} className="text-amber-300" />
             <span className="tabular-nums">{streak.longest}</span>
           </span>
@@ -98,7 +105,7 @@ export default function StreakCard({ streak, className = "" }: StreakCardProps) 
         <div className="mt-3.5">
           <div className="mb-1.5 flex items-center justify-between text-[11px]">
             <span className="theme-text-subtle">Next milestone</span>
-            <span className="font-bold tabular-nums text-white/70">
+            <span className="font-bold tabular-nums theme-text-muted">
               {streak.current}/{target}
             </span>
           </div>

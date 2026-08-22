@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas-pro";
 import { X, Download, Image as ImageIcon } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
+
+import useWhisperShare from "@/lib/useWhisperShare";
 
 type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
 
@@ -16,6 +18,25 @@ const DEFAULT_ACCENT = ["#22d3ee", "#8b5cf6", "#ec4899"];
 
 /** The invitation on an anonymous whisper. Game and prompt cards pass their own. */
 const DEFAULT_PROMPT = "send me anonymous messages!";
+
+/* ---------------------------------------------------------------------------
+   Export format.
+
+   This was PNG, and a 1080x1920 canvas of smooth gradients is close to the worst
+   case for it: almost nothing repeats, so the filter stage has little to predict
+   and the file lands somewhere between 1.5 and 3 MB. That size is a wait three
+   times over — encoding it, handing it to the share sheet, and uploading it — and
+   it is why a tap on a platform button felt like it had missed.
+
+   JPEG at q0.9 puts the same card in the low hundreds of KB. Nothing that matters
+   here is lost: the canvas is opaque, so there is no transparency to preserve
+   (html2canvas is already told to flatten onto black), and at this quality the
+   only place the difference is even findable is the hard edge of the wordmark,
+   which is large and high-contrast enough to survive it.
+   --------------------------------------------------------------------------- */
+const EXPORT_MIME = "image/jpeg";
+const EXPORT_QUALITY = 0.9;
+const EXPORT_NAME = "whisper-message.jpg";
 
 /**
  * `#rrggbb` → `rgba(r, g, b, a)`.
@@ -171,6 +192,7 @@ function StoryFrame({
   frameRef,
   prompt,
   accent,
+  light,
 }: {
   message: string;
   imageUrl?: string | null;
@@ -178,6 +200,8 @@ function StoryFrame({
   frameRef: React.RefObject<HTMLDivElement | null>;
   prompt: string;
   accent: string[];
+  /** Light theme — skins the message half only. See the note on that half. */
+  light: boolean;
 }) {
   /* One factor for the whole tree, applied as plain px in inline styles — so the
      computed values html2canvas reads are already absolute, with no container
@@ -278,17 +302,26 @@ function StoryFrame({
             border: `${u(2)} solid rgba(255,255,255,0.10)`,
           }}
         >
-          {/* The prompt. Left-aligned and set large, as in the reference, so it
-              reads as the invitation the card is built around rather than as a
-              caption. The band carries whatever colour the caller sends — a game
-              question arrives tinted to the tile it was tapped on; an anonymous
-              whisper falls back to Whisper's cyan → violet → pink. */}
+          {/* The prompt, centred and set large so it reads as the invitation the
+              card is built around rather than as a caption. The band carries
+              whatever colour the caller sends — a game question arrives tinted to
+              the tile it was tapped on; an anonymous whisper falls back to
+              Whisper's cyan → violet → pink.
+
+              Centred rather than ragged-left, and centred by two properties on
+              purpose: `justifyContent` centres the paragraph box itself and
+              `textAlign` centres each line inside it. Either alone is not enough
+              — a flex item's width here depends on whether the text is short
+              enough to fit one line, so a one-line prompt and a three-line one
+              would land differently. Pinning the box to the full width and
+              centring the lines within it is the same result at any length. */}
           <div
             style={{
               flexShrink: 0,
               minHeight: u(248),
               display: "flex",
               alignItems: "center",
+              justifyContent: "center",
               padding: `${u(52)} ${u(56)}`,
               background: `linear-gradient(118deg, ${bandStops})`,
             }}
@@ -296,6 +329,7 @@ function StoryFrame({
             <p
               style={{
                 margin: 0,
+                width: "100%",
                 /* A game question is a sentence, not a four-word invitation, so
                    the band steps down a size once it gets long rather than
                    growing the band and squeezing the card below it. */
@@ -303,6 +337,7 @@ function StoryFrame({
                 lineHeight: 1.18,
                 fontWeight: 900,
                 letterSpacing: "-0.015em",
+                textAlign: "center",
                 color: "#ffffff",
                 overflowWrap: "anywhere",
               }}
@@ -311,11 +346,26 @@ function StoryFrame({
             </p>
           </div>
 
-          {/* The glass half. Translucent white compositing over the canvas
-              gradient behind it — alpha blending, which rasterizes exactly,
-              rather than a blur that would not. The first gradient layer is its
-              top rim light, a stop rather than an inset shadow for the same
-              reason. */}
+          {/* The message half, and the one part of the card that follows the app's
+              theme.
+
+              On dark it is translucent white compositing over the canvas gradient
+              behind it — alpha blending, which rasterizes exactly, rather than a
+              blur that would not. On light it becomes an opaque near-white sheet,
+              so the half where the message is read matches the theme the user is
+              reading the app in.
+
+              Only this half moves. The band above keeps its colour in both themes
+              and the canvas stays glossy black in both, which is deliberate on
+              three counts: glossy black is what was asked for, it is what the
+              reference actually does — a coloured header over a white body, on a
+              dark story canvas — and the watermark below is a white wordmark
+              beside a dark-backed ghost tile that cannot be recoloured, because
+              html2canvas ignores CSS filters and blend modes.
+
+              The first gradient layer in each theme is the seam under the band: a
+              rim light on dark, a soft shadow on light. A stop rather than an
+              inset shadow because html2canvas skips `box-shadow` outright. */}
           <div
             style={{
               position: "relative",
@@ -328,9 +378,13 @@ function StoryFrame({
               gap: u(38),
               padding: `${u(64)} ${u(56)}`,
               textAlign: "center",
-              background:
-                `linear-gradient(to bottom, rgba(255,255,255,0.34) 0px, rgba(255,255,255,0) ${u(3)}), ` +
-                "linear-gradient(160deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.085) 48%, rgba(255,255,255,0.055) 100%)",
+              background: light
+                ? `linear-gradient(to bottom, rgba(0,0,0,0.07) 0px, rgba(0,0,0,0) ${u(4)}), ` +
+                  /* Opaque, and not flat #ffffff all the way down: a hair of cool
+                     drift keeps it reading as a lit surface rather than paper. */
+                  "linear-gradient(162deg, #ffffff 0%, #f8f9fd 54%, #f1f3fa 100%)"
+                : `linear-gradient(to bottom, rgba(255,255,255,0.34) 0px, rgba(255,255,255,0) ${u(3)}), ` +
+                  "linear-gradient(160deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.085) 48%, rgba(255,255,255,0.055) 100%)",
             }}
           >
             {message ? (
@@ -341,9 +395,13 @@ function StoryFrame({
                   lineHeight: 1.32,
                   fontWeight: 800,
                   letterSpacing: "-0.01em",
-                  color: "#ffffff",
+                  color: light ? "#0b0c14" : "#ffffff",
                   overflowWrap: "anywhere",
-                  textShadow: `0 ${u(2)} ${u(6)} rgba(4,8,26,0.42)`,
+                  /* The dark half's text sits on a translucent surface with the
+                     canvas showing through, so it needs the shadow to hold its
+                     edge. On an opaque white sheet the same shadow just smudges
+                     it. */
+                  textShadow: light ? "none" : `0 ${u(2)} ${u(6)} rgba(4,8,26,0.42)`,
                 }}
               >
                 {message}
@@ -358,7 +416,7 @@ function StoryFrame({
                   fontSize: u(38),
                   fontWeight: 700,
                   fontStyle: "italic",
-                  color: "rgba(255,255,255,0.55)",
+                  color: light ? "rgba(11,12,20,0.42)" : "rgba(255,255,255,0.55)",
                 }}
               >
                 No message text
@@ -386,7 +444,10 @@ function StoryFrame({
                   maxHeight: u(message ? 620 : 900),
                   objectFit: "contain",
                   borderRadius: u(32),
-                  border: `${u(2)} solid rgba(255,255,255,0.18)`,
+                  /* A white rim reads as light catching the edge on the dark
+                     half and as nothing at all on the light one, so the light
+                     theme gets a dark hairline instead. */
+                  border: `${u(2)} solid ${light ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.18)"}`,
                 }}
               />
             )}
@@ -477,6 +538,45 @@ function StoryFrame({
   );
 }
 
+/**
+ * Whether the app is currently in light theme.
+ *
+ * Read straight off `<html data-theme>` rather than through `useTheme()`, and
+ * that is not a shortcut. `ThemeProvider` initialises `resolvedTheme` to `"dark"`
+ * and only corrects it after `supabase.auth.getSession()` and a profiles query
+ * have both resolved — so a light-theme user would watch this card open dark and
+ * flip a moment later, which is worse than either theme on its own.
+ *
+ * The attribute is set by the pre-paint script in the root layout, so it is
+ * already right on the first commit. It is also what the CSS itself keys off, and
+ * what html2canvas will read out of the clone, which keeps the exported file
+ * matching the card the user pressed save on.
+ *
+ * The observer is there for the case where the user changes theme with the card
+ * open — rare, but the alternative is a card that disagrees with the app behind
+ * it, and it costs one listener.
+ */
+function useLightTheme(): boolean {
+  const [light, setLight] = useState(() =>
+    typeof document === "undefined"
+      ? false
+      : document.documentElement.dataset.theme === "light"
+  );
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () => setLight(root.dataset.theme === "light");
+    /* Once on mount as well as on change: the pre-paint script and this
+       component's first render are not ordered relative to each other. */
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return light;
+}
+
 export default function ShareMessageCard({
   message,
   imageUrl,
@@ -493,9 +593,9 @@ export default function ShareMessageCard({
   prompt?: string;
   /** Two or three hex stops. Tints the band and the canvas glow. */
   accent?: string[];
-  /** The link that travels with the card. Defaults to this deployment's origin. */
+  /** The link that travels with the card. Defaults to the viewer's own Whisper. */
   shareUrl?: string;
-  /** Caption for the platform hand-off. Defaults to a line about the message. */
+  /** Overrides the header text in the caption. Defaults to the prompt. */
   shareText?: string;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -503,6 +603,36 @@ export default function ShareMessageCard({
   const [frameWidth, setFrameWidth] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState("");
+  const light = useLightTheme();
+
+  /* Resolved here rather than left to each caller, so the two call sites that
+     open this card on a *received* whisper — Recent Messages and Notifications —
+     share the viewer's own link without either page having to know that is what
+     a share is for. Callers that already have the link pass it as `shareUrl` and
+     that still wins. */
+  const { link: ownLink } = useWhisperShare();
+
+  /* ---------------------------------------------------------------------------
+     What the caption says.
+
+     The header text, then the user's link. Never the message body, which is what
+     this used to send: a caption that quotes the whisper it is showing a picture
+     of spends the post's one readable line on text the image already carries, and
+     leaves the reader nothing to tap — so the share earned Whisper nothing. The
+     band's invitation plus a link is the ask, and the image is a picture of the
+     ask.
+
+     The blank line before the URL is not cosmetic. WhatsApp, Instagram and X all
+     linkify a trailing URL and leave the text above it alone; inline, the question
+     and the link fight and one of them loses. Same reasoning as `composeMessage`
+     in `useWhisperShare`.
+     --------------------------------------------------------------------------- */
+  const shareHeadline = shareText ?? prompt;
+  const shareDestination =
+    shareUrl || ownLink || (typeof window === "undefined" ? "" : window.location.origin);
+  const shareCaption = shareDestination
+    ? `${shareHeadline}\n\n${shareDestination}`
+    : shareHeadline;
 
   /* The portal host, resolved in the initial state rather than in an effect so
      the card paints on its first commit — an effect would cost a frame of empty
@@ -573,8 +703,12 @@ export default function ShareMessageCard({
    * Capture used to run before webfonts and the attached photo had resolved, so
    * the text rendered in a fallback face and the photo could land as a blank
    * box. Both are waited on here.
+   *
+   * A `useCallback` with no dependencies — it reads nothing but refs — so the
+   * pre-warm effect below can depend on it without re-rendering the card into a
+   * capture loop.
    */
-  async function getImageBlob(): Promise<Blob | null> {
+  const getImageBlob = useCallback(async (): Promise<Blob | null> => {
     const card = cardRef.current;
     if (!card) return null;
 
@@ -632,7 +766,121 @@ export default function ShareMessageCard({
     /* `toBlob` hands back null when the canvas is tainted or allocation failed.
        Returning it as-is would surface as a silent no-op download, so the
        caller's null branch is the one that reports it. */
-    return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+    return new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), EXPORT_MIME, EXPORT_QUALITY)
+    );
+  }, []);
+
+  /* ---------------------------------------------------------------------------
+     The pre-warmed export.
+
+     Everything that changes a pixel of the frame is in the key, because a stale
+     hit would hand off the previous card — which is a worse bug than the slow
+     render this replaces.
+     --------------------------------------------------------------------------- */
+  const exportKey = `${frameWidth}|${light ? "light" : "dark"}|${prompt}|${message}|${
+    imageUrl ?? ""
+  }|${accent.join(",")}`;
+  const blobRef = useRef<Blob | null>(null);
+  const blobKeyRef = useRef("");
+  /* The newest key, readable from inside a render that is still in flight. */
+  const latestKeyRef = useRef(exportKey);
+  const pendingRef = useRef<{ key: string; run: Promise<Blob | null> } | null>(null);
+
+  /**
+   * Rasterizes the card, at most once per key at a time.
+   *
+   * The de-duplication is not a micro-optimisation. Without it, a tap that lands
+   * during the pre-warm starts a second 1080x1920 rasterization beside the first
+   * — double the work on any phone, and an allocation failure on a tight one,
+   * which surfaces as a blank card.
+   */
+  const startRender = useCallback((): Promise<Blob | null> => {
+    const pending = pendingRef.current;
+    if (pending && pending.key === exportKey) return pending.run;
+
+    const key = exportKey;
+    const run = getImageBlob()
+      .then((blob) => {
+        /* A render that outlived the thing it was a picture of — the theme
+           flipped, or the caller swapped the message under it. Dropping it costs
+           one wasted capture; publishing it would hand the user a card that is
+           not the one on screen. */
+        if (blob && latestKeyRef.current === key) {
+          blobRef.current = blob;
+          blobKeyRef.current = key;
+        }
+        return blob;
+      })
+      .catch((error) => {
+        console.error("Share card render failed:", error);
+        return null;
+      })
+      .finally(() => {
+        if (pendingRef.current?.key === key) pendingRef.current = null;
+      });
+
+    pendingRef.current = { key, run };
+    return run;
+  }, [getImageBlob, exportKey]);
+
+  /**
+   * Renders the card once in the background as soon as it has a size.
+   *
+   * This is the other half of "shared immediately". Rasterizing 1080x1920 takes
+   * 300-800ms on a phone, and doing it *after* the tap cost more than the wait:
+   * a browser's transient user activation survives microtasks but not a task that
+   * long, so `navigator.share` was liable to be refused outright by the time it
+   * was reached — the tap that looked slow could also end in nothing at all.
+   * Doing it before the tap means the tap has nothing to wait for.
+   */
+  useEffect(() => {
+    /* Set before anything else in here, so an in-flight render from the previous
+       key can already see that it has been superseded. */
+    latestKeyRef.current = exportKey;
+    if (!frameWidth) return;
+
+    /* Invalidate on the way in. If nothing changed but the theme flipped, the old
+       blob is still a valid image — of a card that is no longer on screen. */
+    if (blobKeyRef.current !== exportKey) blobRef.current = null;
+
+    let inner = 0;
+    /* Two frames, not zero. The render that changed `exportKey` still has to
+       paint before html2canvas can read it, and starting a capture on the same
+       frame the card first appears on would stall that appearance. */
+    const outer = requestAnimationFrame(() => {
+      /* No error branch: nothing was asked for yet, and `startRender` already
+         logs. A real failure is reported when a button is actually pressed. */
+      inner = requestAnimationFrame(() => void startRender());
+    });
+
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [exportKey, frameWidth, startRender]);
+
+  /**
+   * The pre-warmed blob, or null.
+   *
+   * Synchronous, and every caller has to read it *before* its first `await` —
+   * that is the whole point. See the effect above.
+   */
+  function cachedBlob(): Blob | null {
+    return blobKeyRef.current === exportKey ? blobRef.current : null;
+  }
+
+  /** Renders the card now, with the spinner on, and reports a failure. */
+  async function renderBlob(): Promise<Blob | null> {
+    setGenerating(true);
+    const blob = await startRender();
+    setGenerating(false);
+    if (!blob) {
+      /* A failed render used to end in silence, so the button read as dead. */
+      flashToast("Couldn't build the card. Try again.");
+      return null;
+    }
+    return blob;
   }
 
   /**
@@ -643,7 +891,7 @@ export default function ShareMessageCard({
    * the same tick cancels the download in Chromium before it starts. Both
    * failure modes look identical to the user — the button does nothing.
    */
-  function downloadBlob(blob: Blob, fileName = "whisper-message.png") {
+  function downloadBlob(blob: Blob, fileName = EXPORT_NAME) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -659,14 +907,9 @@ export default function ShareMessageCard({
   }
 
   async function handleDownload() {
-    setGenerating(true);
-    const blob = await getImageBlob().catch((error) => {
-      console.error("Share card render failed:", error);
-      return null;
-    });
-    setGenerating(false);
-    /* A failed render used to end in silence, so the button read as dead. */
-    if (!blob) { flashToast("Couldn't build the card. Try again."); return; }
+    /* Cache first, so the common case is a save with no spinner at all. */
+    const blob = cachedBlob() ?? (await renderBlob());
+    if (!blob) return;
 
     if (Capacitor.isNativePlatform()) {
       try {
@@ -676,7 +919,7 @@ export default function ShareMessageCard({
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
           const base64Data = (reader.result as string).split(",")[1];
-          const fileName = `whisper-${Date.now()}.png`;
+          const fileName = `whisper-${Date.now()}.jpg`;
           try {
             const savedFile = await Filesystem.writeFile({
               path: fileName,
@@ -731,25 +974,80 @@ export default function ShareMessageCard({
     }
   }
 
-  async function handlePlatformShare(platform: Platform) {
-    setGenerating(true);
-    const blob = await getImageBlob().catch((error) => {
-      console.error("Share card render failed:", error);
-      return null;
-    });
-    setGenerating(false);
-    if (!blob) { flashToast("Couldn't build the card. Try again."); return; }
+  /**
+   * Opens the OS share sheet with the card attached.
+   *
+   * `false` covers all three ways this can not happen — no sheet on this browser,
+   * the sheet refusing a file, and the user cancelling — because the caller's next
+   * move is the same in every case.
+   *
+   * Async, but `navigator.share` still runs in the caller's task: an async
+   * function body runs synchronously up to its first `await`, and the only `await`
+   * here is on the promise `share()` already returned. That is what lets the
+   * pre-warmed path keep the browser's user activation.
+   */
+  async function shareViaSheet(blob: Blob): Promise<boolean> {
+    if (typeof navigator === "undefined" || !navigator.share) return false;
+    const file = new File([blob], EXPORT_NAME, { type: EXPORT_MIME });
+    if (!navigator.canShare?.({ files: [file] })) return false;
+    try {
+      await navigator.share({ files: [file], title: "Whisper", text: shareCaption });
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
-    const caption =
-      shareText ??
-      (message ? `"${message}" — anonymous whisper 👻` : "I got an anonymous message on Whisper 👻");
-    /* Was a hardcoded `https://whisper.app`, which is not this app — the WhatsApp
-       and X fallbacks were posting a dead domain. The origin is right on Vercel,
-       on a preview URL and inside the Capacitor WebView, and a caller with a real
-       destination (a user's own Whisper link) passes it. */
-    const destination =
-      shareUrl || (typeof window === "undefined" ? "" : window.location.origin);
-    const file = new File([blob], "whisper-message.png", { type: "image/png" });
+  /**
+   * No share sheet available, so the card is saved and the platform is opened
+   * with whatever it will accept prefilled.
+   */
+  function handoffWithoutSheet(blob: Blob, platform: Platform) {
+    downloadBlob(blob);
+    flashToast("Image saved — attach it when sharing! 👻");
+
+    if (platform === "whatsapp") {
+      /* `shareCaption` already ends with the link. It used to be appended again
+         here, which posted the URL twice. */
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareCaption)}`, "_blank");
+      return;
+    }
+    if (platform === "x") {
+      /* X renders `url` at the end of the tweet itself, so the text it gets is the
+         headline alone — the caption would put the link in twice. */
+      window.open(
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareHeadline)}&url=${encodeURIComponent(shareDestination)}`,
+        "_blank"
+      );
+      return;
+    }
+
+    const deepLinks: Record<string, string> = { instagram: "instagram://story-camera", snapchat: "snapchat://", tiktok: "tiktok://" };
+    setTimeout(() => {
+      window.location.href = deepLinks[platform];
+    }, 500);
+  }
+
+  async function handlePlatformShare(platform: Platform) {
+    /* Read before anything is awaited. On the warm path this hands the card to
+       the share sheet inside the click's own task, which is both why it is
+       instant and why the sheet is allowed to open at all — see the pre-warm
+       effect. */
+    const warm = cachedBlob();
+
+    if (warm && !Capacitor.isNativePlatform()) {
+      if (await shareViaSheet(warm)) return;
+      /* Sheet refused or cancelled. The image is already in hand, so there is
+         nothing to re-render. */
+      handoffWithoutSheet(warm, platform);
+      return;
+    }
+
+    /* Cold: either the pre-warm has not finished — a tap inside the first frame
+       or two — or this is the native shell, which writes a file rather than
+       handing over a Blob. */
+    const blob = warm ?? (await renderBlob());
+    if (!blob) return;
 
     if (Capacitor.isNativePlatform()) {
       try {
@@ -759,9 +1057,9 @@ export default function ShareMessageCard({
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
           const base64Data = (reader.result as string).split(",")[1];
-          const fileName = `whisper-share-${Date.now()}.png`;
+          const fileName = `whisper-share-${Date.now()}.jpg`;
           const savedFile = await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Documents, recursive: true });
-          await Share.share({ title: "Whisper", text: caption, url: savedFile.uri });
+          await Share.share({ title: "Whisper", text: shareCaption, url: savedFile.uri });
         };
         return;
       } catch (err) {
@@ -769,29 +1067,9 @@ export default function ShareMessageCard({
       }
     }
 
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: "Whisper", text: caption });
-        return;
-      } catch {}
-    }
+    if (await shareViaSheet(blob)) return;
 
-    downloadBlob(blob);
-    flashToast("Image saved — attach it when sharing! 👻");
-
-    if (platform === "whatsapp") {
-      window.open(`https://wa.me/?text=${encodeURIComponent(`${caption}\n${destination}`)}`, "_blank");
-      return;
-    }
-    if (platform === "x") {
-      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(destination)}`, "_blank");
-      return;
-    }
-
-    const deepLinks: Record<string, string> = { instagram: "instagram://story-camera", snapchat: "snapchat://", tiktok: "tiktok://" };
-    setTimeout(() => {
-      window.location.href = deepLinks[platform];
-    }, 500);
+    handoffWithoutSheet(blob, platform);
   }
 
   const platforms: Platform[] = ["instagram", "snapchat", "whatsapp", "x", "tiktok"];
@@ -873,6 +1151,7 @@ export default function ShareMessageCard({
                 frameRef={cardRef}
                 prompt={prompt}
                 accent={accent}
+                light={light}
               />
             )}
           </div>

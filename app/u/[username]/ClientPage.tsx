@@ -388,7 +388,19 @@ export default function PublicProfile() {
               initial={reduced ? false : { opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={tween.base}
-              className="whitespace-pre-line break-words text-[0.9375rem] leading-relaxed text-white/75"
+              /* `text-white`, not `text-white/75`. Tailwind's opacity modifier
+                 compiles to its own class (`.text-white\/75`), and the theme
+                 compatibility bridge in globals.css only rewrites the bare
+                 `.text-white` — so the bio stayed literally white and was
+                 invisible on the light theme's canvas, on the one page a stranger
+                 arrives at.
+
+                 Not `opacity-80` to get the fade back either: this element
+                 animates its own opacity, and Framer writes that inline, which
+                 beats the utility class. Full strength is the better hierarchy
+                 anyway — the bio is the profile's own words and belongs a step
+                 above the secondary line under it. */
+              className="whitespace-pre-line break-words text-[0.9375rem] leading-relaxed text-white"
             >
               {bio}
             </motion.p>

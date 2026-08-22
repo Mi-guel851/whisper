@@ -83,7 +83,12 @@ export default function StreakChip() {
         >
           <Flame
             size={17}
-            className={lit ? "text-orange-300" : "text-white/45"}
+            /* `text-white opacity-*`, not `text-white/45`: the opacity modifier
+               compiles to its own class, which the theme bridge in globals.css
+               does not rewrite, so an unlit flame stayed literally white and
+               vanished into the light theme's header. Opacity fades the bridged
+               colour instead of replacing it. */
+            className={lit ? "text-orange-300" : "text-white opacity-50"}
             fill={lit ? "currentColor" : "none"}
           />
         </motion.span>

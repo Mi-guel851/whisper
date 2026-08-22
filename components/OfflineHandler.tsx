@@ -65,7 +65,16 @@ export default function OfflineHandler() {
           <GlassPanel strong className="relative w-full max-w-sm rounded-3xl p-8 text-center border border-white/10 shadow-2xl">
             <button
               onClick={() => setShowPopup(false)}
-              className="absolute top-4 right-4 text-white/40 hover:text-white"
+              /* Bridged colour plus an opacity fade, not `text-white/40
+                 hover:text-white`. Tailwind's opacity modifier and its variant
+                 prefixes each compile to their own class (`.text-white\/40`,
+                 `.hover\:text-white:hover`), and the theme bridge in globals.css
+                 only rewrites the bare `.text-white` — so both the resting and
+                 the hover state were literally white, which is an invisible X on
+                 this `GlassPanel`'s light-theme surface. On the one dialog that
+                 blocks the whole app. Opacity is theme-independent, so it gives
+                 the same two states in both themes. */
+              className="absolute top-4 right-4 text-white opacity-50 transition-opacity hover:opacity-100"
             >
               <X size={20} />
             </button>
