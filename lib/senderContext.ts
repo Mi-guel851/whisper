@@ -76,17 +76,26 @@ export function formatDevice(parts: DeviceDescription): string {
  *
  *   - Android tablets must be tested before Android phones, because every
  *     Android UA contains "Android" and only phones contain "Mobile".
- *   - iPadOS 13+ reports itself as a Macintosh, so the iPad has to be caught by
- *     its touch-capable-Mac signature before the Mac branch claims it.
  *   - Samsung Internet, Edge and Opera all embed "Chrome" in their UA, so
  *     checking Chrome first would report all three as Chrome. Chrome must come
  *     last among the Chromium family.
  *   - Every Chromium UA also contains "Safari", so Safari must be last overall.
  *
+ * `touchPoints` exists because of one case the string genuinely cannot answer:
+ * Safari on iPadOS 13+ sends a *verbatim* Macintosh user-agent with no iPad token
+ * and no "Mobile" token, so from the UA alone an iPad is a Mac. `maxTouchPoints`
+ * is the only signal that separates them, and it exists solely in the browser —
+ * which is why it is a parameter rather than something read inside here. The
+ * server omits it and calls such a device a Mac, because guessing would be worse
+ * than being coarse on a fact somebody paid for.
+ *
  * Returns human-readable names because they are shown verbatim to whoever paid
  * for the hint — "Android phone", not "Linux armv8l".
  */
-export function describeUserAgent(ua: string | null | undefined): DeviceDescription {
+export function describeUserAgent(
+  ua: string | null | undefined,
+  touchPoints?: number
+): DeviceDescription {
   const agent = ua || "";
 
   let device = "Unknown Device";
@@ -101,10 +110,10 @@ export function describeUserAgent(ua: string | null | undefined): DeviceDescript
   } else if (/\bCrOS\b/i.test(agent)) {
     device = "Chromebook";
   } else if (/\bMacintosh\b/i.test(agent)) {
-    /* iPadOS 13+ ships a desktop UA. The touch-points hint is the only thing in
-       the string that separates it from a real Mac, and a Mac never reports
-       more than one, so this is safe rather than clever. */
-    device = /\bMobile\b/i.test(agent) ? "iPad" : "Mac computer";
+    /* A Mac reports at most one touch point; an iPad in desktop mode reports
+       five. Without the hint this is a Mac, which is the honest answer to give
+       when there is nothing in the request that says otherwise. */
+    device = touchPoints && touchPoints > 1 ? "iPad" : "Mac computer";
   } else if (/\bWindows\b/i.test(agent)) {
     device = "Windows PC";
   } else if (/\bLinux\b/i.test(agent)) {
@@ -112,9 +121,12 @@ export function describeUserAgent(ua: string | null | undefined): DeviceDescript
   }
 
   let browser = "Unknown Browser";
-  if (/\bEdgi?A?[\/ ]|\bEdg\//i.test(agent)) browser = "Edge";
+  /* `Edg/` desktop, `EdgA/` Android, `EdgiOS/` iOS, `Edge/` legacy EdgeHTML — one
+     pattern for all four, and it has to run first because every modern Edge UA
+     also contains "Chrome" and "Safari". */
+  if (/\bEdge?(?:iOS|A)?\//i.test(agent)) browser = "Edge";
   else if (/SamsungBrowser/i.test(agent)) browser = "Samsung Internet";
-  else if (/\bOPR\/|\bOpera\b/i.test(agent)) browser = "Opera";
+  else if (/\bOPR\/|\bOPT\/|\bOpera\b/i.test(agent)) browser = "Opera";
   else if (/\bYaBrowser\b/i.test(agent)) browser = "Yandex";
   else if (/\bFocus\/|\bFxiOS\/|\bFirefox\//i.test(agent)) browser = "Firefox";
   else if (/\bChrome\/|\bCriOS\//i.test(agent)) browser = "Chrome";
