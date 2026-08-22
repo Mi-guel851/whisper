@@ -21,7 +21,43 @@ import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
  * The charge is derived from the body server-side. A client claiming "this is a
  * reply" to dodge the fee would have to send a `parentPostId`, which makes it an
  * actual reply — so there is nothing to spoof.
+ *
+ * Attachments (topic, photo, poll) are validated here rather than trusted, and
+ * every one of them is checked against the same rules the table's constraints
+ * enforce. Two layers agreeing is the point: the constraint is the guarantee, and
+ * this is what turns a violation into a sentence the user can act on instead of a
+ * 500.
  */
+
+/** Must mirror `public_feed_posts_topic_check`. */
+const TOPICS = new Set([
+  "confession",
+  "advice",
+  "love",
+  "vent",
+  "funny",
+  "deep",
+  "question",
+  "random",
+]);
+
+const MAX_POLL_OPTIONS = 4;
+const MAX_POLL_OPTION_CHARS = 60;
+const MAX_PREVIEW_CHARS = 4000;
+
+/**
+ * Whether an insert failed because the schema is missing a column, as opposed to
+ * the row being invalid.
+ *
+ * The distinction decides between "retry with less" and "tell the user". PostgREST
+ * reports an unknown column on write as PGRST204 from its schema cache; Postgres
+ * itself reports 42703 when the cache is stale enough to let the statement
+ * through.
+ */
+function isMissingColumn(error: { code?: string; message?: string }) {
+  if (error.code === "PGRST204" || error.code === "42703") return true;
+  return /column .* does not exist|could not find the .* column/i.test(error.message ?? "");
+}
 
 /** Shape of the row we insert. Loose because the optional columns depend on
  *  which migrations have been applied. */
@@ -30,9 +66,17 @@ type InsertBody = {
   body: string;
   whisper_link: string | null;
   parent_post_id?: string;
+  topic?: string;
+  image_path?: string;
+  image_preview?: string;
+  poll_options?: string[];
 };
 
 const BASE = "id,author_id,body,whisper_link,created_at,expires_at";
+/** What the client is allowed to read back. `image_path` is never returned — the
+ *  key embeds the author's id, and correlating two anonymous posts to one author
+ *  is the leak that matters in this feed. */
+const RETURN_COLUMNS = `${BASE},parent_post_id,view_count,topic,image_preview,poll_options`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,6 +96,66 @@ export async function POST(req: NextRequest) {
     if (!text) {
       return NextResponse.json(
         { error: isReply ? "Write a reply first" : "Write something first" },
+        { status: 400 }
+      );
+    }
+
+    /* ------------------------------------------------------------------
+       Attachments
+       ------------------------------------------------------------------ */
+
+    const topic = typeof body?.topic === "string" && body.topic ? body.topic : null;
+    if (topic && !TOPICS.has(topic)) {
+      return NextResponse.json({ error: "That topic doesn't exist." }, { status: 400 });
+    }
+
+    const imagePath = typeof body?.imagePath === "string" && body.imagePath ? body.imagePath : null;
+    const imagePreview =
+      typeof body?.imagePreview === "string" && body.imagePreview ? body.imagePreview : null;
+
+    /* A photo with no preview would be a locked plate with nothing under it, and
+       it would also break the fallback reader, which infers "has a photo" from the
+       preview's presence. Requiring both keeps that inference exact. */
+    if (imagePath && !imagePreview) {
+      return NextResponse.json(
+        { error: "That photo couldn't be prepared. Please pick it again." },
+        { status: 400 }
+      );
+    }
+    if (imagePreview && imagePreview.length > MAX_PREVIEW_CHARS) {
+      return NextResponse.json({ error: "That photo preview is too large." }, { status: 400 });
+    }
+
+    const rawPollOptions = Array.isArray(body?.pollOptions) ? body.pollOptions : null;
+    let pollOptions: string[] | null = null;
+
+    if (rawPollOptions) {
+      const cleaned = rawPollOptions
+        .map((option: unknown) => String(option ?? "").trim())
+        .filter((option: string) => option.length > 0)
+        .slice(0, MAX_POLL_OPTIONS);
+
+      if (cleaned.length < 2) {
+        return NextResponse.json({ error: "A poll needs at least two choices." }, { status: 400 });
+      }
+      if (cleaned.some((option: string) => option.length > MAX_POLL_OPTION_CHARS)) {
+        return NextResponse.json(
+          { error: `Keep each choice under ${MAX_POLL_OPTION_CHARS} characters.` },
+          { status: 400 }
+        );
+      }
+      pollOptions = cleaned;
+    }
+
+    /* Polls are a root-post feature. `public_feed_thread` doesn't compute tallies
+       for replies, so a poll down a thread would render bars that never move —
+       which is exactly the kind of control that looks real and isn't. */
+    if (pollOptions && isReply) {
+      return NextResponse.json({ error: "Polls can't be added to a reply." }, { status: 400 });
+    }
+    if (pollOptions && imagePath) {
+      return NextResponse.json(
+        { error: "Add a photo or a poll, not both." },
         { status: 400 }
       );
     }
@@ -87,6 +191,44 @@ export async function POST(req: NextRequest) {
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    /**
+     * Confirm the photo is this author's, and that it is actually there.
+     *
+     * Checked before any coins move, so a bad path is a 400 rather than a charge
+     * followed by a refund. The prefix test is the security check — object keys are
+     * `<author_id>/<uuid>`, and the bucket's insert policy already refuses any
+     * other shape, so a path outside the caller's own folder either belongs to
+     * someone else or does not exist. The `list` is the correctness check: a post
+     * referencing a missing object would render as a locked plate that never opens.
+     */
+    if (imagePath) {
+      const separator = imagePath.lastIndexOf("/");
+      const folder = separator > 0 ? imagePath.slice(0, separator) : "";
+      const filename = separator > 0 ? imagePath.slice(separator + 1) : imagePath;
+
+      if (folder !== user.id || !filename) {
+        return NextResponse.json({ error: "That photo isn't yours." }, { status: 403 });
+      }
+
+      const { data: objects, error: listError } = await supabaseAdmin.storage
+        .from("feed-photos")
+        .list(folder, { search: filename, limit: 1 });
+
+      if (listError) {
+        console.error("[coins/feed-post] storage list failed:", listError.message);
+        return NextResponse.json(
+          { error: "Photo whispers aren't available on this server yet." },
+          { status: 503 }
+        );
+      }
+      if (!objects?.some((object) => object.name === filename)) {
+        return NextResponse.json(
+          { error: "That photo didn't finish uploading. Try again." },
+          { status: 400 }
+        );
+      }
+    }
 
     const cost = isReply ? FEED_REPLY_COST : FEED_POST_COST;
 
@@ -173,6 +315,7 @@ export async function POST(req: NextRequest) {
 
     let createdPost: unknown = null;
     let postFailure = "";
+    let attachmentUnsupported = false;
 
     try {
       const { data: profile } = await supabaseAdmin
@@ -187,32 +330,68 @@ export async function POST(req: NextRequest) {
         whisper_link: profile?.username ? `/u/${profile.username}` : null,
       };
       if (isReply) insertBody.parent_post_id = parentPostId;
+      if (topic) insertBody.topic = topic;
+      if (imagePath && imagePreview) {
+        insertBody.image_path = imagePath;
+        insertBody.image_preview = imagePreview;
+      }
+      if (pollOptions) insertBody.poll_options = pollOptions;
 
-      const { data: postData, error: postError } = await supabaseAdmin
-        .from("public_feed_posts")
-        .insert([insertBody])
-        .select(`${BASE},parent_post_id`)
-        .single();
+      const hasAttachment = Boolean(imagePath || pollOptions);
 
-      if (!postError) {
-        createdPost = postData;
-      } else if (isReply) {
-        /* `parent_post_id` is the newest column on this table. If the migration
-           hasn't been applied, post the reply unthreaded rather than losing it —
-           the text still reaches the feed. */
-        console.warn("[coins/feed-post] threaded insert failed, retrying flat:", postError.message);
-        delete insertBody.parent_post_id;
+      const rowWithout = (
+        ...keys: Array<"topic" | "parent_post_id" | "image_path" | "image_preview" | "poll_options">
+      ) => {
+        const copy: InsertBody = { ...insertBody };
+        for (const key of keys) delete copy[key];
+        return copy;
+      };
 
-        const flat = await supabaseAdmin
+      /**
+       * Insert attempts, most complete first.
+       *
+       * Each fallback drops a column an unmigrated database might not have — but
+       * only ever a *topic* or the *threading link*, both of which a post reads
+       * fine without. A photo or a poll is never dropped: charging someone for a
+       * photo whisper and then publishing a post with no photo in it is worse than
+       * telling them the server can't take one yet.
+       */
+      const attempts: Array<{ row: InsertBody; select: string; note: string }> = [
+        { row: insertBody, select: RETURN_COLUMNS, note: "full" },
+      ];
+
+      if (!hasAttachment) {
+        if (insertBody.topic) {
+          attempts.push({
+            row: rowWithout("topic", "image_path", "image_preview", "poll_options"),
+            select: `${BASE},parent_post_id`,
+            note: "without topic",
+          });
+        }
+        if (isReply) {
+          attempts.push({
+            row: rowWithout("topic", "parent_post_id", "image_path", "image_preview", "poll_options"),
+            select: BASE,
+            note: "flat",
+          });
+        }
+      }
+
+      for (const attempt of attempts) {
+        const result = await supabaseAdmin
           .from("public_feed_posts")
-          .insert([insertBody])
-          .select(BASE)
+          .insert([attempt.row])
+          .select(attempt.select)
           .single();
 
-        if (flat.error) postFailure = flat.error.message;
-        else createdPost = flat.data;
-      } else {
-        postFailure = postError.message;
+        if (!result.error) {
+          createdPost = result.data;
+          break;
+        }
+
+        postFailure = result.error.message;
+        if (hasAttachment && isMissingColumn(result.error)) attachmentUnsupported = true;
+        console.warn(`[coins/feed-post] insert (${attempt.note}) failed:`, result.error.message);
       }
     } catch (cause) {
       postFailure = cause instanceof Error ? cause.message : "Feed post creation failed";
@@ -220,6 +399,30 @@ export async function POST(req: NextRequest) {
 
     if (!createdPost) {
       await refund(postFailure || "unknown insert failure");
+
+      /* The object was uploaded straight from the browser before this request, so
+         a failed insert would otherwise leave it in the bucket with no row to ever
+         expire it. */
+      if (imagePath) {
+        const { error: cleanupError } = await supabaseAdmin.storage
+          .from("feed-photos")
+          .remove([imagePath]);
+        if (cleanupError) {
+          console.error("[coins/feed-post] orphan photo cleanup failed:", cleanupError.message);
+        }
+      }
+
+      if (attachmentUnsupported) {
+        return NextResponse.json(
+          {
+            error: pollOptions
+              ? "Polls aren't available on this server yet. You have not been charged."
+              : "Photo whispers aren't available on this server yet. You have not been charged.",
+          },
+          { status: 503 }
+        );
+      }
+
       return NextResponse.json(
         {
           error: isReply
