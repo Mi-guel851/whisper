@@ -35,12 +35,21 @@ function LinkRow({ href, label, icon: Icon }: { href: string; label: string; ico
       className="flex items-center justify-between gap-3 py-3.5 px-1 group"
     >
       <span className="flex items-center gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-purple-300">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/5 text-purple-300">
           <Icon size={17} />
         </span>
-        <span className="text-sm font-medium text-white/90">{label}</span>
+        {/* `text-white`, not `text-white/90`. Tailwind's opacity modifier compiles
+            to its own class (`.text-white\/90`), and the theme compatibility
+            bridge in globals.css only rewrites the bare `.text-white` — so every
+            `/N` variant stayed literal white and this whole list was invisible on
+            the light theme's white panel. Same reason the chevron below carries
+            its fade as `opacity` rather than as `text-white/30`. */}
+        <span className="text-sm font-medium text-white">{label}</span>
       </span>
-      <ChevronRight size={16} className="text-white/30 group-hover:text-white/60 transition" />
+      <ChevronRight
+        size={16}
+        className="flex-none theme-text-subtle opacity-70 transition-opacity group-hover:opacity-100"
+      />
     </Link>
   );
 }
@@ -56,8 +65,8 @@ export default function SettingsPage() {
 
         <h1 className="page-title mb-8">Settings</h1>
 
-        <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1 px-1">
+        <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/[0.06]">
+          <h2 className="text-xs font-bold uppercase tracking-wider theme-text-subtle mb-1 px-1">
             Preferences
           </h2>
           <div className="flex items-center justify-between gap-3 py-3.5 px-1">
@@ -65,7 +74,7 @@ export default function SettingsPage() {
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-purple-300">
                 <Bell size={17} />
               </span>
-              <span className="text-sm font-medium text-white/90">Push Notifications</span>
+              <span className="text-sm font-medium text-white">Push Notifications</span>
             </span>
             <Link href="/notifications" className="text-xs font-semibold text-purple-300">
               Manage
@@ -78,8 +87,11 @@ export default function SettingsPage() {
           <HapticsSettingRow />
         </GlassPanel>
 
-        <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1 px-1">
+        {/* `divide-white/[0.06]` rather than `divide-white/5`: only the first of
+            those is in the theme bridge, so the second drew a literally-white
+            hairline that vanished on the light panel. */}
+        <GlassPanel strong className="rounded-3xl p-5 mb-4 divide-y divide-white/[0.06]">
+          <h2 className="text-xs font-bold uppercase tracking-wider theme-text-subtle mb-1 px-1">
             Your Content
           </h2>
           {MORE_LINKS.map((link) => (
