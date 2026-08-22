@@ -18,6 +18,7 @@ import { useEventCallback } from "@/lib/useEventCallback";
 import useViewportFrame from "@/lib/useViewportFrame";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoicePlayer from "@/components/chat/VoicePlayer";
+import ChatSkeleton from "@/components/chat/ChatSkeleton";
 import PaperPlaneFlight from "@/components/PaperPlaneFlight";
 import ExplodingInput from "@/components/ui/ExplodingInput";
 import type { VoiceRecording } from "@/lib/useVoiceRecorder";
@@ -1242,13 +1243,24 @@ export default function ChatPage() {
     if (pinnedMessages.length > 1) setPinCursor((c) => c + 1);
   }
 
-  if (loading) {
-    return (
-      <main className="chat-canvas viewport-frame flex items-center justify-center">
-        <p className="chat-meta">Loading...</p>
-      </main>
-    );
-  }
+  /* Deliberately NOT `if (loading) return <Loading />`.
+     A full-screen gate took the header, the composer and the back button away for
+     the length of the first fetch, so opening a thread read as a page load rather
+     than a panel opening — and a mis-tap during it left nothing to press. The
+     frame below paints immediately instead; only the message region is
+     provisional, and three things have to be told about it so they don't state
+     something untrue in the meantime:
+
+       - the paywall panel, which would otherwise flash "Chat locked" on every
+         open, because `chatUnlocked` starts false and only the fetch can say
+         otherwise;
+       - the empty state, which would flash "Say hi 👻" over a thread that has
+         hundreds of messages in it;
+       - the composer's placeholder, for the same reason as the paywall panel.
+
+     The status line is the fourth: `otherUserOnline` also starts false, so it
+     would assert "offline" about somebody who is online. */
+  const composerLocked = !loading && !chatUnlocked;
 
   return (
     /* A frame, not `h-screen`. `100vh` is the large viewport and never shrinks for
@@ -1285,10 +1297,23 @@ export default function ChatPage() {
               </button>
               <img src={generatedAvatarUrl(otherUserId || "ghost")} alt="" className="chat-bubble h-9 w-9 shrink-0 rounded-full object-cover p-0.5" />
               <div className="min-w-0 flex-1 leading-tight">
-                <p className="truncate text-[15px] font-bold">{otherLabel}</p>
-                <p className={`truncate text-[11px] ${otherTyping || otherUserOnline ? "" : "chat-meta"}`} style={otherTyping || otherUserOnline ? { color: "var(--theme-success)" } : undefined}>
-                  {otherTyping ? "typing..." : otherUserOnline ? "online" : "offline"}
-                </p>
+                {/* `otherLabel` is set from the locally cached handle the moment
+                    the conversation row lands, so this bar is on screen for one
+                    round trip at most — but an empty bold line where a name goes
+                    reads as a broken header, and a placeholder name would be a
+                    lie about who you are talking to. */}
+                {otherLabel ? (
+                  <p className="truncate text-[15px] font-bold">{otherLabel}</p>
+                ) : (
+                  <div className="skeleton my-[0.3rem] h-3.5 w-28 rounded-full" aria-hidden />
+                )}
+                {loading ? (
+                  <div className="skeleton my-[0.2rem] h-2.5 w-14 rounded-full" aria-hidden />
+                ) : (
+                  <p className={`truncate text-[11px] ${otherTyping || otherUserOnline ? "" : "chat-meta"}`} style={otherTyping || otherUserOnline ? { color: "var(--theme-success)" } : undefined}>
+                    {otherTyping ? "typing..." : otherUserOnline ? "online" : "offline"}
+                  </p>
+                )}
               </div>
               <button type="button" onClick={() => setSearchOpen(true)} className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full" aria-label="Search messages">
                 <Search size={19} />
@@ -1315,7 +1340,7 @@ export default function ChatPage() {
         <div ref={messagesContainerRef} className="frame-scroll relative flex-1">
           <div ref={messagesContentRef} className="relative min-h-full px-3 py-4 md:px-6">
             <ChatDoodleBackground />
-            {!chatUnlocked && (
+            {composerLocked && (
               <div className="chat-bubble rounded-3xl p-6 text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "color-mix(in srgb, var(--theme-accent-purple) 16%, transparent)", color: "var(--theme-accent-purple)" }}>
                   <LockKeyhole />
@@ -1330,7 +1355,9 @@ export default function ChatPage() {
               </div>
             )}
 
-            {messages.length === 0 ? (
+            {loading ? (
+              <ChatSkeleton />
+            ) : messages.length === 0 ? (
               <p className="chat-meta mt-10 text-center">Say hi 👻 — they won&apos;t know who you are.</p>
             ) : (
               messages.map((msg, index) => {
@@ -1485,8 +1512,8 @@ export default function ChatPage() {
                   ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={pendingPhoto ? "Add a caption (optional)..." : chatUnlocked ? "Message" : "Unlock chat to send messages"}
-                  disabled={!chatUnlocked}
+                  placeholder={pendingPhoto ? "Add a caption (optional)..." : composerLocked ? "Unlock chat to send messages" : "Message"}
+                  disabled={loading || !chatUnlocked}
                   rows={1}
                   className="max-h-32 w-full min-w-0 resize-none overflow-y-auto bg-transparent px-1 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -1508,10 +1535,10 @@ export default function ChatPage() {
               </button>
             ) : (
               <VoiceRecorder
-                canRecord={chatUnlocked}
+                canRecord={!loading && chatUnlocked}
                 cost={SEND_VOICE_COST}
                 busy={uploadingPhoto}
-                onBlocked={() => showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
+                onBlocked={() => showToast(loading ? "One moment — still opening this chat." : isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
                 onSend={handleVoiceNote}
                 onError={showToast}
                 onRecordingChange={setRecordingVoice}

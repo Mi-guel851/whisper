@@ -1725,6 +1725,97 @@ html.viewport-locked body {
     radial-gradient(circle at bottom right, color-mix(in srgb, var(--theme-accent-pink) 7%, transparent), transparent 38%);
 }
 
+/* --- Long-press context blur (iOS message-menu behaviour) ----------------
+   Holding a bubble pushes the entire screen back and out of focus so the one
+   message you grabbed is the only thing in focus. Everything here is driven by a
+   single class toggled on the chat frame, and that is the whole design:
+
+   WHY A PARENT CLASS AND NOT A PROP PER BUBBLE
+   The obvious implementation passes each `MessageBubble` a `dimmed` boolean. That
+   changes a prop on *every* bubble the moment a menu opens, which defeats the
+   `memo()` around them and re-renders the entire thread — on a long conversation,
+   on the mid-range phone this app is tuned for, that is a visible stall on a
+   gesture that has to feel instant. Toggling one class on the container and
+   selecting `:not(.chat-msg-focused)` moves the work to the compositor: React
+   re-renders exactly one bubble (the focused one), and the browser blurs the rest.
+
+   WHY NOT ONE `backdrop-filter` SCRIM
+   A scrim is a single cheap layer, but the pressed bubble lives inside the
+   message scroller's `overflow` clip and cannot paint above anything laid over
+   that box. Blurring the siblings sidesteps the clip entirely — no portal, no
+   measured clone of the bubble, no second copy of the bubble's markup to keep in
+   step with the real one.
+
+   `filter` rather than `backdrop-filter` because these elements are what is being
+   pushed back, not a pane in front of them. The saturation drop is what stops the
+   purple out-bubbles reading as bright smudges once they lose their edges. */
+.chat-context-active > .chat-chrome,
+.chat-context-active > form,
+.chat-context-active .chat-doodles,
+.chat-context-active .chat-doodles-glow,
+.chat-context-active .chat-msg:not(.chat-msg-focused),
+.chat-context-active .chat-context-recede {
+  filter: blur(3.5px) saturate(0.82);
+  opacity: 0.5;
+  /* The gesture has already committed by the time this runs, so the transition is
+     short enough to read as part of the press rather than as its own animation. */
+  transition: filter 180ms var(--ease-out-quint), opacity 180ms var(--ease-out-quint);
+}
+
+/* Only the receded chrome loses its input. The bubbles keep theirs so the tap
+   that closes the menu can land anywhere, and so a second long-press can move
+   the menu straight to another message without an intermediate dismiss. */
+.chat-context-active > .chat-chrome,
+.chat-context-active > form {
+  pointer-events: none;
+}
+
+/* The focused bubble sits above its blurred neighbours. Without the stacking
+   context, every bubble *after* it in document order paints on top — a blurred
+   layer overlapping the one message that is supposed to be sharp. */
+.chat-msg-focused {
+  position: relative;
+  z-index: 30;
+}
+
+/* A hair of lift, not a pop. iOS raises the held bubble a couple of percent; any
+   more and the reaction bar above it appears to jump as the bubble grows into it. */
+.chat-context-active .chat-msg-focused > div {
+  transform: scale(1.02);
+  transition: transform 200ms var(--ease-out-quint);
+  will-change: transform;
+}
+
+/* Blur is a paint effect, not motion — but it is also the effect these two user
+   settings are specifically about, so both get an unblurred fallback that still
+   reads as "pushed back". */
+@media (prefers-reduced-transparency: reduce) {
+  .chat-context-active > .chat-chrome,
+  .chat-context-active > form,
+  .chat-context-active .chat-doodles,
+  .chat-context-active .chat-doodles-glow,
+  .chat-context-active .chat-msg:not(.chat-msg-focused),
+  .chat-context-active .chat-context-recede {
+    filter: none;
+    opacity: 0.34;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-context-active > .chat-chrome,
+  .chat-context-active > form,
+  .chat-context-active .chat-doodles,
+  .chat-context-active .chat-doodles-glow,
+  .chat-context-active .chat-msg:not(.chat-msg-focused),
+  .chat-context-active .chat-context-recede {
+    transition: none;
+  }
+  .chat-context-active .chat-msg-focused > div {
+    transform: none;
+    transition: none;
+  }
+}
+
 /* --- Edge-lit rim ------------------------------------------------------
    The light travels *along the edges*. Earlier this was a conic gradient
    painted as the card's own background with the content laid over it — which

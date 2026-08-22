@@ -48,12 +48,6 @@ export function isPhotoMessage(message: PreviewableMessage | null | undefined) {
   );
 }
 
-/** True once a view-once photo has been opened and the file is gone. */
-export function isSpentPhoto(message: PreviewableMessage | null | undefined) {
-  if (!message) return false;
-  return Boolean(message.image_viewed_at) && !message.image_path && !isVoiceNote(message);
-}
-
 /**
  * The caption wins when there is one — a voice note sent with text reads better
  * as its text, and that matches what WhatsApp quotes. `mediaOnly` skips the
