@@ -4,6 +4,7 @@ import { useState } from "react";
 import GlassPanel from "@/components/GlassPanel";
 import BackButton from "@/components/BackButton";
 import { LifeBuoy, Send, CheckCircle2 } from "lucide-react";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 
 const CATEGORIES = [
   { key: "general", label: "General" },
@@ -109,6 +110,7 @@ export default function ContactSupportPage() {
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">Message</label>
                 <textarea
+                  {...PROSE_INPUT_PROPS}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Tell us what's going on..."

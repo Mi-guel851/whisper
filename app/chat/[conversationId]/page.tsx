@@ -10,6 +10,7 @@ import { getCachedSession } from "@/lib/supabase/session";
 import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST, SEND_VOICE_COST } from "@/lib/coins";
 import { anonNameOf, resolveAnonName } from "@/lib/anonNames";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import { typingManager } from "@/lib/realtime/typing";
 import { presenceManager } from "@/lib/realtime/presence";
 import { useToast } from "@/components/ToastProvider";
@@ -1581,6 +1582,7 @@ export default function ChatPage() {
               <ExplodingInput className="flex min-w-0 flex-1">
                 <textarea
                   ref={textareaRef}
+                  {...PROSE_INPUT_PROPS}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={pendingPhoto ? "Add a caption (optional)..." : composerLocked ? "Unlock chat to send messages" : "Message"}

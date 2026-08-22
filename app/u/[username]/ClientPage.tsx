@@ -13,6 +13,7 @@ import ExplodingInput from "@/components/ui/ExplodingInput";
 import ShimmerButton from "@/components/ui/ShimmerButton";
 import { fadeUp, respectMotion, spring, tween } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import {
   captureSenderContext,
   EMPTY_SENDER_CONTEXT,
@@ -531,6 +532,7 @@ export default function PublicProfile() {
                 fixed to the viewport and so is never clipped by this box. */}
             <ExplodingInput className="rounded-2xl">
               <textarea
+                {...PROSE_INPUT_PROPS}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Type your anonymous message..."

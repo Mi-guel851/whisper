@@ -4,6 +4,7 @@ import { useState } from "react";
 import GlassPanel from "@/components/GlassPanel";
 import BackButton from "@/components/BackButton";
 import { Lightbulb, Star, CheckCircle2 } from "lucide-react";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 
 const FEEDBACK_EMAIL = "whisper.anonymous.app@gmail.com";
 
@@ -97,6 +98,7 @@ export default function FeedbackPage() {
                   What&apos;s on your mind?
                 </label>
                 <textarea
+                  {...PROSE_INPUT_PROPS}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Suggestions, feature requests, things you love or hate..."

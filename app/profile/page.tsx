@@ -33,6 +33,7 @@ import Button from "@/components/Button";
 import { Skeleton, SkeletonText } from "@/components/Skeleton";
 import { staggerContainer, staggerItem, tween } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 
 const BIO_LIMIT = 140;
 const USERNAME_MIN = 3;
@@ -330,6 +331,7 @@ export default function ProfilePage() {
             ) : (
               <>
                 <textarea
+                  {...PROSE_INPUT_PROPS}
                   value={fields.bio}
                   onChange={(event) =>
                     update("bio", event.target.value.slice(0, BIO_LIMIT))

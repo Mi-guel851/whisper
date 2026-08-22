@@ -22,6 +22,7 @@ import {
 } from "@/lib/feed";
 
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 
 /* Replies are free now and posting is what costs — see lib/coins.ts for why. The
    old `REPLY_COST` constant is gone rather than set to 0, so nothing can still be
@@ -504,6 +505,7 @@ export default function PublicFeedPage() {
           <form onSubmit={createPost}>
             <textarea
               ref={composerRef}
+              {...PROSE_INPUT_PROPS}
               value={body}
               onChange={(event) => setBody(event.target.value)}
               maxLength={500}

@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { Loader2, Send } from "lucide-react";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 
 /**
  * The inline reply box, shared by root posts and by comments further down a
@@ -41,6 +42,7 @@ function FeedReplyComposerBase({
   return (
     <div className="feed-reply-box mt-2.5">
       <textarea
+        {...PROSE_INPUT_PROPS}
         value={value}
         onChange={(event) => onChange(postId, event.target.value)}
         onKeyDown={(event) => {

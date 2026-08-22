@@ -14,6 +14,7 @@ import { AnimatePresence, motion, type Variants } from "framer-motion";
 import { RotateCcw, Send, Sparkles, TriangleAlert, X } from "lucide-react";
 
 import { getCachedSession, onSessionChange } from "@/lib/supabase/session";
+import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import { spring, tween, respectMotion } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
 import { useMediaQuery } from "@/lib/useMediaQuery";
@@ -638,6 +639,7 @@ export default function WhispersAiAssistant() {
               >
                 <textarea
                   ref={inputRef}
+                  {...PROSE_INPUT_PROPS}
                   value={draft}
                   onChange={(event) => {
                     setDraft(event.target.value);
