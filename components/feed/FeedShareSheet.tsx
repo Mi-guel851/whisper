@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Facebook, MessageCircle, Share2, Twitter } from "lucide-react";
+import { Copy, Share2 } from "lucide-react";
 import Modal from "@/components/Modal";
+import SocialIcon, { SOCIAL_LABELS } from "@/components/SocialIcon";
 import { shareExcerpt, shareTargetUrl, type FeedPost, type ShareTarget } from "@/lib/feed";
 import { vibrate, HAPTIC } from "@/lib/haptics";
 
@@ -29,11 +30,14 @@ type FeedShareSheetProps = {
   onCopy: (post: FeedPost) => void;
 };
 
-const TARGETS: Array<{ key: ShareTarget; label: string; icon: typeof Copy }> = [
-  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { key: "x", label: "X", icon: Twitter },
-  { key: "facebook", label: "Facebook", icon: Facebook },
-];
+/**
+ * The marks come from `SocialIcon`, not from lucide — lucide dropped every brand
+ * glyph, and the approximations people reach for instead ("a speech bubble means
+ * WhatsApp") are the exact tell this app already decided not to ship. `ShareTarget`
+ * is a subset of `SocialPlatform`, so the same authoritative geometry and labels
+ * serve both this sheet and the follow prompt.
+ */
+const TARGETS: ShareTarget[] = ["whatsapp", "x", "facebook"];
 
 export function feedPostUrl(postId: string) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
@@ -98,10 +102,10 @@ export default function FeedShareSheet({ post, onClose, onCopy }: FeedShareSheet
         </button>
 
         <div className="feed-share-targets">
-          {TARGETS.map(({ key, label, icon: Icon }) => (
+          {TARGETS.map((target) => (
             <a
-              key={key}
-              href={post ? shareTargetUrl(key, text, url) : "#"}
+              key={target}
+              href={post ? shareTargetUrl(target, text, url) : "#"}
               target="_blank"
               /* `noopener` is the security half and `noreferrer` the privacy
                  half — without the latter the destination learns which Whisper
@@ -111,10 +115,10 @@ export default function FeedShareSheet({ post, onClose, onCopy }: FeedShareSheet
                 vibrate(HAPTIC.tap);
                 onClose();
               }}
-              className={`feed-share-target is-${key}`}
+              className={`feed-share-target is-${target}`}
             >
-              <Icon size={18} aria-hidden />
-              {label}
+              <SocialIcon platform={target} size={18} />
+              {SOCIAL_LABELS[target]}
             </a>
           ))}
         </div>
