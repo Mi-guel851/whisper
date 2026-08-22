@@ -64,6 +64,14 @@ function Row({
  * So the three that were not — the hardcoded "Coin Transfer" type, the always-on
  * fee row, and the missing slot for the ledger's own wording — are the entire
  * difference. See `WalletReceipt` in `lib/wallet.ts`.
+ * WHY THERE IS NO ENTRANCE ANIMATION IN HERE
+ *
+ * There was: a bouncy spring on the seal and five delay-staggered blocks below
+ * it. On a phone that meant a tap on a history row was followed by ~250ms of
+ * nothing happening, then a cascade — which read as the app being slow, not as
+ * polish. Receipts are a lookup, and a lookup should be finished the moment you
+ * ask for it. The `Modal` shell still animates once, so the surface itself
+ * arrives smoothly; everything inside it is simply already there.
  */
 export default function WalletReceiptModal({
   receipt,
