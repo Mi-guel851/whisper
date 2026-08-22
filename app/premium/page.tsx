@@ -9,16 +9,21 @@ import { Coins, Gem, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { COIN_PACKAGES, CoinPackage } from "@/lib/coins";
 import { CountryInfo, convertForDisplay, formatLocalAmount, getCountryInfo } from "@/lib/currency";
-import { TransferReceipt } from "@/lib/wallet";
+import {
+  CoinTransaction,
+  TransferReceipt,
+  WalletReceipt,
+  isTransferTransaction,
+  receiptFromTransaction,
+} from "@/lib/wallet";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
 import WalletAddressCard from "@/components/wallet/WalletAddressCard";
 import TransferCoinsModal from "@/components/wallet/TransferCoinsModal";
-import TransferReceiptModal from "@/components/wallet/TransferReceiptModal";
+import WalletReceiptModal from "@/components/wallet/WalletReceiptModal";
 import TransactionHistory, {
-  CoinTransaction,
   HISTORY_PAGE_SIZE,
 } from "@/components/wallet/TransactionHistory";
 
@@ -74,7 +79,12 @@ export default function PremiumPage() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const [transferOpen, setTransferOpen] = useState(false);
-  const [receipt, setReceipt] = useState<TransferReceipt | null>(null);
+  const [receipt, setReceipt] = useState<WalletReceipt | null>(null);
+  /* Which row is waiting on `get_transfer_receipt`. Only the transfer path can
+     be slow — every other receipt is built from a row already in memory and
+     opens in the same frame as the tap — but without this a tapped transfer row
+     gave no feedback at all while the round trip was in flight. */
+  const [receiptLoadingId, setReceiptLoadingId] = useState<string | null>(null);
 
   const [countryCode, setCountryCode] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<string, number> | null>(null);
@@ -232,18 +242,47 @@ export default function PremiumPage() {
     setVisibleCount(HISTORY_PAGE_SIZE);
   }, []);
 
+  /**
+   * Opens the receipt for any history row.
+   *
+   * Two paths, and which one a row takes is not a style choice:
+   *
+   *   - A **transfer** has a counterparty, a fee and a server-issued reference,
+   *     and the two masked wallet addresses on it are only ever produced by the
+   *     database. `get_transfer_receipt` is the sole source for those, so a
+   *     transfer costs one round trip.
+   *   - **Everything else** — a purchase, a spend, a refund, a streak reward, an
+   *     admin grant — is a settled single-sided fact whose ledger row already
+   *     holds every field the receipt shows. Building it locally opens the modal
+   *     in the same frame as the tap, and inventing a server call for it would
+   *     add latency to fetch data we are already holding.
+   *
+   * The guard on `receiptLoadingId` makes a second tap on an in-flight row a
+   * no-op rather than a duplicate request.
+   */
   const handleOpenReceipt = useCallback(
-    async (reference: string) => {
-      const { data, error } = await supabase.rpc("get_transfer_receipt", {
-        transfer_reference: reference,
-      });
-      if (error || !data) {
-        showToast("Couldn't open that receipt.", { variant: "error" });
+    async (tx: CoinTransaction) => {
+      if (!isTransferTransaction(tx)) {
+        setReceipt(receiptFromTransaction(tx));
         return;
       }
-      setReceipt(data as TransferReceipt);
+
+      if (receiptLoadingId) return;
+      setReceiptLoadingId(tx.id);
+      try {
+        const { data, error } = await supabase.rpc("get_transfer_receipt", {
+          transfer_reference: tx.reference,
+        });
+        if (error || !data) {
+          showToast("Couldn't open that receipt.", { variant: "error" });
+          return;
+        }
+        setReceipt(data as WalletReceipt);
+      } finally {
+        setReceiptLoadingId(null);
+      }
     },
-    [showToast]
+    [receiptLoadingId, showToast]
   );
 
   /**
@@ -507,6 +546,7 @@ export default function PremiumPage() {
             onShowMore={handleShowMore}
             onShowLess={handleShowLess}
             onOpenReceipt={handleOpenReceipt}
+            receiptLoadingId={receiptLoadingId}
           />
         </div>
       </div>
@@ -519,7 +559,10 @@ export default function PremiumPage() {
         onSubmit={handleTransfer}
       />
 
-      <TransferReceiptModal
+      {/* `onRetry` can only ever surface on a failed *transfer*: the modal renders
+          it behind `!success`, and a ledger-built receipt is always completed
+          because the row exists only once the balance moved. */}
+      <WalletReceiptModal
         receipt={receipt}
         onClose={() => setReceipt(null)}
         onRetry={() => {

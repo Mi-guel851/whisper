@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-  DEVICE_SEPARATOR,
   describeUserAgent,
+  formatDevice,
   type SenderContext,
 } from "@/lib/senderContext";
 
@@ -182,9 +182,9 @@ export async function GET(req: NextRequest) {
     country,
     state,
     city,
-    /* Joined here rather than in the client so there is exactly one place that
-       decides the stored format the hint UI splits on. */
-    device: [device, browser].filter(Boolean).join(DEVICE_SEPARATOR) || null,
+    /* Joined by the shared formatter rather than here, so there is exactly one
+       place that decides the stored format the hint UI splits on. */
+    device: formatDevice({ device, browser }) || null,
   };
 
   return NextResponse.json(body, {

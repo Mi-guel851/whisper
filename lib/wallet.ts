@@ -111,6 +111,135 @@ export type TransferReceipt = {
 
 export type AmountValidation = { valid: boolean; error: string | null };
 
+/* -------------------------------------------------------------------------- */
+/* The ledger, and receipts for every row in it                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row of `public.coin_transactions`.
+ *
+ * Lives here rather than beside the history component because two things now
+ * need it — the list that renders rows and the function below that turns a row
+ * into a receipt — and a shared type belongs above both of them, not inside one.
+ */
+export type CoinTransaction = {
+  id: string;
+  amount: number;
+  description: string;
+  transaction_type: string;
+  created_at: string;
+  /** Transfers only. Ledger entries from spends, rewards and grants have none. */
+  reference?: string | null;
+};
+
+/**
+ * A receipt for any wallet movement, not just a transfer.
+ *
+ * WHY THIS IS A SUPERSET RATHER THAN A SECOND TYPE
+ *
+ * Only transfers have a counterparty, a fee and a server-issued reference, and
+ * only transfers can fail — so only transfers can be described by
+ * `get_transfer_receipt`. Every other row (a purchase, a spend, a refund, a
+ * streak reward, an admin grant) is a settled fact with no second party, and the
+ * ledger row itself already contains everything a receipt for it needs.
+ *
+ * Two receipt *types* would mean two receipt *modals*, and the second one would
+ * drift from the first the first time either was touched. Instead the transfer
+ * shape is widened with three optional fields that describe what to render, and
+ * `receiptFromTransaction` fills them in for the rows the RPC cannot describe.
+ * One component, one visual language, no duplicated markup.
+ */
+export type WalletReceipt = TransferReceipt & {
+  /** The "Transaction type" row. Defaults to "Coin Transfer" when absent. */
+  type_label?: string;
+  /** The ledger row's own wording — "Unlock Chat", "7-day streak reward". */
+  detail?: string | null;
+  /** False for ledger rows: they have no fee, so the row is hidden entirely. */
+  has_fee?: boolean;
+};
+
+/**
+ * Human wording for each `transaction_type` the database writes.
+ *
+ * Kept as a map rather than a switch so an unrecognised type is a *missing
+ * label*, not a crash: `receiptFromTransaction` falls back to a generic phrase.
+ * That matters because the type check on `coin_transactions` is rebuilt from
+ * whatever values already exist in the live table (see
+ * `202608110001_coin_wallet_transfers.sql`), so a type can legitimately be
+ * present in production that this file has never heard of.
+ */
+export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
+  purchase: "Coin Purchase",
+  spend: "Coin Spend",
+  refund: "Refund",
+  reward: "Streak Reward",
+  grant: "Coin Grant",
+  transfer_in: "Coin Transfer",
+  transfer_out: "Coin Transfer",
+};
+
+export function transactionTypeLabel(type: string): string {
+  return (
+    TRANSACTION_TYPE_LABELS[type] ??
+    /* "some_new_type" → "Some New Type". Better than showing the raw enum, and
+       better than "Transaction" because it keeps whatever meaning the value has. */
+    type
+      .split("_")
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+  );
+}
+
+/**
+ * A receipt built entirely from a ledger row.
+ *
+ * Used for every transaction that is not a transfer. Nothing is fetched and
+ * nothing is invented:
+ *
+ *   - `status` is always "completed". A row only exists in `coin_transactions`
+ *     because the balance actually moved — the functions that write it do so in
+ *     the same transaction as the `coins` update, so there is no such thing as a
+ *     pending or failed ledger row to misreport.
+ *   - `reference` is the row's own id. Ledger entries get no server-issued
+ *     reference, and support cannot act on a receipt with nothing to quote, so
+ *     the primary key is the honest answer rather than a fabricated code.
+ *   - `sender_address` / `recipient_address` stay null so the modal omits both
+ *     rows: there is no counterparty to name, and inventing "Whisper" as one
+ *     would imply a wallet that does not exist.
+ *   - `amount` keeps the ledger's sign, because the modal derives its direction
+ *     arrow from it — a spend is stored negative and must read as outgoing.
+ */
+export function receiptFromTransaction(tx: CoinTransaction): WalletReceipt {
+  return {
+    status: "completed",
+    reference: tx.reference || tx.id,
+    amount: tx.amount,
+    fee: 0,
+    has_fee: false,
+    sender_address: null,
+    recipient_address: null,
+    created_at: tx.created_at,
+    failure_reason: null,
+    direction: tx.amount >= 0 ? "in" : "out",
+    type_label: transactionTypeLabel(tx.transaction_type),
+    /* Suppressed when it would just repeat the type label — "Refund / Refund"
+       is noise, and a receipt earns trust by having nothing redundant on it. */
+    detail:
+      tx.description && tx.description !== transactionTypeLabel(tx.transaction_type)
+        ? tx.description
+        : null,
+  };
+}
+
+/** True for the rows `get_transfer_receipt` can describe. */
+export function isTransferTransaction(tx: CoinTransaction): boolean {
+  return (
+    (tx.transaction_type === "transfer_in" || tx.transaction_type === "transfer_out") &&
+    Boolean(tx.reference)
+  );
+}
+
 /**
  * Client-side amount check. Coins are whole numbers everywhere in the app —
  * `coins.balance` is an integer column — so decimals are rejected rather than

@@ -159,7 +159,7 @@ export async function captureSenderContext(): Promise<SenderContext> {
   const local =
     typeof navigator === "undefined"
       ? null
-      : formatDevice(describeUserAgent(navigator.userAgent));
+      : formatDevice(describeUserAgent(navigator.userAgent, navigator.maxTouchPoints));
 
   /* `AbortSignal.timeout` rather than a manual controller + setTimeout: it
       cannot leak the timer, and it rejects with a `TimeoutError` that the catch
