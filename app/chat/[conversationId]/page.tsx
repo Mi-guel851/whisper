@@ -187,7 +187,13 @@ const MessageBubble = memo(function MessageBubbleBase({
   return (
     <div
       ref={(node) => registerRef(msg.id, node)}
-      className={`flex ${isMe ? "justify-end" : "justify-start"} ${isGroupStart ? "mt-3" : "mt-0.5"}`}
+      /* `chat-msg` is the hook the frame's `.chat-context-active` selector blurs;
+         `chat-msg-focused` is how the held bubble opts out of it and lifts above
+         its neighbours. Both are className-only, so opening a menu re-renders this
+         one bubble rather than every bubble in the thread. */
+      className={`chat-msg flex ${isMe ? "justify-end" : "justify-start"} ${isGroupStart ? "mt-3" : "mt-0.5"} ${
+        isActionMenuOpen ? "chat-msg-focused" : ""
+      }`}
     >
       <div className="relative max-w-[80%]">
         <motion.div
@@ -1272,7 +1278,11 @@ export default function ChatPage() {
        `TemplateTransition` animates opacity only — nothing above this becomes a
        containing block. */
     <main className="chat-canvas viewport-frame relative flex flex-col">
-      <div className="relative z-10 flex h-full flex-col">
+      {/* `chat-context-active` is what pushes the whole screen out of focus while a
+          message is held — the header, the pinned bar, the composer, the wallpaper
+          and every bubble except the held one. See the block in globals.css for why
+          it is one class here rather than a prop on each bubble. */}
+      <div className={`relative z-10 flex h-full flex-col ${actionMenuFor ? "chat-context-active" : ""}`}>
         <div className="chat-chrome flex-shrink-0 border-b px-2 py-2">
           {searchOpen ? (
             <div className="flex items-center gap-1">
