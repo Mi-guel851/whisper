@@ -12,6 +12,7 @@ import TypingSparks from "@/components/TypingSparks";
 import AppUrlHandler from "@/components/AppUrlHandler";
 import OfflineHandler from "@/components/OfflineHandler";
 import WhispersAiAssistant from "@/components/ai/WhispersAiAssistant";
+import SocialFollowPrompt from "@/components/SocialFollowPrompt";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -121,6 +122,15 @@ export default function RootLayout({
                     visitors and hides itself on the marketing, auth,
                     anonymous-send and chat routes. */}
                 <WhispersAiAssistant />
+                {/* Mounted alongside the assistant rather than on a page, because
+                    "when users open the app" is not a route — a user can land on
+                    /inbox, /premium or /dashboard, and putting this on one of them
+                    would mean the daily prompt fires only for people whose habit
+                    happens to start there. It renders nothing for signed-out
+                    visitors, nothing on the marketing, auth, anonymous-send and
+                    chat routes, and nothing at all until lib/socialLinks.ts has
+                    real URLs in it. */}
+                <SocialFollowPrompt />
               </PushNotificationsProvider>
             </NotificationProvider>
           </ToastProvider>

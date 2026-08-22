@@ -168,7 +168,12 @@ export default function TransferCoinsModal({
         >
           Recipient wallet address
         </label>
-        <div className="mt-1.5 flex gap-2">
+        {/* Paste sits *inside* the field rather than beside it. A 28-character
+            address in a shared row left it about 200px of runway — the address
+            could not be read without scrolling it, and the button's height never
+            matched the input's. Inside, the address gets the full width and
+            there is only one control box on the row to align. */}
+        <div className="relative mt-2">
           <input
             id="transfer-address"
             value={address}
@@ -181,7 +186,13 @@ export default function TransferCoinsModal({
             placeholder={WALLET_ADDRESS_EXAMPLE}
             aria-invalid={Boolean(showAddressError)}
             aria-describedby="transfer-address-msg"
-            className="premium-input min-w-0 flex-1 font-mono text-[0.8125rem] tracking-wide"
+            /* 1rem, not 0.8125rem. Mobile Safari zooms the whole page when a
+               focused input's text is under 16px, so the old size guaranteed a
+               zoom-and-pan on the one screen where a mistyped character costs
+               real coins. `tracking-tight` is what buys the width back. */
+            className={`premium-input font-mono text-base tracking-tight ${
+              canPaste ? "premium-input-action" : ""
+            }`}
           />
           {canPaste && (
             <button
@@ -189,15 +200,24 @@ export default function TransferCoinsModal({
               onClick={handlePaste}
               disabled={submitting}
               aria-label="Paste wallet address"
-              className="premium-button premium-button-secondary flex-none gap-1.5 px-3.5 py-2.5 text-[0.8125rem] disabled:opacity-50"
+              title="Paste"
+              className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-xl transition-colors disabled:opacity-40"
+              style={{ color: "var(--theme-text-secondary)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--fill-2)";
+                e.currentTarget.style.color = "var(--theme-text)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--theme-text-secondary)";
+              }}
             >
-              <ClipboardPaste size={15} />
-              <span className="hidden sm:inline">Paste</span>
+              <ClipboardPaste size={17} />
             </button>
           )}
         </div>
 
-        <div id="transfer-address-msg" className="min-h-[1.25rem] pt-1.5">
+        <div id="transfer-address-msg" className="min-h-[1.375rem] pt-2">
           <AnimatePresence mode="wait" initial={false}>
             {showAddressError ? (
               <motion.p
@@ -230,7 +250,7 @@ export default function TransferCoinsModal({
         </div>
 
         {/* Amount -------------------------------------------------------- */}
-        <div className="mt-3 flex items-baseline justify-between">
+        <div className="mt-4 flex items-baseline justify-between gap-3">
           <label
             htmlFor="transfer-amount"
             className="text-[0.8125rem] font-semibold"
@@ -245,28 +265,38 @@ export default function TransferCoinsModal({
               setTouched((t) => ({ ...t, amount: true }));
             }}
             disabled={submitting || balance <= 0}
-            className="text-[0.75rem] font-bold text-cyan-300 transition-opacity disabled:opacity-40"
+            className="rounded-full px-2.5 py-1 text-[0.75rem] font-bold text-cyan-300 transition-opacity disabled:opacity-40"
+            style={{ background: "var(--fill-1)" }}
           >
             Send max
           </button>
         </div>
-        <input
-          id="transfer-amount"
-          value={amount}
-          /* `inputMode="numeric"` rather than `type="number"`: coins are whole
-             numbers, and a number input would let the spinner and locale
-             decimal separators introduce fractions we'd have to reject. */
-          inputMode="numeric"
-          onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-          onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
-          disabled={submitting}
-          placeholder="0"
-          aria-invalid={Boolean(showAmountError)}
-          aria-describedby="transfer-amount-msg"
-          className="premium-input mt-1.5 w-full text-lg font-black tabular-nums"
-        />
+        <div className="relative mt-2">
+          {/* The coin marks the field as a currency amount before anything is
+              typed, which is what stops it reading as a bare number box. */}
+          <Coins
+            size={17}
+            aria-hidden
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-yellow-200"
+          />
+          <input
+            id="transfer-amount"
+            value={amount}
+            /* `inputMode="numeric"` rather than `type="number"`: coins are whole
+               numbers, and a number input would let the spinner and locale
+               decimal separators introduce fractions we'd have to reject. */
+            inputMode="numeric"
+            onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+            onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
+            disabled={submitting}
+            placeholder="0"
+            aria-invalid={Boolean(showAmountError)}
+            aria-describedby="transfer-amount-msg"
+            className="premium-input premium-input-lead text-lg font-black tabular-nums"
+          />
+        </div>
 
-        <div id="transfer-amount-msg" className="min-h-[1.25rem] pt-1.5">
+        <div id="transfer-amount-msg" className="min-h-[1.375rem] pt-2">
           <AnimatePresence mode="wait" initial={false}>
             {showAmountError && (
               <motion.p

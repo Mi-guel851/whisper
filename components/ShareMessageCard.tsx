@@ -7,8 +7,20 @@ import { X, Download, Image as ImageIcon } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 
 import useWhisperShare from "@/lib/useWhisperShare";
+import SocialIcon, {
+  SOCIAL_LABELS,
+  SOCIAL_SURFACES,
+  type SocialPlatform,
+} from "@/components/SocialIcon";
 
-type Platform = "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok";
+/* A subset of the app's social platforms — Facebook has no image-share intent
+   worth offering here, so it is deliberately absent. Deriving the type from
+   `SocialPlatform` rather than re-listing the strings means a platform can never
+   be named here that has no mark to render. */
+type Platform = Extract<
+  SocialPlatform,
+  "instagram" | "snapchat" | "whatsapp" | "x" | "tiktok"
+>;
 
 /**
  * Whisper's own cyan → violet → pink, used for the prompt band and the canvas
@@ -114,45 +126,8 @@ const WORDMARK_SIDE_TRIM = 0.23;
 const WORDMARK_BOX_H = 128;
 
 function PlatformIcon({ platform }: { platform: Platform }) {
-  const paths: Record<Platform, React.ReactElement> = {
-    instagram: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <rect x="3" y="3" width="18" height="18" rx="5" />
-        <circle cx="12" cy="12" r="4" />
-        <circle cx="17.2" cy="6.8" r="1" fill="currentColor" stroke="none" />
-      </svg>
-    ),
-    snapchat: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M12 3c-3 0-5 2.2-5 5.2 0 1.6-.2 2.6-1 3.4-.6.6-1.5.9-2 1 0 .8.9 1.2 1.7 1.4.2.6.1 1.1.6 1.3.6.3 1.5-.1 2.2.2.7.3 1.1 1.5 3.5 1.5s2.8-1.2 3.5-1.5c.7-.3 1.6.1 2.2-.2.5-.2.4-.7.6-1.3.8-.2 1.7-.6 1.7-1.4-.5-.1-1.4-.4-2-1-.8-.8-1-1.8-1-3.4C17 5.2 15 3 12 3z" />
-      </svg>
-    ),
-    whatsapp: (
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2zm0 18.2a8.1 8.1 0 0 1-4.2-1.2l-.3-.2-3.1.8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1-.2-.1-1-.4-1.9-1.2-.7-.6-1.2-1.4-1.3-1.6-.1-.2 0-.4.1-.5.1-.1.2-.3.4-.4.1-.2.2-.3.2-.5.1-.2 0-.4 0-.5-.1-.1-.6-1.4-.8-1.9-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.2-.9.9-.9 2.2s1 2.6 1.1 2.8c.1.2 2 3 4.7 4.2.7.3 1.2.5 1.6.6.7.2 1.3.2 1.7.1.5-.1 1.5-.6 1.8-1.2.2-.6.2-1.1.1-1.2-.1-.1-.2-.2-.4-.3z" />
-      </svg>
-    ),
-    x: (
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <path d="M18.9 3H22l-7.2 8.2L23 21h-6.9l-5.4-6.6L4.5 21H1.4l7.7-8.8L1 3h7l4.9 6z" />
-      </svg>
-    ),
-    tiktok: (
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <path d="M14 3c.3 1.8 1.5 3.2 3.3 3.7v2.4a6.4 6.4 0 0 1-3.3-1v6.4a5 5 0 1 1-4.3-5v2.5a2.6 2.6 0 1 0 1.8 2.5V3z" />
-      </svg>
-    ),
-  };
-  return paths[platform];
+  return <SocialIcon platform={platform} size={22} />;
 }
-
-const PLATFORM_STYLES: Record<Platform, string> = {
-  instagram: "bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400",
-  snapchat: "bg-yellow-300 text-black",
-  whatsapp: "bg-green-500",
-  x: "bg-white text-black",
-  tiktok: "bg-black border border-white/20",
-};
 
 /**
  * Message type size, in canvas units.
@@ -193,15 +168,28 @@ function StoryFrame({
   prompt,
   accent,
   light,
+  variant = "export",
 }: {
   message: string;
   imageUrl?: string | null;
   width: number;
-  frameRef: React.RefObject<HTMLDivElement | null>;
+  frameRef?: React.RefObject<HTMLDivElement | null>;
   prompt: string;
   accent: string[];
   /** Light theme — skins the message half only. See the note on that half. */
   light: boolean;
+  /**
+   * Which of the two jobs this frame is doing.
+   *
+   * `export` is the full story plate: glossy black canvas, colour wash, Whisper
+   * watermark — 1080x1920 and ready to post. `preview` is the same card with all
+   * of that stripped away, so on screen the user sees the card itself sitting in
+   * the sheet's glass rather than a black rectangle inside a black rectangle.
+   *
+   * They are two frames rendered at once, not one frame restyled, because the
+   * export has to keep the plate while the preview drops it. See the render.
+   */
+  variant?: "preview" | "export";
 }) {
   /* One factor for the whole tree, applied as plain px in inline styles — so the
      computed values html2canvas reads are already absolute, with no container
@@ -224,6 +212,9 @@ function StoryFrame({
      this stays black with a colour in it. */
   const glow = [band[0], band[band.length - 1], band[Math.floor(band.length / 2)]];
 
+  /* One flag, read in the four places the two variants diverge. */
+  const isExport = variant === "export";
+
   return (
     <div
       ref={frameRef}
@@ -239,31 +230,44 @@ function StoryFrame({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        /* Glossy black. Two layers doing two jobs: a soft sheen falling from just
-           above the top edge, which is what reads as lacquer rather than matte
-           paint, over a black body that is never quite #000 until the very bottom
-           — a flat black canvas kills the card's own edge light and the whole
-           thing goes shapeless. */
-        background:
-          "radial-gradient(125% 72% at 50% -8%, rgba(255,255,255,0.17) 0%, rgba(255,255,255,0.055) 26%, rgba(255,255,255,0) 58%), " +
-          "linear-gradient(168deg, #15161b 0%, #0b0c10 34%, #050507 68%, #000000 100%)",
+        /* Glossy black — but only on the frame that gets saved.
+           Two layers doing two jobs: a soft sheen falling from just above the top
+           edge, which is what reads as lacquer rather than matte paint, over a
+           black body that is never quite #000 until the very bottom — a flat
+           black canvas kills the card's own edge light and the whole thing goes
+           shapeless.
+
+           The preview leaves it transparent so the sheet's own glass is what sits
+           behind the card. A black plate inside a dark glass panel inside a dark
+           scrim was three dark rectangles deep, and the card — the thing the user
+           actually came to look at — was the smallest of them. */
+        background: isExport
+          ? "radial-gradient(125% 72% at 50% -8%, rgba(255,255,255,0.17) 0%, rgba(255,255,255,0.055) 26%, rgba(255,255,255,0) 58%), " +
+            "linear-gradient(168deg, #15161b 0%, #0b0c10 34%, #050507 68%, #000000 100%)"
+          : "transparent",
       }}
     >
       {/* Painted, never blurred — see the note on this component. Alphas are
           roughly half what they were on the indigo canvas: the same values over
           black read as a colour wash rather than a bloom, and the point is that
-          this is black with Whisper in it, not purple. */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            `radial-gradient(78% 42% at 12% 3%, ${withAlpha(glow[0], 0.13)} 0%, ${withAlpha(glow[0], 0)} 62%), ` +
-            `radial-gradient(84% 44% at 93% 70%, ${withAlpha(glow[1], 0.12)} 0%, ${withAlpha(glow[1], 0)} 64%), ` +
-            `radial-gradient(70% 38% at 50% 101%, ${withAlpha(glow[2], 0.12)} 0%, ${withAlpha(glow[2], 0)} 66%)`,
-        }}
-      />
+          this is black with Whisper in it, not purple.
+
+          Export only: this wash is lit *by* the black plate. Over the sheet's
+          glass with no plate under it there is nothing for it to wash, and it
+          would only add a faint haze across the panel. */}
+      {isExport && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              `radial-gradient(78% 42% at 12% 3%, ${withAlpha(glow[0], 0.13)} 0%, ${withAlpha(glow[0], 0)} 62%), ` +
+              `radial-gradient(84% 44% at 93% 70%, ${withAlpha(glow[1], 0.12)} 0%, ${withAlpha(glow[1], 0)} 64%), ` +
+              `radial-gradient(70% 38% at 50% 101%, ${withAlpha(glow[2], 0.12)} 0%, ${withAlpha(glow[2], 0)} 66%)`,
+          }}
+        />
+      )}
 
       {/* Card region. Takes the slack above the watermark, so the card lands in
           the same place whatever height it ends up at. */}
@@ -276,7 +280,12 @@ function StoryFrame({
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          padding: `${u(72)} ${u(CANVAS_PAD_X)} 0`,
+          /* No watermark below it in the preview, so there is no reserved strip to
+             balance against — the card simply centres in the frame. */
+          justifyContent: isExport ? "flex-start" : "center",
+          padding: isExport
+            ? `${u(72)} ${u(CANVAS_PAD_X)} 0`
+            : `${u(24)} ${u(CANVAS_PAD_X)}`,
         }}
       >
         {/* Weighted spacers rather than `justify-content: center`, because the
@@ -285,7 +294,7 @@ function StoryFrame({
             gives that bias for a short card, and collapses to nothing once a tall
             photo needs the whole region — so biasing the layout costs a tall card
             no room, which a fixed top offset or an asymmetric padding would. */}
-        <div aria-hidden style={{ flex: "1 1 0", minHeight: 0 }} />
+        {isExport && <div aria-hidden style={{ flex: "1 1 0", minHeight: 0 }} />}
 
         <div
           style={{
@@ -456,11 +465,18 @@ function StoryFrame({
 
         {/* Grows faster than the spacer above it, which is what lifts the card
             into the upper third. */}
-        <div aria-hidden style={{ flex: "2.4 1 0", minHeight: 0 }} />
+        {isExport && <div aria-hidden style={{ flex: "2.4 1 0", minHeight: 0 }} />}
       </div>
 
       {/* Watermark, on the canvas rather than inside the card — the reference
-          signs the story, not the message. */}
+          signs the story, not the message.
+
+          Export only. The ghost is a square asset with its own dark backdrop
+          baked in (it cannot be knocked out — html2canvas ignores blend modes,
+          see the note on the img), so with no black plate under it the badge
+          would read as a dark rectangle floating on the glass. The saved file is
+          where the signature belongs; the preview is where the card belongs. */}
+      {isExport && (
       <div
         style={{
           position: "relative",
@@ -534,6 +550,7 @@ function StoryFrame({
           anonymous q&amp;a
         </p>
       </div>
+      )}
     </div>
   );
 }
@@ -1148,21 +1165,52 @@ export default function ShareMessageCard({
                 message={message}
                 imageUrl={imageUrl}
                 width={frameWidth}
-                frameRef={cardRef}
                 prompt={prompt}
                 accent={accent}
                 light={light}
+                variant="preview"
               />
             )}
           </div>
         </div>
 
-        <div className="mt-4 flex shrink-0 items-center justify-center gap-3">
-          {platforms.map((platform) => (
-            <button key={platform} onClick={() => handlePlatformShare(platform)} disabled={generating} aria-label={`Share to ${platform}`} className={`flex h-12 w-12 items-center justify-center rounded-full p-3 text-white transition hover:scale-110 disabled:opacity-50 ${PLATFORM_STYLES[platform]}`}>
-              <PlatformIcon platform={platform} />
-            </button>
-          ))}
+        {/* The brand row. Each tile now carries the platform's own official mark
+            and its real brand colour from SOCIAL_SURFACES, plus a name underneath:
+            five unlabelled coloured circles asked the user to identify an app by a
+            hand-drawn silhouette, which is a guess they should never have to make.
+            The inset rim is what keeps X's and TikTok's pure black from vanishing
+            into this panel's dark ground. */}
+        <div className="mt-4 flex shrink-0 items-start justify-center gap-2.5">
+          {platforms.map((platform) => {
+            const surface = SOCIAL_SURFACES[platform];
+            return (
+              <button
+                key={platform}
+                onClick={() => handlePlatformShare(platform)}
+                disabled={generating}
+                aria-label={`Share to ${SOCIAL_LABELS[platform]}`}
+                className="group flex w-[3.75rem] flex-col items-center gap-1.5 disabled:opacity-50"
+              >
+                <span
+                  className="grid h-12 w-12 place-items-center rounded-full transition-transform duration-200 group-hover:-translate-y-0.5 group-active:scale-95"
+                  style={{
+                    background: surface.bg,
+                    color: surface.fg,
+                    boxShadow:
+                      "0 6px 16px rgba(0,0,0,0.32), inset 0 0 0 1px rgba(255,255,255,0.18)",
+                  }}
+                >
+                  <PlatformIcon platform={platform} />
+                </span>
+                <span
+                  className="w-full truncate text-[10px] font-bold leading-none"
+                  style={{ color: "rgba(255,255,255,0.62)" }}
+                >
+                  {SOCIAL_LABELS[platform]}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="mt-3 shrink-0">
@@ -1175,6 +1223,51 @@ export default function ShareMessageCard({
           {toast && <div className="mt-2.5 flex w-full items-center justify-center rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.10)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", color: "#ffffff" }}>{toast}</div>}
         </div>
       </div>
+
+      {/* ---------------------------------------------------------------------
+          The frame that actually gets rasterized.
+
+          Off-screen rather than restyled, because the preview above and the saved
+          file now want different things from the same card: the preview drops the
+          black plate and the watermark, the export keeps both. One element cannot
+          be both, and toggling it at capture time would flash the plate on screen
+          for the length of a 1080x1920 rasterization — and again on every silent
+          pre-warm.
+
+          `left: -10000px`, not `display: none` / `visibility: hidden` / zero
+          opacity: html2canvas clones the live node and inherits whatever hid it,
+          so any of those return an empty bitmap. Moved off-screen it is fully laid
+          out and fully painted — its images load and decode, which `getImageBlob`
+          waits on — it just isn't anywhere the user can see. html2canvas reads the
+          negative offset off `getBoundingClientRect()` and translates its context
+          to match, which is exactly what the `x`/`y` defaults are for.
+
+          `aria-hidden` and `pointer-events: none` because this is a duplicate of
+          content already on screen: a screen reader must not read the card twice,
+          and nothing here is reachable by tab. */}
+      {frameWidth > 0 && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            top: 0,
+            left: "-10000px",
+            pointerEvents: "none",
+            zIndex: -1,
+          }}
+        >
+          <StoryFrame
+            message={message}
+            imageUrl={imageUrl}
+            width={frameWidth}
+            frameRef={cardRef}
+            prompt={prompt}
+            accent={accent}
+            light={light}
+            variant="export"
+          />
+        </div>
+      )}
     </div>,
     host
   );

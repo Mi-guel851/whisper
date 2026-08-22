@@ -9,7 +9,6 @@ import { supabase } from "@/lib/supabase/client";
 import { enablePushNotifications } from "@/lib/push";
 import { useToast } from "@/components/ToastProvider";
 import Button from "./Button";
-import NotificationBell from "./NotificationBell";
 import StreakChip from "./StreakChip";
 
 function getGreeting() {
@@ -146,12 +145,18 @@ export default function DashboardHeader() {
           press spring, and the ripple, so the toggle presses like every other
           control instead of being the one dead target on the screen. */}
       <div className="flex shrink-0 items-center gap-2">
-        {/* The streak reads as status, so it lives in the chrome beside the bell
-            rather than as another card in an already-dense dashboard column. It
-            renders nothing until the streak is real, so this group is two
-            controls wide until the check-in answers. */}
+        {/* The streak reads as status, so it lives in the chrome rather than as
+            another card in an already-dense dashboard column. It renders nothing
+            while the first read is in flight, so this group is one control wide
+            until the streak answers. */}
         <StreakChip />
-        <NotificationBell />
+        {/* The NotificationBell that used to sit here is gone deliberately. Two
+            bells side by side — one a link to the activity feed, one a
+            permissions toggle — meant the more important of the two (the toggle,
+            which is the only thing that makes alerts arrive at all) was
+            competing with a link for the same glance. The activity feed is still
+            one tap away from RecentMessages' "See all" on this same screen, so
+            nothing became unreachable. */}
         <Button
           variant={pushEnabled ? "primary" : "secondary"}
           size="sm"

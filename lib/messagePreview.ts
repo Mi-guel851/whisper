@@ -10,11 +10,21 @@
  * The discriminator is the audio columns, not `is_view_once`. `audio_path` is
  * nulled server-side the moment a view-once note is played, so `audio_viewed_at`
  * has to count too — otherwise a played note reverts to reading as a photo.
+ *
+ * A view-once *photo* has the same shape of problem and used to lose to it.
+ * `app/api/photos/view/route.ts` nulls `image_path` when the photo is opened, so
+ * a spent photo arrives here with no content, no image and no audio — every
+ * discriminator empty — and fell through to the generic fallback. In the inbox
+ * that read as a row with nothing in it, which is indistinguishable from a bug:
+ * the message is gone *and* the app appears to have lost track of it.
+ * `image_viewed_at` is the column that survives, so it is what the "already seen"
+ * label keys off.
  */
 
 export type PreviewableMessage = {
   content?: string | null;
   image_path?: string | null;
+  image_viewed_at?: string | null;
   audio_path?: string | null;
   audio_viewed_at?: string | null;
   is_view_once?: boolean | null;
@@ -22,6 +32,8 @@ export type PreviewableMessage = {
 
 export const VOICE_NOTE_LABEL = "🎙️ Voice note";
 export const PHOTO_LABEL = "📷 Photo";
+/** Past tense on purpose: it states what happened, not what is available. */
+export const PHOTO_VIEWED_LABEL = "📷 Photo viewed";
 
 export function isVoiceNote(message: PreviewableMessage | null | undefined) {
   if (!message) return false;
@@ -30,7 +42,16 @@ export function isVoiceNote(message: PreviewableMessage | null | undefined) {
 
 export function isPhotoMessage(message: PreviewableMessage | null | undefined) {
   if (!message) return false;
-  return Boolean(message.image_path) && !isVoiceNote(message);
+  return (
+    (Boolean(message.image_path) || Boolean(message.image_viewed_at)) &&
+    !isVoiceNote(message)
+  );
+}
+
+/** True once a view-once photo has been opened and the file is gone. */
+export function isSpentPhoto(message: PreviewableMessage | null | undefined) {
+  if (!message) return false;
+  return Boolean(message.image_viewed_at) && !message.image_path && !isVoiceNote(message);
 }
 
 /**
@@ -48,7 +69,11 @@ export function messagePreviewText(
   if (caption && !options.mediaOnly) return caption;
 
   if (isVoiceNote(message)) return VOICE_NOTE_LABEL;
+  /* `image_path` first: while the file is still there the photo can still be
+     opened, so it is described as a photo. Only once it has been spent — the file
+     nulled, the timestamp left behind — does it become the past-tense label. */
   if (message.image_path) return PHOTO_LABEL;
+  if (message.image_viewed_at) return PHOTO_VIEWED_LABEL;
 
   return caption || options.fallback || "Message";
 }

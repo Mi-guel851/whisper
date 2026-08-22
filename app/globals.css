@@ -129,6 +129,13 @@
   --theme-glass-border: rgba(255, 255, 255, 0.14);
   --theme-glass-sheen:  rgba(255, 255, 255, 0.09);
 
+  /* Opaque counterpart to --theme-glass-strong, for surfaces that must not show
+     anything through them: floating chrome, and popovers that open on top of a
+     card. A hair lighter than --theme-card (#111114) because these float above
+     cards and need to separate from them without a heavier border.
+     Consumed by `.surface-solid`. */
+  --theme-surface-solid: #17171e;
+
   /* Layered elevation: ambient spread + directional key + contact shadow.
      A single flat shadow is the tell of a template. */
   --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.28);
@@ -141,18 +148,22 @@
   --theme-shadow:      var(--elev-4);
   --theme-shadow-soft: var(--elev-2);
 
-  /* The nav is the same glass one step denser — it's the only chrome that sits
-     over live scrolling content, so a label has to stay readable while a
-     paragraph slides under it.
+  /* The nav is chrome, and chrome is opaque.
+     Two earlier passes tried to keep a translucent film here — first a 0.94
+     alpha, then a 0.94 alpha with the blur repaired — and the ghosting was
+     reported every time. At 0.94 the 6% that gets through is not "a hint of
+     depth": high-contrast content sliding beneath a fixed bar reads as a smear
+     moving under the labels, and no blur radius removes it because the blur
+     samples the same moving pixels.
 
-     A previous pass pushed this to a near-opaque near-black slab, which fixed
-     legibility by removing the glass entirely. The real problem was never the
-     alpha: the blur wasn't landing (see `.app-nav`, which isolates it). With
-     that fixed the film can stay a *tinted* sheet — white-over-dark, like iOS
-     chrome — rather than a black bar. */
+     So the base is opaque and the *gloss* carries the material instead — the two
+     white-translucent gradients here and in `.app-nav` sit over solid colour, so
+     the bar still reads as lacquered glass without anything showing through.
+     That is what an opaque iOS tab bar does. See `.app-nav`, which also drops
+     the now-pointless backdrop-filter. */
   --theme-nav-bg:
     linear-gradient(155deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)),
-    rgba(13, 13, 19, 0.94);
+    #0d0d13;
   /* Solid stand-in for the places that need the nav's colour as a plain colour.
      `border-color` can't take a gradient, and the presence dot punches its ring
      out of the nav — so it reads from this rather than from the film. */
@@ -235,6 +246,10 @@
   --theme-glass-border: rgba(22, 23, 44, 0.11);
   --theme-glass-sheen:  rgba(255, 255, 255, 0.95);
 
+  /* Pure white rather than the tinted canvas — an opaque popover in the light
+     theme should read as paper lifted off the page. */
+  --theme-surface-solid: #ffffff;
+
   /* Light-theme shadows are cool-tinted, never neutral grey — neutral grey
      on a tinted canvas reads as dirt. */
   --elev-1: 0 1px 2px rgba(38, 43, 90, 0.06),  0 2px 6px rgba(38, 43, 90, 0.05);
@@ -244,12 +259,10 @@
   --elev-5: 0 12px 24px rgba(38, 43, 90, 0.1), 0 40px 90px rgba(38, 43, 90, 0.16);
   --elev-rim: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
-  /* Densest glass in the light theme, for the same reason as dark: the nav sits
-     over scrolling content, so it needs body rather than transparency — and it
-     has to hold up if backdrop-filter never lands. */
+  /* Opaque, same reasoning as dark — see the note there. */
   --theme-nav-bg:
     linear-gradient(155deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
-    rgba(250, 251, 255, 0.95);
+    #fafbff;
   --theme-nav-solid:       #f8f9fd;
   --theme-nav-border:      rgba(22, 23, 44, 0.1);
   --theme-nav-shadow:      0 -10px 34px rgba(38, 43, 90, 0.12);
@@ -856,10 +869,45 @@ main[data-surface="dark"]::before {
     var(--theme-nav-bg);
   border-color: var(--theme-nav-border);
   box-shadow: var(--theme-nav-shadow), var(--elev-rim);
+  /* --theme-nav-bg is opaque now, so there is nothing behind this bar left to
+     see — and a blur that samples pixels no one can see is pure cost. It was
+     also the most expensive declaration on screen while scrolling, because the
+     compositor re-read and re-blurred the backdrop region on every frame of
+     every scroll, on the one element that is always on screen.
+     Removing it is a legibility fix and a perf fix at the same time. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition:
     background-color var(--dur-base) var(--ease-soft),
     border-color var(--dur-base) var(--ease-soft),
     box-shadow var(--dur-base) var(--ease-out-quint);
+}
+
+/* --- Opaque surface ---------------------------------------------------- */
+
+/* Opt a glass surface out of translucency without giving up the material.
+   Add it alongside `liquid-glass*` / `premium-card*` (or on a `GlassPanel`) when
+   the surface sits directly on top of other content — a popover over a card, a
+   dropdown over a feed — where even a 20% backdrop reads as a smear rather than
+   as depth.
+
+   The gloss gradient stays: it's white-over-solid, so the surface still catches
+   light along its leading edge. Only the see-through goes away.
+
+   Declared after `.glass-control` / `.app-nav` deliberately. Every glass class
+   has the same single-class specificity, so source order is what decides — and
+   being last means this wins over all of them without needing `!important`. */
+.surface-solid {
+  background:
+    linear-gradient(
+      177deg,
+      color-mix(in srgb, var(--theme-glass-sheen) 52%, transparent) 0%,
+      color-mix(in srgb, var(--theme-glass-sheen) 14%, transparent) 42%,
+      transparent 70%
+    ),
+    var(--theme-surface-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* --- Text nav links ---------------------------------------------------- */
@@ -1061,6 +1109,28 @@ main[data-surface="dark"]::before {
 
 .premium-input {
   width: 100%;
+
+  /* Intrinsic size, declared here rather than left to each call site.
+
+     This class shipped with no padding and no height, so its consumers rendered
+     at the UA default for a text input — `padding: 1px 2px` — which is a ~22px
+     strip. In the transfer sheet that strip sat next to a 40px Paste button and
+     under a 48px balance row, and *that* is the "compacted" column: not the
+     spacing between the fields, the fields themselves having no body.
+
+     Fixing it at the class instead of adding `px-4 py-3` at each field is the
+     difference between fixing it once and fixing it every time someone adds an
+     input. 3rem is also the floor for a comfortable touch target.
+
+     Longhand padding, not the shorthand: a shorthand here would beat any
+     `padding-*` utility a call site adds, because this rule is unlayered and
+     Tailwind's utilities are not. See `.premium-input-action`. */
+  min-height: 3rem;
+  padding-top: 0.8125rem;
+  padding-right: 0.9375rem;
+  padding-bottom: 0.8125rem;
+  padding-left: 0.9375rem;
+
   border-radius: var(--radius-lg);
   border: 1px solid var(--theme-border);
   background: var(--theme-card);
@@ -1069,6 +1139,18 @@ main[data-surface="dark"]::before {
   transition: border-color var(--dur-fast) var(--ease-soft),
               box-shadow var(--dur-base) var(--ease-out-quint),
               background-color var(--dur-fast) var(--ease-soft);
+}
+
+/* Room for one trailing affordance inside the field — a paste button, a clear
+   button, a unit. Declared after `.premium-input` so it wins on source order
+   without `!important`. */
+.premium-input-action {
+  padding-right: 3.25rem;
+}
+
+/* Room for a leading glyph. */
+.premium-input-lead {
+  padding-left: 2.75rem;
 }
 
 .premium-input:hover:not(:focus):not(:disabled) {
