@@ -6,6 +6,7 @@ import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { getCachedSession } from "@/lib/supabase/session";
 import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST, SEND_VOICE_COST } from "@/lib/coins";
 import { anonNameOf, resolveAnonName } from "@/lib/anonNames";
@@ -446,18 +447,59 @@ export default function ChatPage() {
     let unsubscribeTyping: (() => void) | undefined;
     let unsubscribePresence: (() => void) | undefined;
 
+    /* ------------------------------------------------------------------------
+       WHY THIS IS SHAPED THIS WAY: OPENING A CHAT USED TO TAKE TEN ROUND TRIPS
+
+       Every query here was awaited in sequence, and `setLoading(false)` sat at
+       the bottom of the chain — so the first bubble could not paint until all ten
+       had returned. On a phone at 150ms latency that is a second and a half of
+       spinner for data that mostly arrived in the first third of it. WhatsApp
+       opens instantly because it paints what it has and fills in the rest; this
+       now does the same, in three phases:
+
+         1. Session + the conversation row. Genuinely serial: the row's
+            `user_a`/`user_b` decide who the other person is, and nothing else can
+            be issued without that. But the *messages* query only needs the id
+            from the route, so it is fired here too and raced alongside.
+         2. Everything the first paint depends on, concurrently — the messages,
+            and the two flags that decide whether this thread is paywalled. A
+            `Promise.all` rather than four awaits: they don't depend on each
+            other, so the cost is one round trip, not four.
+         3. Everything that decorates bubbles already on screen — pins,
+            reactions, delivery receipts. These used to gate the paint; they now
+            land after it, which is invisible because a bubble renders correctly
+            without them.
+
+       The two writes (marking the conversation read, ensuring a coin wallet) are
+       no longer awaited at all. Nothing downstream reads their result, so an
+       `await` on them was pure dead latency in front of the user.
+       --------------------------------------------------------------------- */
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession();
+      const sessionPromise = getCachedSession();
+      /* Issued before the session resolves on purpose: this is the query the
+         user is actually waiting for, and `conversationId` comes from the route,
+         so it needs nothing from auth. RLS still decides what comes back. */
+      const messagesPromise = supabase
+        .from("direct_messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+
+      const session = await sessionPromise;
       if (!session) { router.push("/login"); return; }
+      if (cancelled) return;
 
       setMyId(session.user.id);
       myIdRef.current = session.user.id;
 
       const { data: convo } = await supabase.from("conversations").select("user_a, user_b").eq("id", conversationId).single();
       if (!convo) { router.push("/active"); return; }
+      if (cancelled) return;
 
       const readColumn = convo.user_a === session.user.id ? "user_a_last_read_at" : "user_b_last_read_at";
-      await supabase.from("conversations").update({ [readColumn]: new Date().toISOString() }).eq("id", conversationId);
+      /* Fire-and-forget: this is a write whose result nothing here reads, and the
+         inbox has already zeroed its own badge optimistically. */
+      void supabase.from("conversations").update({ [readColumn]: new Date().toISOString() }).eq("id", conversationId);
 
       const otherUserId = convo.user_a === session.user.id ? convo.user_b : convo.user_a;
       setOtherUserId(otherUserId);
@@ -478,27 +520,45 @@ export default function ChatPage() {
         setOtherTyping(typing);
       });
 
-      await supabase.rpc("ensure_coin_wallet", { target_user: session.user.id });
+      /* Also fire-and-forget. It's an idempotent upsert that the balance display
+         reads later, not something the messages depend on. */
+      void supabase.rpc("ensure_coin_wallet", { target_user: session.user.id });
 
-      const otherFriendship = await supabase.from("friends").select("id").eq("user_id", session.user.id).eq("friend_id", otherUserId).maybeSingle();
+      /* Phase 2: the paint set, in one round trip instead of three. The two flags
+         stay blocking because they decide whether the thread is paywalled — a
+         paint before them would flash the messages of a locked chat. */
+      const [msgsResult, otherFriendship, unlockResult] = await Promise.all([
+        messagesPromise,
+        supabase.from("friends").select("id").eq("user_id", session.user.id).eq("friend_id", otherUserId).maybeSingle(),
+        supabase.from("chat_unlocks").select("id").eq("user_id", session.user.id).eq("conversation_id", conversationId).maybeSingle(),
+      ]);
+      if (cancelled) return;
+
       setIsFriendConversation(Boolean(otherFriendship.data));
+      setChatUnlocked(Boolean(unlockResult.data));
 
-      const { data: unlock } = await supabase.from("chat_unlocks").select("id").eq("user_id", session.user.id).eq("conversation_id", conversationId).maybeSingle();
-      setChatUnlocked(Boolean(unlock));
-
-      const { data: msgs } = await supabase.from("direct_messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true });
-      const fetchedMsgs = msgs || [];
+      const fetchedMsgs = msgsResult.data || [];
       setMessages(fetchedMsgs);
       messagesRef.current = fetchedMsgs;
-
-      await supabase.rpc("sweep_expired_pins", { target_conversation_id: conversationId });
-
-      const { data: pins } = await supabase.from("pinned_messages").select("message_id").eq("conversation_id", conversationId);
-      setPinnedMessageIds(new Set((pins || []).map((p) => p.message_id)));
-
-      const { data: reacts } = await supabase.from("message_reactions").select("message_id, user_id, emoji").in("message_id", fetchedMsgs.map((m) => m.id));
-      setReactions(reacts || []);
       setLoading(false);
+
+      /* Phase 3: everything that decorates what is now already on screen. Not
+         awaited by anything the user is looking at. */
+      void (async () => {
+        await supabase.rpc("sweep_expired_pins", { target_conversation_id: conversationId });
+        const { data: pins } = await supabase.from("pinned_messages").select("message_id").eq("conversation_id", conversationId);
+        if (!cancelled) setPinnedMessageIds(new Set((pins || []).map((p) => p.message_id)));
+      })();
+
+      if (fetchedMsgs.length > 0) {
+        void supabase
+          .from("message_reactions")
+          .select("message_id, user_id, emoji")
+          .in("message_id", fetchedMsgs.map((m) => m.id))
+          .then(({ data: reacts }) => {
+            if (!cancelled) setReactions(reacts || []);
+          });
+      }
 
       const now = new Date().toISOString();
       const undeliveredIds = fetchedMsgs.filter((m) => m.sender_id !== session.user.id && !m.delivered_at).map((m) => m.id);

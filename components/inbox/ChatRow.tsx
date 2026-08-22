@@ -62,7 +62,13 @@ function ChatRowBase({
       <button
         type="button"
         onClick={handleOpen}
-        className="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.05]"
+        /* `px-4 sm:px-6` matches the page container's own padding, which the
+           list cancels with `-mx-4 sm:-mx-6`. Net effect: the row's background
+           runs edge to edge like WhatsApp's, while its text still lines up with
+           the heading above the list. Hover and press live in `.chat-row` —
+           a Tailwind `active:` variant compiles to a class the theme bridge
+           doesn't rewrite, so it would flash white in light theme. */
+        className="chat-row flex w-full items-center gap-3 px-4 py-3 text-left sm:px-6"
       >
         <div className="relative h-12 w-12 shrink-0">
           {/* `unoptimized` on purpose: DiceBear returns an SVG, and running an
@@ -81,7 +87,7 @@ function ChatRowBase({
             className="h-12 w-12 rounded-full border border-white/15 bg-white/10 object-cover p-0.5"
           />
           <span
-            className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#100d18] ${
+            className={`chat-row-presence absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 ${
               active ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-gray-600"
             }`}
             aria-label={active ? "Active now" : "Offline"}

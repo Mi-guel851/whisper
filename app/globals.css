@@ -1814,6 +1814,55 @@ html.viewport-locked body {
   }
 }
 
+/* --- Chat list (inbox) -------------------------------------------------- */
+
+/* WhatsApp's list, not a stack of cards.
+ *
+ * The inbox used to be a `GlassPanel` with `divide-y` between rows: a rounded,
+ * blurred container with a hairline every 72px. That is the right treatment for
+ * a *settings* list, where each row is an unrelated switch, and the wrong one
+ * for a chat list, where the rows are one continuous stream the eye scans down
+ * the avatar column. The container also boxed the list in twice — once by the
+ * page's own padding, once by its own — so rows read as narrower than the
+ * heading above them.
+ *
+ * So: no container, no separators, rows edge to edge on the page's own canvas.
+ * The bleed and the row's inside padding are Tailwind utilities on the markup
+ * (`-mx-4 sm:-mx-6` against `px-4 sm:px-6`) because they have to stay in step
+ * with the page container's padding, and one source of truth for that belongs
+ * where the padding is written.
+ *
+ * What lives here is the part utilities cannot express: with no border and no
+ * card, the press fill is the *only* thing that says which row was hit, and it
+ * has to resolve per theme. `active:bg-white/5` would not — Tailwind compiles a
+ * variant to its own class, which the compatibility bridge in section 5 never
+ * matches, so it would stay literal white and flash bright on the light theme.
+ */
+.chat-row {
+  transition: background-color var(--dur-fast) var(--ease-out-quint);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chat-row:active {
+  background: var(--fill-2);
+  /* Instant on the way in. A 150ms fade-in on a press reads as lag, where the
+     fade-*out* after the finger lifts reads as polish — hence the asymmetry. */
+  transition-duration: var(--dur-instant);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-row:hover {
+    background: var(--fill-1);
+  }
+}
+
+/* The presence dot punches its ring out of whatever it sits on. That used to be
+   the glass panel, and the ring was a hardcoded near-black to match it; with the
+   panel gone the row sits on the page canvas, which is white in light theme. */
+.chat-row-presence {
+  border-color: var(--theme-surface);
+}
+
 @keyframes blobDrift {
   0%, 100% { translate: 0 0;        scale: 1;    }
   33%      { translate: 3% -4%;     scale: 1.06; }

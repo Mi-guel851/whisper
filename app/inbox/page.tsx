@@ -510,42 +510,44 @@ export default function InboxPage() {
             />
           </GlassPanel>
         ) : (
-          <GlassPanel className="overflow-hidden rounded-3xl">
-            <ul className="divide-y divide-white/[0.06]">
-              {filtered.map((c) => {
-                const unread = isUnread(c);
-                const unreadCount = unreadCounts[c.id] || 0;
-                const other = otherUserId(c);
-                const active = onlineSet.has(other);
-                const typing = typingSet.has(c.id);
-                const preview = previews[c.id];
-                const sentByMe = preview ? preview.sender_id === myId : false;
+          /* No panel, no dividers — WhatsApp's list. `-mx-4 sm:-mx-6` cancels
+             the page container's padding so a row's press fill runs edge to
+             edge; each row adds the same padding back inside, so the text still
+             lines up with the heading. See `.chat-row` in globals.css. */
+          <ul className="-mx-4 sm:-mx-6">
+            {filtered.map((c) => {
+              const unread = isUnread(c);
+              const unreadCount = unreadCounts[c.id] || 0;
+              const other = otherUserId(c);
+              const active = onlineSet.has(other);
+              const typing = typingSet.has(c.id);
+              const preview = previews[c.id];
+              const sentByMe = preview ? preview.sender_id === myId : false;
 
-                /* Everything the row needs is flattened to a primitive here.
-                   Passing the conversation object plus the previews map would
-                   hand every row a reference that changes whenever any row's
-                   data changes, and the memo would never hit. */
-                return (
-                  <ChatRow
-                    key={c.id}
-                    conversationId={c.id}
-                    avatarUserId={other}
-                    label={labelFor(c)}
-                    timestamp={chatListTime(c.last_message_at)}
-                    previewText={previewText(c)}
-                    unread={unread}
-                    unreadCount={unreadCount}
-                    active={active}
-                    typing={typing}
-                    showTicks={!typing && sentByMe && !!preview && !preview.is_view_once}
-                    deliveredAt={preview?.delivered_at ?? null}
-                    readAt={preview?.read_at ?? null}
-                    onOpen={handleOpenConversation}
-                  />
-                );
-              })}
-            </ul>
-          </GlassPanel>
+              /* Everything the row needs is flattened to a primitive here.
+                 Passing the conversation object plus the previews map would
+                 hand every row a reference that changes whenever any row's
+                 data changes, and the memo would never hit. */
+              return (
+                <ChatRow
+                  key={c.id}
+                  conversationId={c.id}
+                  avatarUserId={other}
+                  label={labelFor(c)}
+                  timestamp={chatListTime(c.last_message_at)}
+                  previewText={previewText(c)}
+                  unread={unread}
+                  unreadCount={unreadCount}
+                  active={active}
+                  typing={typing}
+                  showTicks={!typing && sentByMe && !!preview && !preview.is_view_once}
+                  deliveredAt={preview?.delivered_at ?? null}
+                  readAt={preview?.read_at ?? null}
+                  onOpen={handleOpenConversation}
+                />
+              );
+            })}
+          </ul>
         )}
       </div>
       <BottomNavigation />
