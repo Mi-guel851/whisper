@@ -475,7 +475,13 @@ export default function InboxPage() {
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="shrink-0 text-gray-500 hover:text-gray-300"
+              /* `hover:text-gray-300` compiled to `.hover\:text-gray-300:hover`,
+                 which the theme bridge in globals.css does not rewrite — only the
+                 bare utilities are in it — so hovering pushed this to a literal
+                 light grey on the light theme's light search field. The resting
+                 colour is bridged and the hover is an opacity step, which reads
+                 the same in both themes. */
+              className="shrink-0 text-gray-500 opacity-80 transition-opacity hover:opacity-100"
               aria-label="Clear search"
             >
               <X size={15} />
