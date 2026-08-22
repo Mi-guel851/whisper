@@ -180,9 +180,21 @@ const MessageBubble = memo(function MessageBubbleBase({
   const x = useMotionValue(0);
   const replyIconOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
   const tailCorner = isGroupEnd ? (isMe ? "rounded-br-sm" : "rounded-bl-sm") : "";
-  const isPhotoMessage = Boolean(msg.image_path);
+  /* `image_viewed_at` counts as evidence a photo was here, not just `image_path`.
+     A spent view-once photo has no `image_path` any more — the server deletes the
+     object and clears the column the moment it is opened, which is the entire point
+     of view-once — so testing the path alone made a viewed photo stop looking like a
+     photo message at all. It fell through to the text branch below, and a photo
+     message has no `content`, so it rendered as an empty bubble with nothing in it
+     but a timestamp. The audio arm on the next line already had this right; the
+     photo arm simply never got the same treatment. */
+  const isPhotoMessage = Boolean(msg.image_path) || Boolean(msg.image_viewed_at);
   const isAudioMessage = Boolean(msg.audio_path) || Boolean(msg.audio_viewed_at);
-  const isMediaMessage = isAudioMessage || (msg.is_view_once && isPhotoMessage);
+  /* `is_view_once` is still required so a plain photo attachment can never be
+     mislabelled as one-time; `image_viewed_at` is accepted alongside it purely as a
+     fallback for a spent row whose flag has been cleared. */
+  const isMediaMessage =
+    isAudioMessage || ((msg.is_view_once || Boolean(msg.image_viewed_at)) && isPhotoMessage);
 
   return (
     <div
@@ -283,8 +295,12 @@ const MessageBubble = memo(function MessageBubbleBase({
                     </span>
                     <span className="chat-photo-once-caption flex items-center justify-center gap-1.5 text-[11px] font-bold">
                       <ImagePlus size={12} />
+                      {/* "Photo viewed", matching the voice note's "Played" and the
+                          reply quote's "📷 Photo viewed". A spent one-time message
+                          has to say what it was and that it is gone — "Opened" said
+                          neither clearly enough to tell the two media types apart. */}
                       {msg.image_viewed_at
-                        ? "Opened"
+                        ? "Photo viewed"
                         : viewingPhotoId === msg.id
                           ? "Opening…"
                           : isMe
@@ -294,7 +310,9 @@ const MessageBubble = memo(function MessageBubbleBase({
                   </button>
                 ) : null}
                 {msg.content && (
-                  <p className="mt-1 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{msg.content}</p>
+                  /* `break-words` only, never `overflow-wrap: anywhere` — see the
+                     note on the text bubble below. */
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm">{msg.content}</p>
                 )}
                 <div className="chat-meta mt-1 flex items-center justify-end gap-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
