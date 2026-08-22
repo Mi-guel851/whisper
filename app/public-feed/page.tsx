@@ -1,144 +1,198 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { Send, Sparkles, MessageSquareDashed } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ArrowUp, MessageSquareDashed, SearchX } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import GlassPanel from "@/components/GlassPanel";
-import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import FeedPostCard from "@/components/feed/FeedPostCard";
 import EmptyState from "@/components/ui/EmptyState";
-import type { FeedController } from "@/components/feed/types";
+import FeedPostCard from "@/components/feed/FeedPostCard";
+import FeedTabs from "@/components/feed/FeedTabs";
+import FeedSearchBar from "@/components/feed/FeedSearchBar";
+import FeedComposer, { type ComposerDraft } from "@/components/feed/FeedComposer";
+import FeedDiscovery from "@/components/feed/FeedDiscovery";
+import FeedSkeleton from "@/components/feed/FeedSkeleton";
+import FeedPhotoViewer from "@/components/feed/FeedPhotoViewer";
+import FeedPostMenu from "@/components/feed/FeedPostMenu";
+import FeedShareSheet, { feedPostUrl } from "@/components/feed/FeedShareSheet";
+import FeedReportSheet from "@/components/feed/FeedReportSheet";
+import type { FeedController, FeedImageState } from "@/components/feed/types";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import {
   buildPostTree,
-  stripLinks,
-  upsertPost,
+  dailyQuestionFor,
+  rankFeedPosts,
   type FeedLike,
   type FeedPost,
+  type FeedPostNode,
+  type FeedSort,
 } from "@/lib/feed";
-
+import {
+  FEED_PAGE_SIZE,
+  blockAuthor,
+  fetchFeedPage,
+  fetchLikes,
+  fetchPostById,
+  fetchRandomPost,
+  fetchSpotlight,
+  fetchThread,
+  reportPost,
+  votePoll,
+  type FeedQuery,
+  type ReportReason,
+} from "@/lib/feedApi";
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
-import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
-
-/* Replies are free now and posting is what costs — see lib/coins.ts for why. The
-   old `REPLY_COST` constant is gone rather than set to 0, so nothing can still be
-   rendering "2 coins" next to a reply button. */
+import { vibrate, HAPTIC } from "@/lib/haptics";
 
 /**
- * Columns beyond the original feed schema.
+ * The Public Feed.
  *
- * Support is probed per column, not as a prefix cascade. These ship in
- * independent migrations, so any combination of them can be missing — and the
- * previous version dropped them from the end of this list one at a time, which
- * coupled them together. On a database missing only `view_count`, the first
- * retry discarded `parent_post_id` — the column that tells a reply from a post
- * — while keeping the column that actually didn't exist. The query failed
- * again and the feed fell all the way back to the bare table, so threading
- * died because of an unrelated missing column.
+ * This page is the orchestrator and almost nothing else: the timeline, the
+ * composer, the discovery strip, the sheets and the photo viewer are all their
+ * own components under components/feed/, and everything that talks to Supabase
+ * lives in lib/feedApi. What is left here is the state those pieces share and the
+ * handful of decisions that only make sense at page level.
+ *
+ * TWO READ PATHS, ONE RENDER
+ *
+ * On a database with the premium feed migration, `public_feed_page` does the
+ * ranking, filtering, counting and blocking in one round trip and this page
+ * paginates it ten roots at a time. Without that migration the page falls back to
+ * the original whole-window table read and does the same work in the browser via
+ * `rankFeedPosts`, paginating the array instead of the query. `mode` says which
+ * one is live. Both fill the same state, so the components below never branch.
+ *
+ * WHY THE SHEETS LIVE HERE
+ *
+ * One overflow sheet, one share sheet, one report sheet, one photo viewer — each
+ * mounted once and pointed at whichever post was tapped. A `Modal` inside every
+ * card would mean forty portals and forty focus traps to serve the one that is
+ * open.
+ *
+ * WHAT IS OPTIMISTIC AND WHAT IS NOT
+ *
+ * Likes are optimistic, because a like is a fact the client already knows: it is
+ * my own row and the count moves by exactly one. Poll tallies are not, because a
+ * total is only knowable server-side — so the option shows a pending state and
+ * the real counts arrive with the response. Guessing at them would put a number
+ * on screen that nobody wrote.
  */
-const BASE_COLUMNS = "id,author_id,body,whisper_link,created_at,expires_at";
-const OPTIONAL_COLUMNS = ["parent_post_id", "view_count"] as const;
 
-const SUGGESTED_POST = "Hi everyone! I have a little time to talk. Send me an anonymous Whisper and let’s see where the conversation goes.";
-const AI_SUGGESTIONS = [
-  SUGGESTED_POST,
-  "I am in the mood for an honest conversation. Leave me a Whisper and tell me what is on your mind.",
-  "Quick question for the community: what is one small thing that made you smile today? Send your answer anonymously.",
-  "I am taking anonymous questions today. Ask me anything and I will answer as honestly as I can.",
-  "Sometimes a stranger has the best advice. Leave me a Whisper and share something you have learned recently.",
-  "Drop a kind message for someone who needs it today. My Whisper link is open for anonymous notes.",
-  "I want to hear a story I have never heard before. Send me an anonymous Whisper and surprise me.",
-  "No pressure, no names, just a real conversation. Say hello through my Whisper link.",
-  "What would you tell your future self today? Leave your answer anonymously on my Whisper.",
-  "I am collecting honest opinions. Tell me one thing you think more people should talk about.",
-];
+/* Replies are free and posting is what costs — see lib/coins.ts for why. */
 
 /**
- * Fetches the live feed, keeping every optional column the server accepts.
+ * Strips `image_path` and settles `has_image`.
  *
- * The happy path is one request. Only when that fails does this bisect: each
- * optional column is probed on its own, and the real query is re-run with the
- * survivors. So a database missing `view_count` still gets threading, which is
- * the case the old prefix-shedding version got wrong.
- *
- * Returns the rows plus whether threading survived, so the caller can say so
- * rather than silently rendering a flat feed that looks like a bug.
+ * Realtime payloads carry every column of the inserted row, including the
+ * storage key, and there is no reason for that key to sit in client state: the
+ * bytes come from /api/feed/photo by post id. `has_image` is derived where it is
+ * absent, which is exact — the API route refuses a photo without a preview, so
+ * "has a preview" and "has a photo" are the same fact.
  */
-async function fetchFeedPosts(): Promise<{ rows: FeedPost[]; threaded: boolean }> {
-  const select = (columns: string) =>
-    supabase
-      .from("public_feed_posts")
-      .select(columns)
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false });
+function sanitize(row: FeedPost): FeedPost {
+  const copy: FeedPost & { image_path?: unknown } = { ...row };
+  delete copy.image_path;
+  return { ...copy, has_image: row.has_image ?? Boolean(row.image_preview) };
+}
 
-  const all = [BASE_COLUMNS, ...OPTIONAL_COLUMNS].join(",");
-  const first = await select(all);
-
-  if (!first.error) {
-    return { rows: (first.data || []) as unknown as FeedPost[], threaded: true };
+/** Merges rows by id, keeping fields the incoming row doesn't carry. */
+function mergeRows(current: FeedPost[], incoming: FeedPost[]): FeedPost[] {
+  if (!incoming.length) return current;
+  const byId = new Map(current.map((post) => [post.id, post]));
+  for (const row of incoming) {
+    const existing = byId.get(row.id);
+    byId.set(row.id, existing ? { ...existing, ...row } : row);
   }
-
-  console.warn(`Public feed select failed with [${all}]:`, first.error.message);
-
-  /* Probe each optional column alone. `head: true` asks for no rows, so this
-     costs a schema check rather than a second copy of the feed. */
-  const supported: string[] = [];
-  for (const column of OPTIONAL_COLUMNS) {
-    const { error } = await supabase
-      .from("public_feed_posts")
-      .select(`id,${column}`)
-      .limit(1);
-
-    if (!error) supported.push(column);
-    else console.warn(`Public feed column [${column}] unavailable:`, error.message);
-  }
-
-  const columns = [BASE_COLUMNS, ...supported].join(",");
-  const { data, error } = await select(columns);
-
-  if (error) {
-    console.error(`Public feed select failed with [${columns}]:`, error.message);
-    return { rows: [], threaded: false };
-  }
-
-  return {
-    rows: (data || []) as unknown as FeedPost[],
-    threaded: supported.includes("parent_post_id"),
-  };
+  return Array.from(byId.values());
 }
 
 export default function PublicFeedPage() {
   const { showToast } = useToast();
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [likes, setLikes] = useState<FeedLike[]>([]);
-  const [body, setBody] = useState("");
+  /* Resolved once here and passed down through the controller. Forty cards each
+     subscribing to the same media query is forty listeners for one boolean. */
+  const reducedMotion = useReducedMotion() ?? false;
+
   const [myId, setMyId] = useState("");
   const [username, setUsername] = useState("");
+  const [ready, setReady] = useState(false);
+
+  const [sort, setSort] = useState<FeedSort>("for_you");
+  const [topic, setTopic] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [rootOrder, setRootOrder] = useState<string[]>([]);
+  const [mode, setMode] = useState<"rpc" | "fallback" | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
-  const [posting, setPosting] = useState(false);
-  const [showAiSuggestions, setShowAiSuggestions] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const [likeCount, setLikeCount] = useState<Record<string, number>>({});
+  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [likeRows, setLikeRows] = useState<FeedLike[]>([]);
+
   const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({});
   const [replyTextMap, setReplyTextMap] = useState<Record<string, string>>({});
   const [replySendingMap, setReplySendingMap] = useState<Record<string, boolean>>({});
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({});
+  const [threadLoading, setThreadLoading] = useState<Record<string, boolean>>({});
+
+  const [pollCounts, setPollCounts] = useState<Record<string, number[]>>({});
+  const [pollChoice, setPollChoice] = useState<Record<string, number>>({});
+  const [pollPending, setPollPending] = useState<Record<string, boolean>>({});
+
+  const [imageState, setImageState] = useState<Record<string, FeedImageState>>({});
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  const [menuPost, setMenuPost] = useState<FeedPost | null>(null);
+  const [sharePost, setSharePost] = useState<FeedPost | null>(null);
+  const [reportTarget, setReportTarget] = useState<FeedPost | null>(null);
+  const [reporting, setReporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  const cleanBody = stripLinks(body);
+  const [spotlight, setSpotlight] = useState<FeedPost | null>(null);
+  const [surprising, setSurprising] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [pendingNew, setPendingNew] = useState<string[]>([]);
+
+  const [prefillNonce, setPrefillNonce] = useState(0);
+  const [prefillBody, setPrefillBody] = useState("");
+
   const ownLink = username ? `/u/${username}` : "";
+  const dailyQuestion = useMemo(() => dailyQuestionFor(), []);
+  const query = useMemo<FeedQuery>(() => ({ sort, topic, search }), [sort, topic, search]);
 
-  /* A synchronous mirror of `likes`, so a tap can read the current like state
-     without waiting for a render. Realtime updates and the initial load land in
-     state first and are copied across by the effect below. */
-  const likesRef = useRef<FeedLike[]>([]);
-  useEffect(() => { likesRef.current = likes; }, [likes]);
+  /* ---------------------------------------------------------------------
+     Synchronous mirrors. Handlers read these instead of state so a tap
+     resolves against the current value rather than the one from the render
+     that created the closure.
+     --------------------------------------------------------------------- */
+  const myIdRef = useRef("");
+  const postsRef = useRef<FeedPost[]>([]);
+  const likedRef = useRef<Record<string, boolean>>({});
+  const expandedRef = useRef<Record<string, boolean>>({});
+  const modeRef = useRef<"rpc" | "fallback" | null>(null);
+  const threadsLoaded = useRef<Set<string>>(new Set());
+  const imageStateRef = useRef<Record<string, FeedImageState>>({});
+  const pollPendingRef = useRef<Record<string, boolean>>({});
+  const seenRandom = useRef<string[]>([]);
+  const noticeShown = useRef(false);
 
-  // Impressions are batched: seen ids collect here and flush on a timer so a fast
-  // scroll doesn't fire one request per card.
+  useEffect(() => { myIdRef.current = myId; }, [myId]);
+  useEffect(() => { postsRef.current = posts; }, [posts]);
+  useEffect(() => { likedRef.current = liked; }, [liked]);
+  useEffect(() => { expandedRef.current = expandedThreads; }, [expandedThreads]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { imageStateRef.current = imageState; }, [imageState]);
+  useEffect(() => { pollPendingRef.current = pollPending; }, [pollPending]);
+
+  /* ---------------------------------------------------------------------
+     Impressions — batched so a fast scroll doesn't fire one request per card.
+     --------------------------------------------------------------------- */
   const pendingImpressions = useRef<Set<string>>(new Set());
   const recordedImpressions = useRef<Set<string>>(new Set());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -150,7 +204,7 @@ export default function PublicFeedPage() {
 
     const { error } = await supabase.rpc("record_public_feed_impressions", { post_ids: batch });
     if (error) {
-      // Migration may not be applied yet — degrade silently, the counter just stays put.
+      // Migration may not be applied yet — degrade silently, the counter stays put.
       console.warn("Impression recording skipped:", error.message);
       return;
     }
@@ -163,7 +217,7 @@ export default function PublicFeedPage() {
   }, []);
 
   const trackImpression = useCallback((postId: string, authorId: string) => {
-    if (!myId || authorId === myId) return;
+    if (!myIdRef.current || authorId === myIdRef.current) return;
     if (recordedImpressions.current.has(postId)) return;
 
     recordedImpressions.current.add(postId);
@@ -171,18 +225,16 @@ export default function PublicFeedPage() {
 
     if (flushTimer.current) clearTimeout(flushTimer.current);
     flushTimer.current = setTimeout(() => { void flushImpressions(); }, 900);
-  }, [myId, flushImpressions]);
+  }, [flushImpressions]);
 
   useEffect(() => {
     return () => { if (flushTimer.current) clearTimeout(flushTimer.current); };
   }, []);
 
-  // A single observer for every root card. Cards register through the ref callback
-  // below; once a card has been counted it is unobserved so it can't fire twice.
+  // A single observer for every root card, so a long feed costs one observer.
   const observer = useRef<IntersectionObserver | null>(null);
   const observedNodes = useRef<Set<HTMLElement>>(new Set());
   const trackRef = useRef(trackImpression);
-
   useEffect(() => { trackRef.current = trackImpression; }, [trackImpression]);
 
   useEffect(() => {
@@ -205,7 +257,6 @@ export default function PublicFeedPage() {
     );
 
     observer.current = instance;
-    // Cards mounted before this effect ran still need picking up.
     observedNodes.current.forEach((node) => instance.observe(node));
 
     return () => { instance.disconnect(); observer.current = null; };
@@ -217,6 +268,92 @@ export default function PublicFeedPage() {
     observer.current?.observe(node);
   }, []);
 
+  /* ---------------------------------------------------------------------
+     Reading the feed
+     --------------------------------------------------------------------- */
+
+  /** Seeds the like maps so an optimistic toggle has a real base to move from. */
+  const seedLikes = useCallback((rows: FeedPost[]) => {
+    setLikeCount((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const row of rows) {
+        if (typeof row.like_count === "number" && next[row.id] !== row.like_count) {
+          next[row.id] = row.like_count;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+    setLiked((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const row of rows) {
+        if (typeof row.viewer_liked === "boolean" && next[row.id] !== row.viewer_liked) {
+          next[row.id] = row.viewer_liked;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, []);
+
+  const loadPage = useCallback(
+    async (offset: number, replace: boolean) => {
+      const response = await fetchFeedPage(query, offset);
+
+      if (response.mode === "rpc") {
+        const rows = response.rows.map(sanitize);
+        setMode("rpc");
+        setPosts((current) => (replace ? rows : mergeRows(current, rows)));
+        setRootOrder((current) => {
+          const ids = rows.map((row) => row.id);
+          if (replace) return ids;
+          const seen = new Set(current);
+          return [...current, ...ids.filter((id) => !seen.has(id))];
+        });
+        setHasMore(response.hasMore);
+        seedLikes(rows);
+        if (replace) threadsLoaded.current.clear();
+        return;
+      }
+
+      /* The whole live window in one response. Pagination becomes a slice, so a
+         "load more" on this path never touches the network again. */
+      const rows = response.rows.map(sanitize);
+      setMode("fallback");
+      setPosts(rows);
+      setRootOrder([]);
+      setVisibleCount(FEED_PAGE_SIZE);
+      setHasMore(false);
+      threadsLoaded.current.clear();
+
+      if (!noticeShown.current) {
+        noticeShown.current = true;
+        showToast(
+          response.threaded
+            ? "Running in basic mode — apply the feed migration for topics, photos and polls."
+            : "Replies are showing as separate posts until the feed migration is applied."
+        );
+      }
+
+      const ids = rows.map((row) => row.id);
+      const likes = await fetchLikes(ids);
+      setLikeRows(likes);
+
+      const counts: Record<string, number> = {};
+      const mine: Record<string, boolean> = {};
+      for (const like of likes) {
+        counts[like.post_id] = (counts[like.post_id] ?? 0) + 1;
+        if (like.user_id === myIdRef.current) mine[like.post_id] = true;
+      }
+      setLikeCount(counts);
+      setLiked(mine);
+    },
+    [query, seedLikes, showToast]
+  );
+
+  // Session, profile, first page, notifications, realtime.
   useEffect(() => {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -226,60 +363,177 @@ export default function PublicFeedPage() {
       if (!session) { setLoading(false); return; }
 
       const uid = session.user.id;
+      myIdRef.current = uid;
       setMyId(uid);
 
-      const { data: profile } = await supabase.from("profiles").select("username").eq("id", uid).single();
-      const { rows, threaded } = await fetchFeedPosts();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", uid)
+        .single();
 
       if (cancelled) return;
-
       setUsername(profile?.username || "");
-      setPosts(rows);
-      if (!threaded) {
-        showToast("Replies are showing as separate posts until the feed migration is applied.");
-      }
+      setReady(true);
 
-      const ids = rows.map((post) => post.id);
-      if (ids.length) {
-        const { data: likeRows } = await supabase.from("public_feed_likes").select("post_id,user_id").in("post_id", ids);
-        if (!cancelled) setLikes((likeRows || []) as FeedLike[]);
-      }
-
-      await supabase.from("public_feed_notifications").update({ is_read: true }).eq("user_id", uid).eq("is_read", false);
-      setLoading(false);
+      await supabase
+        .from("public_feed_notifications")
+        .update({ is_read: true })
+        .eq("user_id", uid)
+        .eq("is_read", false);
 
       channel = supabase
         .channel(`public-feed-${uid}-${Date.now()}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "public_feed_posts" }, (payload) => {
-          const post = payload.new as FeedPost;
-          if (new Date(post.expires_at) > new Date()) setPosts((current) => upsertPost(current, post));
-        })
-        .on("postgres_changes", { event: "DELETE", schema: "public", table: "public_feed_posts" }, (payload) =>
-          setPosts((current) => current.filter((post) => post.id !== (payload.old as { id: string }).id))
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "public_feed_posts" },
+          (payload) => {
+            const row = sanitize(payload.new as FeedPost);
+            if (new Date(row.expires_at).getTime() <= Date.now()) return;
+            /* My own post is already in state from the POST response, which
+               carries more of the row than this payload does. */
+            if (row.author_id === myIdRef.current) return;
+
+            if (row.parent_post_id) {
+              const parentId = row.parent_post_id;
+              /* A reply only belongs in the tree if its parent's thread is
+                 loaded; otherwise the count is the honest thing to move, and
+                 opening the thread will fetch it properly. */
+              if (threadsLoaded.current.has(parentId) || modeRef.current === "fallback") {
+                setPosts((current) => mergeRows(current, [row]));
+              } else {
+                setPosts((current) =>
+                  current.map((post) =>
+                    post.id === parentId
+                      ? { ...post, reply_count: (post.reply_count ?? 0) + 1 }
+                      : post
+                  )
+                );
+              }
+              return;
+            }
+
+            /* A new root only belongs at the top of a feed that is actually
+               ordered newest-first and unfiltered. Anywhere else it would jump
+               the ranking, so it is announced instead. */
+            const canPrepend =
+              modeRef.current === "rpc" && sortRef.current === "new" &&
+              !topicRef.current && !searchRef.current.trim();
+
+            if (canPrepend) {
+              setPosts((current) => mergeRows(current, [row]));
+              setRootOrder((current) =>
+                current.includes(row.id) ? current : [row.id, ...current]
+              );
+              seedLikes([row]);
+              return;
+            }
+
+            setPendingNew((current) =>
+              current.includes(row.id) ? current : [...current, row.id]
+            );
+          }
         )
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "public_feed_likes" }, (payload) => {
-          const like = payload.new as FeedLike;
-          setLikes((current) =>
-            current.some((item) => item.post_id === like.post_id && item.user_id === like.user_id) ? current : [...current, like]
-          );
-        })
-        .on("postgres_changes", { event: "DELETE", schema: "public", table: "public_feed_likes" }, (payload) => {
-          const like = payload.old as FeedLike;
-          setLikes((current) => current.filter((item) => !(item.post_id === like.post_id && item.user_id === like.user_id)));
-        })
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "public_feed_posts" },
+          (payload) => {
+            const { id } = payload.old as { id: string };
+            setPosts((current) => current.filter((post) => post.id !== id));
+            setRootOrder((current) => current.filter((rootId) => rootId !== id));
+            setPendingNew((current) => current.filter((pendingId) => pendingId !== id));
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "public_feed_likes" },
+          (payload) => {
+            const like = payload.new as FeedLike;
+            // My own like is already counted locally; counting it twice is the bug.
+            if (like.user_id === myIdRef.current) return;
+            setLikeCount((current) => ({
+              ...current,
+              [like.post_id]: (current[like.post_id] ?? 0) + 1,
+            }));
+            setLikeRows((current) =>
+              current.some((row) => row.post_id === like.post_id && row.user_id === like.user_id)
+                ? current
+                : [...current, like]
+            );
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "public_feed_likes" },
+          (payload) => {
+            const like = payload.old as FeedLike;
+            if (like.user_id === myIdRef.current) return;
+            setLikeCount((current) => ({
+              ...current,
+              [like.post_id]: Math.max(0, (current[like.post_id] ?? 0) - 1),
+            }));
+            setLikeRows((current) =>
+              current.filter(
+                (row) => !(row.post_id === like.post_id && row.user_id === like.user_id)
+              )
+            );
+          }
+        )
+        /* `public_feed_poll_votes` is in the realtime publication but is
+           deliberately not subscribed to. A vote *change* arrives as an UPDATE
+           whose `old` record carries only the primary key, so there is no way to
+           know which option to decrement — and a tally that drifts is worse than
+           one that refreshes when you vote. */
         .subscribe();
     }
 
-    init();
+    void init();
     return () => { cancelled = true; if (channel) supabase.removeChannel(channel); };
     // showToast is stable from the provider; init must run exactly once per mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* Read inside the realtime handler, which is created once and must not close
+     over a stale query. */
+  const sortRef = useRef(sort);
+  const topicRef = useRef(topic);
+  const searchRef = useRef(search);
+  useEffect(() => { sortRef.current = sort; }, [sort]);
+  useEffect(() => { topicRef.current = topic; }, [topic]);
+  useEffect(() => { searchRef.current = search; }, [search]);
+
+  // First page, and again whenever the tab, topic or search term changes.
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+
+    setLoading(true);
+    (async () => {
+      await loadPage(0, true);
+      if (!cancelled) {
+        setLoading(false);
+        setPendingNew([]);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [ready, loadPage]);
+
+  // Whisper of the Day, once per mount.
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    (async () => {
+      const row = await fetchSpotlight();
+      if (!cancelled && row) setSpotlight(sanitize(row));
+    })();
+    return () => { cancelled = true; };
+  }, [ready]);
+
   /**
-   * Posts expire 24 hours after they're written, and the row that carries that
-   * deadline is only re-read on mount. Without a sweep, a tab left open
-   * overnight keeps rendering posts the server would already refuse to return.
+   * Posts expire 24 hours after they're written, and the row carrying that
+   * deadline is only re-read on load. Without a sweep, a tab left open overnight
+   * keeps rendering posts the server would already refuse to return.
    */
   useEffect(() => {
     const timer = setInterval(() => {
@@ -293,154 +547,324 @@ export default function PublicFeedPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // The highlight pulse is a one-shot, not a state a post stays in.
+  useEffect(() => {
+    if (!highlight) return;
+    const timer = setTimeout(() => setHighlight(null), 2600);
+    return () => clearTimeout(timer);
+  }, [highlight]);
+
+  /* ---------------------------------------------------------------------
+     Deriving what renders
+     --------------------------------------------------------------------- */
+
   const likesByPost = useMemo(
-    () => likes.reduce<Record<string, FeedLike[]>>((result, like) => { (result[like.post_id] ||= []).push(like); return result; }, {}),
-    [likes]
+    () =>
+      likeRows.reduce<Record<string, FeedLike[]>>((result, like) => {
+        (result[like.post_id] ||= []).push(like);
+        return result;
+      }, {}),
+    [likeRows]
   );
-  const postTree = useMemo(() => buildPostTree(posts), [posts]);
 
-  async function createPost(event: React.FormEvent) {
-    event.preventDefault();
-    if (!myId || !ownLink || !cleanBody || posting) return;
+  const tree = useMemo(() => buildPostTree(posts), [posts]);
 
-    setPosting(true);
+  const { roots, moreAvailable } = useMemo<{
+    roots: FeedPostNode[];
+    moreAvailable: boolean;
+  }>(() => {
+    if (mode === "rpc") {
+      const byId = new Map(tree.map((node) => [node.id, node]));
+      const ordered = rootOrder
+        .map((id) => byId.get(id))
+        .filter((node): node is FeedPostNode => Boolean(node));
+      return { roots: ordered, moreAvailable: hasMore };
+    }
+
+    /* Fallback: everything the window holds, filtered and ranked here because
+       there is no server-side reader to do it. */
+    const term = search.trim().toLowerCase();
+    let list = tree;
+    if (topic) list = list.filter((node) => node.topic === topic);
+    if (term) list = list.filter((node) => node.body.toLowerCase().includes(term));
+
+    const ranked = rankFeedPosts(list, sort, { likesByPost, myId });
+    return {
+      roots: ranked.slice(0, visibleCount),
+      moreAvailable: ranked.length > visibleCount,
+    };
+  }, [mode, tree, rootOrder, hasMore, search, topic, sort, likesByPost, myId, visibleCount]);
+
+  const filtering = Boolean(topic) || Boolean(search.trim());
+
+  /* ---------------------------------------------------------------------
+     Infinite scroll
+     --------------------------------------------------------------------- */
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !moreAvailable) return;
+
+    if (modeRef.current === "fallback") {
+      setVisibleCount((current) => current + FEED_PAGE_SIZE);
+      return;
+    }
+
+    setLoadingMore(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { showToast("Login required"); return; }
+      await loadPage(rootOrder.length, false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, moreAvailable, loadPage, rootOrder.length]);
 
-      /* Posted through the server rather than inserted straight from here,
-         because a root post now costs coins and a browser cannot be trusted to
-         debit its own wallet. The route reads the price, charges it, inserts the
-         post, and refunds if the insert fails — so there is no window where the
-         coins are gone and the post isn't there. */
-      const res = await fetch("/api/coins/feed-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ message: cleanBody }),
-      });
-      const json = await res.json();
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef(loadMore);
+  useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
 
-      if (!res.ok) {
-        showToast(json.error || "Couldn't post that.");
-        return;
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMoreRef.current();
+      },
+      /* Fires well before the sentinel is visible, so the next page is usually
+         already in place by the time the reader reaches the bottom. */
+      { rootMargin: "600px 0px" }
+    );
+
+    io.observe(node);
+    return () => io.disconnect();
+  }, [moreAvailable, loading]);
+
+  /* ---------------------------------------------------------------------
+     Writing
+     --------------------------------------------------------------------- */
+
+  const createPost = useCallback(
+    async (draft: ComposerDraft): Promise<boolean> => {
+      if (!myId || !ownLink) {
+        showToast("Set a username before posting.");
+        return false;
       }
 
-      if (json.post) setPosts((current) => upsertPost(current, json.post as FeedPost));
-      setBody("");
-      showToast(`Posted — live for 24 hours. ${FEED_POST_COST} coins charged.`);
-    } catch (error) {
-      console.error(error);
-      showToast("Network error");
-    } finally {
-      setPosting(false);
-    }
-  }
+      /* Checked before the upload rather than after: the API route refuses a
+         photo with no preview, and finding that out afterwards would leave an
+         orphan object in the bucket. */
+      if (draft.image && !draft.image.preview) {
+        showToast("Couldn't build a preview for that photo. Try a different one.");
+        return false;
+      }
 
-  /**
-   * Toggles a like.
-   *
-   * The liked/unliked decision is read from a ref rather than from inside the
-   * state updater. React doesn't promise to run an updater synchronously, so a
-   * flag assigned in there can still be false on the next line — which would
-   * send an insert for a like that already exists on every second tap. The ref
-   * is also advanced here, so a double tap resolves in the right direction
-   * instead of both taps reading the same pre-tap value.
-   */
-  const toggleLike = useCallback(async (postId: string) => {
-    if (!myId) return;
+      let imagePath: string | null = null;
 
-    const mine = (like: FeedLike) => like.post_id === postId && like.user_id === myId;
-    const wasLiked = likesRef.current.some(mine);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { showToast("Login required"); return false; }
 
-    likesRef.current = wasLiked
-      ? likesRef.current.filter((like) => !mine(like))
-      : [...likesRef.current, { post_id: postId, user_id: myId }];
+        if (draft.image) {
+          /* `<uid>/<uuid>.<ext>` — the bucket's insert policy checks the first
+             segment against auth.uid(), so the folder is the authorization. */
+          const key = `${myId}/${crypto.randomUUID()}.${draft.image.extension}`;
+          const { error: uploadError } = await supabase.storage
+            .from("feed-photos")
+            .upload(key, draft.image.upload, {
+              contentType: draft.image.contentType,
+              upsert: false,
+            });
 
-    setLikes((current) => {
-      if (wasLiked) return current.filter((like) => !mine(like));
-      return current.some(mine) ? current : [...current, { post_id: postId, user_id: myId }];
-    });
+          if (uploadError) {
+            showToast(
+              /^bucket not found$/i.test(uploadError.message)
+                ? "Photo whispers aren't set up on this server yet."
+                : uploadError.message
+            );
+            return false;
+          }
+          imagePath = key;
+        }
 
-    const result = wasLiked
-      ? await supabase.from("public_feed_likes").delete().eq("post_id", postId).eq("user_id", myId)
-      : await supabase.from("public_feed_likes").insert({ post_id: postId, user_id: myId });
+        const res = await fetch("/api/coins/feed-post", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            message: draft.body,
+            topic: draft.topic,
+            imagePath,
+            imagePreview: draft.image?.preview ?? null,
+            pollOptions: draft.poll,
+          }),
+        });
+        const json = await res.json();
 
-    if (result.error) {
-      showToast(result.error.message);
-      /* The optimistic flip has to be undone in both places or the button
-         disagrees with the server until the next mount. */
-      likesRef.current = wasLiked
-        ? [...likesRef.current, { post_id: postId, user_id: myId }]
-        : likesRef.current.filter((like) => !mine(like));
-      setLikes(likesRef.current);
-    }
-  }, [myId, showToast]);
+        if (!res.ok) {
+          showToast(json.error || "Couldn't post that.");
+          /* The route unwinds its own failures, but a rejection that never got
+             as far as charging leaves the object behind. Removing it here costs
+             one request and keeps the bucket clean. */
+          if (imagePath) {
+            await supabase.storage.from("feed-photos").remove([imagePath]);
+          }
+          return false;
+        }
+
+        if (json.post) {
+          const row = sanitize(json.post as FeedPost);
+          setPosts((current) => mergeRows(current, [row]));
+          setRootOrder((current) =>
+            current.includes(row.id) ? current : [row.id, ...current]
+          );
+          setLikeCount((current) => ({ ...current, [row.id]: 0 }));
+        }
+
+        vibrate(HAPTIC.success);
+        showToast(`Posted — live for 24 hours. ${FEED_POST_COST} coins charged.`);
+        return true;
+      } catch (error) {
+        console.error(error);
+        showToast("Network error");
+        if (imagePath) {
+          await supabase.storage.from("feed-photos").remove([imagePath]);
+        }
+        return false;
+      }
+    },
+    [myId, ownLink, showToast]
+  );
+
+  const sendReply = useCallback(
+    async (postId: string) => {
+      const text = (replyTextMap[postId] || "").trim();
+      if (!text) { showToast("Write a reply first"); return; }
+
+      setReplySendingMap((map) => ({ ...map, [postId]: true }));
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { showToast("Login required"); return; }
+
+        const res = await fetch("/api/coins/feed-post", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ message: text, parentPostId: postId }),
+        });
+        const json = await res.json();
+
+        if (!res.ok) {
+          showToast(json.error || "Failed to send reply");
+          return;
+        }
+
+        showToast("Reply posted.");
+        if (json.post) {
+          const row = sanitize(json.post as FeedPost);
+          setPosts((current) => mergeRows(current, [row]));
+          /* Nothing else on screen knows this reply exists yet, so the parent's
+             own count moves with it — the tree is the source once open. */
+          threadsLoaded.current.add(postId);
+        }
+        setReplyTextMap((map) => ({ ...map, [postId]: "" }));
+        setReplyOpen((map) => ({ ...map, [postId]: false }));
+        setExpandedThreads((map) => ({ ...map, [postId]: true }));
+      } catch (error) {
+        console.error(error);
+        showToast("Network error");
+      } finally {
+        setReplySendingMap((map) => ({ ...map, [postId]: false }));
+      }
+    },
+    [replyTextMap, showToast]
+  );
+
+  /* Held in a ref so `requestSend` keeps a stable identity: `sendReply` is a
+     fresh closure whenever the draft changes, and putting it in the controller's
+     dependency list would re-render every post in the feed on every keystroke. */
+  const sendReplyRef = useRef(sendReply);
+  useEffect(() => { sendReplyRef.current = sendReply; }, [sendReply]);
+
+  const requestSend = useCallback((postId: string) => {
+    void sendReplyRef.current(postId);
+  }, []);
 
   async function deletePost(postId: string) {
-    const { error } = await supabase.from("public_feed_posts").delete().eq("id", postId).eq("author_id", myId);
-    if (error) showToast(error.message);
-    else setPosts((current) => current.filter((post) => post.id !== postId));
+    const { error } = await supabase
+      .from("public_feed_posts")
+      .delete()
+      .eq("id", postId)
+      .eq("author_id", myId);
+
+    if (error) {
+      showToast(error.message);
+    } else {
+      const removed = postsRef.current.find((post) => post.id === postId);
+      setPosts((current) => current.filter((post) => post.id !== postId));
+      setRootOrder((current) => current.filter((id) => id !== postId));
+      /* A deleted reply has to come off its parent's count, or the tab keeps
+         advertising a reply that isn't there. */
+      if (removed?.parent_post_id) {
+        const parentId = removed.parent_post_id;
+        setPosts((current) =>
+          current.map((post) =>
+            post.id === parentId
+              ? { ...post, reply_count: Math.max(0, (post.reply_count ?? 1) - 1) }
+              : post
+          )
+        );
+      }
+    }
     setDeleteTarget(null);
   }
 
-  async function sendReply(postId: string) {
-    const text = (replyTextMap[postId] || "").trim();
-    if (!text) { showToast("Write a reply first"); return; }
+  /* ---------------------------------------------------------------------
+     Engagement
+     --------------------------------------------------------------------- */
 
-    setReplySendingMap((map) => ({ ...map, [postId]: true }));
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { showToast("Login required"); return; }
+  const toggleLike = useCallback(
+    async (postId: string) => {
+      if (!myId) return;
 
-      const res = await fetch("/api/coins/feed-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ message: text, parentPostId: postId }),
-      });
-      const json = await res.json();
+      const wasLiked = Boolean(likedRef.current[postId]);
+      likedRef.current = { ...likedRef.current, [postId]: !wasLiked };
+      setLiked(likedRef.current);
+      setLikeCount((current) => ({
+        ...current,
+        [postId]: Math.max(0, (current[postId] ?? 0) + (wasLiked ? -1 : 1)),
+      }));
+      setLikeRows((current) =>
+        wasLiked
+          ? current.filter((row) => !(row.post_id === postId && row.user_id === myId))
+          : [...current, { post_id: postId, user_id: myId }]
+      );
+      vibrate(HAPTIC.tap);
 
-      if (!res.ok) {
-        showToast(json.error || "Failed to send reply");
-      } else {
-        showToast("Reply posted.");
-        if (json.post) setPosts((current) => upsertPost(current, json.post as FeedPost));
-        setReplyTextMap((map) => ({ ...map, [postId]: "" }));
-        setReplyOpen((map) => ({ ...map, [postId]: false }));
-        // Make sure the new reply is visible even on a long thread.
-        setExpandedThreads((map) => ({ ...map, [postId]: true }));
+      const result = wasLiked
+        ? await supabase.from("public_feed_likes").delete().eq("post_id", postId).eq("user_id", myId)
+        : await supabase.from("public_feed_likes").insert({ post_id: postId, user_id: myId });
+
+      if (result.error) {
+        showToast(result.error.message);
+        // Undo in both places, or the button disagrees with the server until reload.
+        likedRef.current = { ...likedRef.current, [postId]: wasLiked };
+        setLiked(likedRef.current);
+        setLikeCount((current) => ({
+          ...current,
+          [postId]: Math.max(0, (current[postId] ?? 0) + (wasLiked ? 1 : -1)),
+        }));
+        setLikeRows((current) =>
+          wasLiked
+            ? [...current, { post_id: postId, user_id: myId }]
+            : current.filter((row) => !(row.post_id === postId && row.user_id === myId))
+        );
       }
-    } catch (error) {
-      console.error(error);
-      showToast("Network error");
-    } finally {
-      setReplySendingMap((map) => ({ ...map, [postId]: false }));
-    }
-  }
-
-  /**
-   * Shares a post outward. The author's Whisper link is what makes the share
-   * actionable — a quote with no way to answer it is just a screenshot.
-   */
-  const sharePost = useCallback(async (postId: string, postBody: string, whisperLink: string) => {
-    const url = whisperLink ? `${window.location.origin}${whisperLink}` : window.location.href;
-    const text = `"${postBody}" — on Whisper 👻`;
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Whisper", text, url });
-        return;
-      } catch {
-        // Cancelled by the user, or unsupported for this payload — fall through.
-      }
-    }
-
-    try {
-      await navigator.clipboard.writeText(`${text}\n${url}`);
-      showToast("Copied to your clipboard.");
-    } catch {
-      showToast("Couldn't share this post.");
-    }
-  }, [showToast]);
+    },
+    [myId, showToast]
+  );
 
   const toggleReplyBox = useCallback((postId: string) => {
     setReplyOpen((map) => ({ ...map, [postId]: !map[postId] }));
@@ -450,46 +874,338 @@ export default function PublicFeedPage() {
     setReplyTextMap((map) => ({ ...map, [postId]: value }));
   }, []);
 
-  const toggleThread = useCallback((postId: string) => {
-    setExpandedThreads((map) => ({ ...map, [postId]: !map[postId] }));
+  const toggleThread = useCallback(async (postId: string) => {
+    const willOpen = !expandedRef.current[postId];
+    expandedRef.current = { ...expandedRef.current, [postId]: willOpen };
+    setExpandedThreads(expandedRef.current);
+
+    if (!willOpen) return;
+    // The fallback path already holds the whole window, replies included.
+    if (modeRef.current === "fallback") return;
+    if (threadsLoaded.current.has(postId)) return;
+
+    setThreadLoading((map) => ({ ...map, [postId]: true }));
+    const rows = await fetchThread(postId);
+    if (rows) {
+      threadsLoaded.current.add(postId);
+      const clean = rows.map(sanitize);
+      setPosts((current) => mergeRows(current, clean));
+      seedLikes(clean);
+    }
+    setThreadLoading((map) => ({ ...map, [postId]: false }));
+  }, [seedLikes]);
+
+  /**
+   * Casts or changes a poll vote.
+   *
+   * Not optimistic, on purpose. The choice is knowable locally but the tallies
+   * are not, and rendering a bar chart from a guessed total would put a number on
+   * screen that nobody wrote. The pending state is the instant feedback; the real
+   * counts arrive with the response.
+   */
+  const vote = useCallback(
+    async (postId: string, optionIndex: number) => {
+      if (pollPendingRef.current[postId]) return;
+
+      pollPendingRef.current = { ...pollPendingRef.current, [postId]: true };
+      setPollPending(pollPendingRef.current);
+      vibrate(HAPTIC.tap);
+
+      const result = await votePoll(postId, optionIndex);
+
+      if ("error" in result) {
+        showToast(result.error);
+      } else {
+        setPollCounts((current) => ({ ...current, [postId]: result.counts }));
+        setPollChoice((current) => ({ ...current, [postId]: optionIndex }));
+      }
+
+      pollPendingRef.current = { ...pollPendingRef.current, [postId]: false };
+      setPollPending(pollPendingRef.current);
+    },
+    [showToast]
+  );
+
+  /**
+   * Spends this viewer's one look at a photo whisper.
+   *
+   * The state only ever moves forward — a failed request drops back to locked so
+   * the tap can be retried, but a served photo is marked spent immediately,
+   * because the receipt on the server has already been written by then.
+   */
+  const openImage = useCallback(
+    async (postId: string) => {
+      if (imageStateRef.current[postId] === "loading") return;
+
+      const post = postsRef.current.find((item) => item.id === postId);
+      const isAuthor = Boolean(post && post.author_id === myIdRef.current);
+      const current = imageStateRef.current[postId] ?? (post?.viewer_image_viewed ? "spent" : "locked");
+      if (!isAuthor && (current === "spent" || current === "unavailable")) return;
+
+      const set = (state: FeedImageState) => {
+        imageStateRef.current = { ...imageStateRef.current, [postId]: state };
+        setImageState(imageStateRef.current);
+      };
+
+      set("loading");
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { showToast("Login required"); set("locked"); return; }
+
+        const res = await fetch("/api/feed/photo", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ postId }),
+        });
+
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({} as { error?: string }));
+          showToast(json.error || "Couldn't open that photo.");
+          set(res.status === 410 ? "spent" : res.status === 404 ? "unavailable" : "locked");
+          return;
+        }
+
+        const blob = await res.blob();
+        setPhotoUrl(URL.createObjectURL(blob));
+        /* Authors are exempt from the receipt server-side, so their plate goes
+           back to openable rather than spent. */
+        set(isAuthor ? "locked" : "spent");
+        vibrate(HAPTIC.tap);
+      } catch (error) {
+        console.error(error);
+        showToast("Network error");
+        set("locked");
+      }
+    },
+    [showToast]
+  );
+
+  const closePhoto = useCallback(() => {
+    setPhotoUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
   }, []);
 
-  /* Held in a ref so `requestSend` can keep a stable identity. `sendReply` is a
-     fresh closure every render, and putting it in the dependency list would
-     rebuild `controller` below on every render — which re-renders every post in
-     the feed. The ref always points at the current closure, so nothing goes
-     stale. */
-  const sendReplyRef = useRef(sendReply);
-  /* The empty state's call to action points back at the composer on this same
-     screen, so it focuses the real field rather than navigating anywhere. */
-  const composerRef = useRef<HTMLTextAreaElement>(null);
-  sendReplyRef.current = sendReply;
+  // A blob URL held across a navigation is a leaked decoded bitmap.
+  useEffect(() => {
+    return () => { if (photoUrl) URL.revokeObjectURL(photoUrl); };
+  }, [photoUrl]);
 
-  /* Straight to send: replies are free, so there is no cost to confirm. */
-  const requestSend = useCallback((postId: string) => {
-    void sendReplyRef.current(postId);
+  /* ---------------------------------------------------------------------
+     Discovery
+     --------------------------------------------------------------------- */
+
+  const scrollToPost = useCallback((postId: string) => {
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-post-id="${postId}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   }, []);
+
+  /**
+   * Brings one post into the timeline and puts the reader on it.
+   *
+   * Shared by the `?post=` deep link, Whisper of the Day and Surprise Me. A
+   * shared link can point at a reply, so this walks up to the root — a reply
+   * rendered as a root is exactly the orphaned, contextless card `buildPostTree`
+   * exists to prevent — then loads that root's thread so the target has its
+   * siblings around it.
+   */
+  const focusPost = useCallback(
+    async (postId: string, preloaded?: FeedPost) => {
+      const first = preloaded ? sanitize(preloaded) : await fetchPostById(postId);
+      if (!first) {
+        showToast("That whisper is no longer available.");
+        return;
+      }
+
+      const chain: FeedPost[] = [sanitize(first)];
+      let hops = 0;
+      while (chain[0].parent_post_id && hops < 6) {
+        const parent = await fetchPostById(chain[0].parent_post_id);
+        if (!parent) break;
+        chain.unshift(sanitize(parent));
+        hops += 1;
+      }
+
+      const root = chain[0];
+      setPosts((current) => mergeRows(current, chain));
+      setRootOrder((current) => (current.includes(root.id) ? current : [root.id, ...current]));
+      seedLikes(chain);
+
+      if (root.id !== postId) {
+        const thread = await fetchThread(root.id);
+        if (thread) {
+          const clean = thread.map(sanitize);
+          threadsLoaded.current.add(root.id);
+          setPosts((current) => mergeRows(current, clean));
+          seedLikes(clean);
+        }
+        expandedRef.current = { ...expandedRef.current, [root.id]: true };
+        setExpandedThreads(expandedRef.current);
+      }
+
+      setHighlight(postId);
+      scrollToPost(postId);
+    },
+    [scrollToPost, seedLikes, showToast]
+  );
+
+  // A shared link. Read from `location` rather than `useSearchParams` so this
+  // page needs no Suspense boundary to prerender.
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (!ready || deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+
+    const target = new URLSearchParams(window.location.search).get("post");
+    if (target) void focusPost(target);
+  }, [ready, focusPost]);
+
+  const surprise = useCallback(async () => {
+    setSurprising(true);
+    try {
+      let row = await fetchRandomPost(seenRandom.current);
+      /* Seen everything. Clearing the exclusion list is the difference between
+         "Surprise Me" going dead and it starting a second lap. */
+      if (!row && seenRandom.current.length) {
+        seenRandom.current = [];
+        row = await fetchRandomPost([]);
+      }
+
+      if (!row) {
+        showToast("Nothing new to surprise you with yet.");
+        return;
+      }
+
+      seenRandom.current = [...seenRandom.current, row.id];
+      await focusPost(row.id, row);
+    } finally {
+      setSurprising(false);
+    }
+  }, [focusPost, showToast]);
+
+  const answerDailyQuestion = useCallback(() => {
+    setPrefillBody(`${dailyQuestion}\n\n`);
+    setPrefillNonce((nonce) => nonce + 1);
+  }, [dailyQuestion]);
+
+  const focusComposer = useCallback(() => {
+    setPrefillBody("");
+    setPrefillNonce((nonce) => nonce + 1);
+  }, []);
+
+  /* ---------------------------------------------------------------------
+     Sheets
+     --------------------------------------------------------------------- */
+
+  const copyLink = useCallback(
+    async (post: FeedPost) => {
+      try {
+        await navigator.clipboard.writeText(feedPostUrl(post.id));
+        showToast("Link copied to your clipboard.");
+      } catch {
+        showToast("Couldn't copy that link.");
+      }
+    },
+    [showToast]
+  );
+
+  const submitReport = useCallback(
+    async (post: FeedPost, reason: ReportReason, details: string) => {
+      setReporting(true);
+      const result = await reportPost(post.id, myId, reason, details);
+      setReporting(false);
+
+      if (!result.ok) {
+        showToast(result.error);
+        return;
+      }
+      setReportTarget(null);
+      showToast("Thanks — a moderator will look at this.");
+    },
+    [myId, showToast]
+  );
+
+  const block = useCallback(
+    async (post: FeedPost) => {
+      const result = await blockAuthor(post.author_id, myId);
+      if (!result.ok) {
+        showToast(result.error);
+        return;
+      }
+      /* Their posts come out of the timeline immediately. The server filter will
+         agree on the next load; waiting for it would leave the person you just
+         blocked on screen. */
+      const authorId = post.author_id;
+      setPosts((current) => current.filter((item) => item.author_id !== authorId));
+      setRootOrder((current) => {
+        const gone = new Set(
+          postsRef.current.filter((item) => item.author_id === authorId).map((item) => item.id)
+        );
+        return current.filter((id) => !gone.has(id));
+      });
+      showToast("Blocked. You won't see their whispers again.");
+    },
+    [myId, showToast]
+  );
+
   const requestDelete = useCallback((postId: string) => setDeleteTarget(postId), []);
+  const openMenu = useCallback((post: FeedPost) => setMenuPost(post), []);
+  const openShare = useCallback((post: FeedPost) => setSharePost(post), []);
 
-  const controller: FeedController = useMemo(() => ({
-    myId,
-    replyCost: FEED_REPLY_COST,
-    likesByPost,
-    replyOpen,
-    replyText: replyTextMap,
-    replySending: replySendingMap,
-    expanded: expandedThreads,
-    onToggleLike: toggleLike,
-    onToggleReplyBox: toggleReplyBox,
-    onReplyTextChange: setReplyText,
-    onRequestSend: requestSend,
-    onToggleThread: toggleThread,
-    onRequestDelete: requestDelete,
-    onShare: sharePost,
-  }), [
-    myId, likesByPost, replyOpen, replyTextMap, replySendingMap, expandedThreads,
-    toggleLike, toggleReplyBox, setReplyText, requestSend, toggleThread, requestDelete, sharePost,
-  ]);
+  const refreshFeed = useCallback(async () => {
+    vibrate(HAPTIC.tap);
+    setPendingNew([]);
+    setLoading(true);
+    await loadPage(0, true);
+    setLoading(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [loadPage]);
+
+  /* ---------------------------------------------------------------------
+     The controller
+     --------------------------------------------------------------------- */
+
+  const controller: FeedController = useMemo(
+    () => ({
+      myId,
+      replyCost: FEED_REPLY_COST,
+      reducedMotion,
+      likeCount,
+      liked,
+      replyOpen,
+      replyText: replyTextMap,
+      replySending: replySendingMap,
+      expanded: expandedThreads,
+      threadLoading,
+      pollCounts,
+      pollChoice,
+      pollPending,
+      imageState,
+      onToggleLike: toggleLike,
+      onToggleReplyBox: toggleReplyBox,
+      onReplyTextChange: setReplyText,
+      onRequestSend: requestSend,
+      onToggleThread: toggleThread,
+      onRequestDelete: requestDelete,
+      onShare: openShare,
+      onVote: vote,
+      onOpenImage: openImage,
+      onOpenMenu: openMenu,
+    }),
+    [
+      myId, reducedMotion, likeCount, liked, replyOpen, replyTextMap, replySendingMap,
+      expandedThreads, threadLoading, pollCounts, pollChoice, pollPending, imageState,
+      toggleLike, toggleReplyBox, setReplyText, requestSend, toggleThread, requestDelete,
+      openShare, vote, openImage, openMenu,
+    ]
+  );
 
   return (
     <main className="min-h-screen theme-bg-gradient px-4 pb-28 pt-10">
@@ -498,122 +1214,145 @@ export default function PublicFeedPage() {
 
         <div className="mb-7 mt-5">
           <h1 className="page-title">Public Feed</h1>
-          <p className="page-subtitle mt-1">Real thoughts from the Whisper community. Posts clear after 24 hours.</p>
+          <p className="page-subtitle mt-1">
+            Real thoughts from the Whisper community. Posts clear after 24 hours.
+          </p>
         </div>
 
-        <GlassPanel strong className="mb-6 rounded-3xl p-5">
-          <form onSubmit={createPost}>
-            <textarea
-              ref={composerRef}
-              {...PROSE_INPUT_PROPS}
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              maxLength={500}
-              rows={3}
-              placeholder="Share a thought with the Whisper community..."
-              className="w-full resize-none bg-transparent text-sm outline-none"
-              style={{ color: "var(--theme-text)" }}
-            />
+        <FeedDiscovery
+          question={dailyQuestion}
+          spotlight={spotlight}
+          surprising={surprising}
+          onAnswerQuestion={answerDailyQuestion}
+          onOpenSpotlight={(post) => void focusPost(post.id, post)}
+          onSurprise={() => void surprise()}
+          reducedMotion={reducedMotion}
+        />
 
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setBody(SUGGESTED_POST)}
-                className="glass-control min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs transition"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                <span className="theme-accent-text font-bold">Suggestion:</span> {SUGGESTED_POST}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAiSuggestions((visible) => !visible)}
-                className="glass-control flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold transition"
-                style={{ color: "var(--theme-accent-pink)" }}
-                aria-expanded={showAiSuggestions}
-              >
-                <Sparkles size={14} /> AI Write
-              </button>
-            </div>
+        <FeedComposer
+          ownLink={ownLink}
+          postCost={FEED_POST_COST}
+          prefillNonce={prefillNonce}
+          prefillBody={prefillBody}
+          prefillTopic="question"
+          onSubmit={createPost}
+        />
 
-            {showAiSuggestions && (
-              <div className="glass-control mt-3 grid gap-2 rounded-2xl p-2">
-                {AI_SUGGESTIONS.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => { setBody(suggestion); setShowAiSuggestions(false); }}
-                    className="glass-control rounded-xl px-3 py-2 text-left text-xs leading-5 transition"
-                    style={{ color: "var(--theme-text-secondary)" }}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            )}
+        <FeedTabs
+          sort={sort}
+          topic={topic}
+          onSortChange={setSort}
+          onTopicChange={setTopic}
+          reducedMotion={reducedMotion}
+          showTopics={mode !== "fallback"}
+        />
 
-            <div
-              className="mt-3 flex items-center justify-between gap-3 border-t pt-3"
-              style={{ borderColor: "var(--theme-border)" }}
-            >
-              <div className="min-w-0 text-xs theme-text-muted">
-                <span className="block">Your Whisper link will be attached automatically.</span>
-                {ownLink && <Link href={ownLink} className="theme-accent-text truncate">whisper.app{ownLink}</Link>}
-              </div>
-              <button
-                type="submit"
-                disabled={!cleanBody || posting || !ownLink}
-                className="premium-button premium-button-primary flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black disabled:opacity-50"
-              >
-                <Send size={15} />
-                {/* The price is on the control that spends it. A cost that only
-                    appears in the toast afterwards reads as a charge you weren't
-                    told about, however small it is. */}
-                {posting ? "Posting" : `Post · ${FEED_POST_COST}`}
-                {!posting && <WhisperCoinIcon size={14} />}
-              </button>
-            </div>
-          </form>
-        </GlassPanel>
+        <FeedSearchBar value={search} onSearch={setSearch} />
 
         {/* One surface, hairline-separated rows — the timeline is a column of
             text, not a stack of cards. See the `.feed-post` note in globals. */}
-        <section aria-label="Public feed timeline">
+        <section aria-label="Public feed timeline" aria-busy={loading}>
           {loading ? (
             <FeedSkeleton />
-          ) : postTree.length === 0 ? (
+          ) : roots.length === 0 ? (
             <GlassPanel className="rounded-3xl">
-              <EmptyState
-                icon={<MessageSquareDashed size={26} />}
-                title="The feed is quiet"
-                description="Posts here disappear after 24 hours, so there is nothing to catch up on yet. Say the first thing."
-                action={{
-                  label: "Write a post",
-                  onClick: () => {
-                    composerRef.current?.focus();
-                    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  },
-                }}
-              />
+              {filtering ? (
+                <EmptyState
+                  icon={<SearchX size={26} />}
+                  title="Nothing matches"
+                  description="No live whisper fits that filter. The feed only holds the last 24 hours, so there is less here than you might expect."
+                  action={{
+                    label: "Clear filters",
+                    onClick: () => {
+                      setTopic(null);
+                      setSearch("");
+                    },
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  icon={<MessageSquareDashed size={26} />}
+                  title="The feed is quiet"
+                  description="Posts here disappear after 24 hours, so there is nothing to catch up on yet. Say the first thing."
+                  action={{ label: "Write a post", onClick: focusComposer }}
+                />
+              )}
             </GlassPanel>
           ) : (
-            postTree.map((post) => (
-              <FeedPostCard
-                key={post.id}
-                node={post}
-                controller={controller}
-                depth={0}
-                impressionRef={impressionRef}
-              />
-            ))
+            <>
+              {roots.map((post) => (
+                <FeedPostCard
+                  key={post.id}
+                  node={post}
+                  controller={controller}
+                  depth={0}
+                  impressionRef={impressionRef}
+                  highlighted={highlight === post.id}
+                />
+              ))}
+
+              {moreAvailable ? (
+                <div ref={sentinelRef} className="feed-sentinel">
+                  <FeedSkeleton rows={1} />
+                </div>
+              ) : (
+                <p className="feed-end">You&apos;re all caught up.</p>
+              )}
+            </>
           )}
         </section>
       </div>
 
-      {/* No reply confirmation any more. A dialog earns its place when an action
-          spends money or destroys something; a free reply does neither, and
-          asking twice made replying feel heavier than posting. The delete dialog
-          below stays, because that one is irreversible. */}
+      {/* Announced rather than injected: a post that jumped into a ranked feed
+          would reorder the list under the reader's thumb. */}
+      <AnimatePresence>
+        {pendingNew.length > 0 && !loading && (
+          <motion.button
+            type="button"
+            onClick={() => void refreshFeed()}
+            initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
+            animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
+            transition={{ type: "spring", stiffness: 420, damping: 34 }}
+            className="feed-new-pill"
+          >
+            <ArrowUp size={14} aria-hidden />
+            {pendingNew.length === 1 ? "1 new whisper" : `${pendingNew.length} new whispers`}
+          </motion.button>
+        )}
+      </AnimatePresence>
 
+      <FeedPostMenu
+        post={menuPost}
+        isMine={Boolean(menuPost && menuPost.author_id === myId)}
+        onClose={() => setMenuPost(null)}
+        onCopyLink={(post) => void copyLink(post)}
+        onShare={openShare}
+        onReport={setReportTarget}
+        onBlock={(post) => void block(post)}
+        onDelete={(post) => requestDelete(post.id)}
+      />
+
+      <FeedShareSheet
+        post={sharePost}
+        onClose={() => setSharePost(null)}
+        onCopy={(post) => void copyLink(post)}
+      />
+
+      <FeedReportSheet
+        post={reportTarget}
+        submitting={reporting}
+        onClose={() => setReportTarget(null)}
+        onSubmit={(post, reason, details) => void submitReport(post, reason, details)}
+      />
+
+      <AnimatePresence>
+        {photoUrl && <FeedPhotoViewer src={photoUrl} onClose={closePhoto} />}
+      </AnimatePresence>
+
+      {/* No reply confirmation: a dialog earns its place when an action spends
+          money or destroys something, and a free reply does neither. Delete keeps
+          one, because that is irreversible. */}
       {deleteTarget && (
         <ConfirmDialog
           title="Delete this post?"
@@ -625,24 +1364,5 @@ export default function PublicFeedPage() {
 
       <BottomNavigation />
     </main>
-  );
-}
-
-/** Row-shaped placeholders, so the timeline doesn't reflow when posts land. */
-function FeedSkeleton() {
-  return (
-    <div aria-hidden>
-      {[0, 1, 2].map((row) => (
-        <div key={row} className="feed-post flex gap-3">
-          <div className="skeleton h-[42px] w-[42px] shrink-0 rounded-full" />
-          <div className="min-w-0 flex-1 space-y-2 pt-1">
-            <div className="skeleton h-3 w-32 rounded-full" />
-            <div className="skeleton h-3 w-full rounded-full" />
-            <div className="skeleton h-3 w-4/5 rounded-full" />
-            <div className="skeleton mt-3 h-8 w-full rounded-2xl" />
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }

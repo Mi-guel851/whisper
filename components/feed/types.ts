@@ -37,6 +37,11 @@ export type FeedImageState = "locked" | "loading" | "spent" | "unavailable";
 export type FeedController = {
   myId: string;
   replyCost: number;
+  /**
+   * Resolved once by the page and carried down rather than read per card.
+   * `useReducedMotion` in forty cards is forty subscriptions to one media query.
+   */
+  reducedMotion: boolean;
 
   /** Authoritative like totals, server-counted on the RPC path. */
   likeCount: Record<string, number>;
@@ -54,6 +59,8 @@ export type FeedController = {
   pollCounts: Record<string, number[]>;
   /** This viewer's chosen option, 0-based. */
   pollChoice: Record<string, number>;
+  /** A vote in flight, so the options can't be double-tapped into a race. */
+  pollPending: Record<string, boolean>;
 
   /** Only holds posts whose state has changed since load; see `FeedImageState`. */
   imageState: Record<string, FeedImageState>;

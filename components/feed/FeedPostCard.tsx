@@ -2,11 +2,20 @@
 
 import { memo } from "react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { useAnonNames } from "@/lib/anonNames";
-import { compactCount, countDescendants, timeAgo, type FeedPostNode } from "@/lib/feed";
+import {
+  compactCount,
+  countDescendants,
+  timeAgo,
+  topicMeta,
+  type FeedPostNode,
+} from "@/lib/feed";
 import FeedAvatar from "./FeedAvatar";
 import FeedActionBar from "./FeedActionBar";
 import FeedReplyComposer from "./FeedReplyComposer";
+import FeedImageWhisper from "./FeedImageWhisper";
+import FeedPoll from "./FeedPoll";
 import type { FeedController } from "./types";
 
 /**
@@ -28,6 +37,17 @@ import type { FeedController } from "./types";
  * everything under them — rather than a two-line preview with a second
  * "show more" control behind it. A feed of root posts is scannable; a feed
  * where every post has already unpacked its replies is not.
+ *
+ * WHERE THE REPLY COUNT COMES FROM
+ *
+ * Two sources, and which one is right depends on whether the thread is loaded.
+ * On the RPC path a root post arrives with `reply_count` and no children at all
+ * — its replies are one `public_feed_thread` call away — so the server count is
+ * the only count there is. Once those children are in hand, `countDescendants`
+ * becomes the more current number: it sees the optimistic reply that was added a
+ * frame ago and the server count does not. Hence the switch on `children.length`
+ * rather than a `Math.max`, which would keep showing a stale server total after
+ * a reply is deleted.
  */
 
 const AVATAR_ROOT = 42;
@@ -47,6 +67,8 @@ type FeedPostCardProps = {
    * read a conversation the user already asked to see.
    */
   threadOpen?: boolean;
+  /** Highlight pulse for a post arrived at from a `?post=` share link. */
+  highlighted?: boolean;
 };
 
 function FeedPostCardBase({
@@ -56,30 +78,46 @@ function FeedPostCardBase({
   parentAuthorId,
   impressionRef,
   threadOpen = false,
+  highlighted = false,
 }: FeedPostCardProps) {
   const isRoot = depth === 0;
+  const isMine = node.author_id === controller.myId;
   /* Two ids per card, but requests inside the same commit coalesce into one
      query — so a whole thread costs one round trip, not one per post. */
   const nameOf = useAnonNames([node.author_id, parentAuthorId]);
-  const likes = controller.likesByPost[node.id] || [];
-  const liked = likes.some((like) => like.user_id === controller.myId);
-  const replyCount = countDescendants(node);
-  const isReplyOpen = Boolean(controller.replyOpen[node.id]);
+
+  const likeCount = controller.likeCount[node.id] ?? node.like_count ?? 0;
+  const liked = controller.liked[node.id] ?? node.viewer_liked ?? false;
 
   const children = node.children;
+  const replyCount = children.length > 0 ? countDescendants(node) : node.reply_count ?? 0;
+  const isReplyOpen = Boolean(controller.replyOpen[node.id]);
   const isExpanded = threadOpen || Boolean(controller.expanded[node.id]);
+  const isThreadLoading = Boolean(controller.threadLoading[node.id]);
   const visibleChildren = isExpanded ? children : [];
 
+  const topic = isRoot ? topicMeta(node.topic) : null;
+
+  const pollOptions = node.poll_options;
+  const pollCounts = controller.pollCounts[node.id] ?? node.poll_counts ?? [];
+  const pollChoice = controller.pollChoice[node.id] ?? node.viewer_vote ?? null;
+
+  const imageState =
+    controller.imageState[node.id] ?? (node.viewer_image_viewed ? "spent" : "locked");
+
   /* The rail is drawn whenever something renders below this post in the same
-     column — a reply, or the composer that will become one. */
-  const hasRail = visibleChildren.length > 0 || isReplyOpen;
+     column — a reply, the composer that will become one, or the spinner that
+     precedes them. */
+  const hasRail = visibleChildren.length > 0 || isReplyOpen || isThreadLoading;
 
   return (
     <article
       ref={isRoot ? impressionRef : undefined}
       data-post-id={node.id}
       data-author-id={node.author_id}
-      className={isRoot ? "feed-post" : "feed-post feed-post-reply"}
+      className={`${isRoot ? "feed-post" : "feed-post feed-post-reply"}${
+        highlighted ? " is-highlighted" : ""
+      }`}
     >
       <div className="flex gap-3">
         <div className="relative flex shrink-0 flex-col items-center">
@@ -88,7 +126,7 @@ function FeedPostCardBase({
         </div>
 
         <div className="min-w-0 flex-1 pb-0.5">
-          <div className="flex items-baseline gap-1.5 text-[15px] leading-tight">
+          <div className="feed-post-head">
             <span className="feed-author truncate font-black">
               {nameOf(node.author_id)}
             </span>
@@ -100,6 +138,12 @@ function FeedPostCardBase({
             >
               {timeAgo(node.created_at)}
             </time>
+            {topic && (
+              <span className="feed-topic-tag">
+                <span aria-hidden>{topic.emoji}</span>
+                {topic.label}
+              </span>
+            )}
           </div>
 
           {/* X's orientation line for a reply that's been lifted out of its
@@ -122,6 +166,26 @@ function FeedPostCardBase({
             {node.body}
           </p>
 
+          {node.has_image && (
+            <FeedImageWhisper
+              preview={node.image_preview ?? null}
+              state={imageState}
+              isAuthor={isMine}
+              onOpen={() => controller.onOpenImage(node.id)}
+            />
+          )}
+
+          {pollOptions && pollOptions.length >= 2 && (
+            <FeedPoll
+              options={pollOptions}
+              counts={pollCounts}
+              choice={pollChoice}
+              pending={Boolean(controller.pollPending[node.id])}
+              onVote={(optionIndex) => controller.onVote(node.id, optionIndex)}
+              reducedMotion={controller.reducedMotion}
+            />
+          )}
+
           {/* Only root posts carry the author's Whisper link. Repeating it on
               every reply would turn a thread into a wall of identical CTAs. */}
           {isRoot && node.whisper_link && (
@@ -132,24 +196,26 @@ function FeedPostCardBase({
 
           <FeedActionBar
             replyCount={replyCount}
-            likeCount={likes.length}
+            likeCount={likeCount}
             viewCount={node.view_count ?? 0}
             liked={liked}
             replyOpen={isReplyOpen}
             threadOpen={isExpanded}
-            canDelete={node.author_id === controller.myId}
             onReply={() => controller.onToggleReplyBox(node.id)}
             onToggleThread={
-              /* Only meaningful when this post owns replies, and never on a
-                 post whose thread was opened from above — collapsing a branch
-                 inside an open conversation would strand the rail. */
-              children.length > 0 && !threadOpen
+              /* Gated on the count rather than on loaded children: on the RPC
+                 path a post with replies has none of them in hand yet, and
+                 gating on `children.length` would make its thread unopenable.
+                 Never offered on a post whose thread was opened from above —
+                 collapsing a branch inside an open conversation would strand
+                 the rail. */
+              replyCount > 0 && !threadOpen
                 ? () => controller.onToggleThread(node.id)
                 : undefined
             }
             onLike={() => controller.onToggleLike(node.id)}
-            onShare={() => controller.onShare(node.id, node.body, node.whisper_link)}
-            onDelete={() => controller.onRequestDelete(node.id)}
+            onShare={() => controller.onShare(node)}
+            onMore={() => controller.onOpenMenu(node)}
           />
 
           {isReplyOpen && (
@@ -164,6 +230,15 @@ function FeedPostCardBase({
           )}
         </div>
       </div>
+
+      {/* Fetching a thread is a round trip, and on a slow connection the tap
+          would otherwise look ignored. */}
+      {isThreadLoading && visibleChildren.length === 0 && (
+        <div className="feed-thread-loading">
+          <Loader2 size={14} className="animate-spin" aria-hidden />
+          Loading {replyCount === 1 ? "reply" : "replies"}
+        </div>
+      )}
 
       {visibleChildren.length > 0 && (
         /* Indent once, then never again — see the note at the top of the file. */

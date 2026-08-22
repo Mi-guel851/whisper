@@ -29,6 +29,13 @@ type FeedTabsProps = {
   onTopicChange: (topic: string | null) => void;
   /** Suppresses the layout animation for `prefers-reduced-motion`. */
   reducedMotion: boolean;
+  /**
+   * False on a database without the premium feed migration. The topic column
+   * ships with it, so there is nothing to filter on there — and eight chips that
+   * always return an empty feed are worse than no chips. The sorts stay, because
+   * `rankFeedPosts` can still order the rows it has.
+   */
+  showTopics?: boolean;
 };
 
 function FeedTabsBase({
@@ -37,6 +44,7 @@ function FeedTabsBase({
   onSortChange,
   onTopicChange,
   reducedMotion,
+  showTopics = true,
 }: FeedTabsProps) {
   return (
     <div className="feed-tabs-wrap">
@@ -76,43 +84,45 @@ function FeedTabsBase({
 
       {/* `overscroll-behavior-x: contain` on the class stops a horizontal flick
           here from becoming a browser back-navigation on Android. */}
-      <div className="feed-topics" role="group" aria-label="Filter by topic">
-        <button
-          type="button"
-          aria-pressed={topic === null}
-          onClick={() => {
-            vibrate(HAPTIC.tap);
-            onTopicChange(null);
-          }}
-          className={`feed-topic-chip ${topic === null ? "is-active" : ""}`}
-        >
-          All
-        </button>
+      {showTopics && (
+        <div className="feed-topics" role="group" aria-label="Filter by topic">
+          <button
+            type="button"
+            aria-pressed={topic === null}
+            onClick={() => {
+              vibrate(HAPTIC.tap);
+              onTopicChange(null);
+            }}
+            className={`feed-topic-chip ${topic === null ? "is-active" : ""}`}
+          >
+            All
+          </button>
 
-        {FEED_TOPICS.map((entry) => {
-          const active = topic === entry.key;
-          return (
-            <button
-              key={entry.key}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                vibrate(HAPTIC.tap);
-                /* Tapping the active chip clears it. Without this the only way
-                   back to everything is to find "All" again, which on a scrolled
-                   row can be off-screen. */
-                onTopicChange(active ? null : entry.key);
-              }}
-              className={`feed-topic-chip ${active ? "is-active" : ""}`}
-            >
-              <span aria-hidden className="feed-topic-emoji">
-                {entry.emoji}
-              </span>
-              {entry.label}
-            </button>
-          );
-        })}
-      </div>
+          {FEED_TOPICS.map((entry) => {
+            const active = topic === entry.key;
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  vibrate(HAPTIC.tap);
+                  /* Tapping the active chip clears it. Without this the only way
+                     back to everything is to find "All" again, which on a
+                     scrolled row can be off-screen. */
+                  onTopicChange(active ? null : entry.key);
+                }}
+                className={`feed-topic-chip ${active ? "is-active" : ""}`}
+              >
+                <span aria-hidden className="feed-topic-emoji">
+                  {entry.emoji}
+                </span>
+                {entry.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

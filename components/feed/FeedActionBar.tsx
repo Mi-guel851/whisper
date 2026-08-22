@@ -1,13 +1,13 @@
 "use client";
 
 import { memo } from "react";
-import { BarChart3, Heart, MessageCircle, Share2, Trash2 } from "lucide-react";
+import { BarChart3, Heart, MessageCircle, MoreHorizontal, Share2 } from "lucide-react";
 import { compactCount } from "@/lib/feed";
 
 /**
  * The engagement row under a post, laid out the way X lays it out: icons on the
- * left spread across the width, each with its count inline, and the share
- * affordance pushed to the trailing edge.
+ * left spread across the width, each with its count inline, and the trailing
+ * controls pushed to the far edge.
  *
  * X shows five slots — reply, repost, like, views, bookmark — and only four of
  * them mean anything in Whisper. Rather than draw two dead icons to complete the
@@ -20,6 +20,10 @@ import { compactCount } from "@/lib/feed";
  * makes a feed feel wrong. Writing one is then a separate labelled control, so
  * neither action is hidden behind the other.
  *
+ * Delete used to sit at the end of this row and now lives in the overflow sheet.
+ * It was one row away from the like button, at thumb height, on your own posts —
+ * a destructive action inside a rhythm of taps people make without looking.
+ *
  * Counts sit in `tabular-nums` because they change under realtime updates, and
  * proportional digits make the whole row shuffle sideways when a like lands.
  */
@@ -31,13 +35,12 @@ type FeedActionBarProps = {
   liked: boolean;
   replyOpen: boolean;
   threadOpen: boolean;
-  canDelete: boolean;
   onReply: () => void;
   /** Absent when this post has no replies, or when an ancestor opened them. */
   onToggleThread?: () => void;
   onLike: () => void;
   onShare: () => void;
-  onDelete: () => void;
+  onMore: () => void;
 };
 
 function FeedActionBarBase({
@@ -47,17 +50,16 @@ function FeedActionBarBase({
   liked,
   replyOpen,
   threadOpen,
-  canDelete,
   onReply,
   onToggleThread,
   onLike,
   onShare,
-  onDelete,
+  onMore,
 }: FeedActionBarProps) {
   const showsThread = Boolean(onToggleThread) && replyCount > 0;
 
   return (
-    <div className="mt-2.5 flex items-center justify-between pr-1">
+    <div className="feed-action-row">
       <button
         type="button"
         onClick={showsThread ? onToggleThread : onReply}
@@ -114,7 +116,7 @@ function FeedActionBarBase({
         <span className="tabular-nums">{compactCount(viewCount)}</span>
       </span>
 
-      <div className="flex items-center gap-0.5">
+      <div className="feed-action-tail">
         <button
           type="button"
           onClick={onShare}
@@ -126,18 +128,17 @@ function FeedActionBarBase({
           </span>
         </button>
 
-        {canDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label="Delete this post"
-            className="feed-action feed-action-delete"
-          >
-            <span className="feed-action-icon">
-              <Trash2 size={15} strokeWidth={2} />
-            </span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onMore}
+          aria-label="More options"
+          aria-haspopup="dialog"
+          className="feed-action feed-action-more"
+        >
+          <span className="feed-action-icon">
+            <MoreHorizontal size={15} strokeWidth={2} />
+          </span>
+        </button>
       </div>
     </div>
   );
