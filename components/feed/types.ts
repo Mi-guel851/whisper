@@ -69,6 +69,12 @@ export type FeedController = {
   onVote: (postId: string, optionIndex: number) => void;
   /** Spends this viewer's single look at a photo whisper. */
   onOpenImage: (postId: string) => void;
-  onReport: (post: FeedPost) => void;
-  onCopyLink: (postId: string) => void;
+  /**
+   * Opens the overflow sheet — copy link, share, report, block, delete.
+   *
+   * One handler rather than one per item, because the sheet itself is rendered
+   * once at page level. A `Modal` inside every card would mean forty portals and
+   * forty focus traps mounted to serve one that is open at a time.
+   */
+  onOpenMenu: (post: FeedPost) => void;
 };
