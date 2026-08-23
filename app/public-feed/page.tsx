@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowUp, MessageSquareDashed, SearchX } from "lucide-react";
+import { ArrowUp, MessageSquareDashed, Search, SearchX, Sparkles, X } from "lucide-react";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
-import GlassPanel from "@/components/GlassPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import FeedPostCard from "@/components/feed/FeedPostCard";
@@ -45,6 +44,7 @@ import {
   type ReportReason,
 } from "@/lib/feedApi";
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
+import { tween } from "@/lib/motion";
 import { vibrate, HAPTIC } from "@/lib/haptics";
 
 /**
@@ -93,9 +93,10 @@ import { vibrate, HAPTIC } from "@/lib/haptics";
  * "has a preview" and "has a photo" are the same fact.
  */
 function sanitize(row: FeedPost): FeedPost {
-  const copy: FeedPost & { image_path?: unknown } = { ...row };
+  const copy: Record<string, unknown> = { ...row };
   delete copy.image_path;
-  return { ...copy, has_image: row.has_image ?? Boolean(row.image_preview) };
+  copy.has_image = row.has_image ?? Boolean(row.image_preview);
+  return copy as unknown as FeedPost;
 }
 
 /** Merges rows by id, keeping fields the incoming row doesn't carry. */
@@ -122,6 +123,10 @@ export default function PublicFeedPage() {
   const [sort, setSort] = useState<FeedSort>("for_you");
   const [topic, setTopic] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  /* Search is a control, not a permanent row. Collapsed by default so the first
+     paint is the feed rather than a stack of chrome; forced open whenever a term
+     is applied, so the box that owns the filter is always the box you can see. */
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [rootOrder, setRootOrder] = useState<string[]>([]);
@@ -181,6 +186,12 @@ export default function PublicFeedPage() {
   const pollPendingRef = useRef<Record<string, boolean>>({});
   const seenRandom = useRef<string[]>([]);
   const noticeShown = useRef(false);
+  /* The query, mirrored for the same reason: the realtime handler is created
+     once and must not decide whether a new post may be prepended by consulting
+     the sort that was active when it subscribed. */
+  const sortRef = useRef(sort);
+  const topicRef = useRef(topic);
+  const searchRef = useRef(search);
 
   useEffect(() => { myIdRef.current = myId; }, [myId]);
   useEffect(() => { postsRef.current = posts; }, [posts]);
@@ -189,6 +200,9 @@ export default function PublicFeedPage() {
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { imageStateRef.current = imageState; }, [imageState]);
   useEffect(() => { pollPendingRef.current = pollPending; }, [pollPending]);
+  useEffect(() => { sortRef.current = sort; }, [sort]);
+  useEffect(() => { topicRef.current = topic; }, [topic]);
+  useEffect(() => { searchRef.current = search; }, [search]);
 
   /* ---------------------------------------------------------------------
      Impressions — batched so a fast scroll doesn't fire one request per card.
@@ -492,15 +506,6 @@ export default function PublicFeedPage() {
     // showToast is stable from the provider; init must run exactly once per mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  /* Read inside the realtime handler, which is created once and must not close
-     over a stale query. */
-  const sortRef = useRef(sort);
-  const topicRef = useRef(topic);
-  const searchRef = useRef(search);
-  useEffect(() => { sortRef.current = sort; }, [sort]);
-  useEffect(() => { topicRef.current = topic; }, [topic]);
-  useEffect(() => { searchRef.current = search; }, [search]);
 
   // First page, and again whenever the tab, topic or search term changes.
   useEffect(() => {
@@ -1212,12 +1217,49 @@ export default function PublicFeedPage() {
       <div className="mx-auto max-w-xl">
         <BackButton />
 
-        <div className="mb-7 mt-5">
-          <h1 className="page-title">Public Feed</h1>
-          <p className="page-subtitle mt-1">
-            Real thoughts from the Whisper community. Posts clear after 24 hours.
-          </p>
-        </div>
+        <header className="feed-head">
+          <span aria-hidden className="feed-head-badge">
+            <Sparkles size={16} strokeWidth={2.4} />
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="page-title">Public Feed</h1>
+            <p className="page-subtitle mt-1">
+              Real thoughts from the Whisper community. Posts clear after 24 hours.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              vibrate(HAPTIC.tap);
+              /* Closing clears the term for the same reason the topic filter
+                 does — a filter nobody can see reads as an empty feed. */
+              if (searchOpen && search) setSearch("");
+              setSearchOpen((open) => !open);
+            }}
+            aria-expanded={searchOpen}
+            aria-label={searchOpen ? "Close search" : "Search whispers"}
+            className={`feed-head-icon ${searchOpen ? "is-active" : ""}`}
+          >
+            {searchOpen ? <X size={17} /> : <Search size={17} />}
+          </button>
+        </header>
+
+        <AnimatePresence initial={false}>
+          {(searchOpen || Boolean(search)) && (
+            <motion.div
+              key="feed-search"
+              className="feed-search-collapse"
+              initial={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+              animate={reducedMotion ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+              exit={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+              transition={reducedMotion ? { duration: 0 } : tween.base}
+            >
+              <FeedSearchBar value={search} onSearch={setSearch} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <FeedDiscovery
           question={dailyQuestion}
@@ -1230,6 +1272,7 @@ export default function PublicFeedPage() {
         />
 
         <FeedComposer
+          authorId={myId}
           ownLink={ownLink}
           postCost={FEED_POST_COST}
           prefillNonce={prefillNonce}
@@ -1238,25 +1281,31 @@ export default function PublicFeedPage() {
           onSubmit={createPost}
         />
 
-        <FeedTabs
-          sort={sort}
-          topic={topic}
-          onSortChange={setSort}
-          onTopicChange={setTopic}
-          reducedMotion={reducedMotion}
-          showTopics={mode !== "fallback"}
-        />
+        {/* Tabs and timeline share one panel so the feed reads as a single
+            surface with a header, the way a timeline does — rather than as three
+            unrelated blocks stacked on a gradient. The panel deliberately has no
+            `overflow: hidden`: that would kill the sticky tab bar inside it. */}
+        <div className="feed-stream">
+          <FeedTabs
+            sort={sort}
+            topic={topic}
+            onSortChange={setSort}
+            onTopicChange={setTopic}
+            reducedMotion={reducedMotion}
+            showTopics={mode !== "fallback"}
+          />
 
-        <FeedSearchBar value={search} onSearch={setSearch} />
-
-        {/* One surface, hairline-separated rows — the timeline is a column of
-            text, not a stack of cards. See the `.feed-post` note in globals. */}
-        <section aria-label="Public feed timeline" aria-busy={loading}>
-          {loading ? (
-            <FeedSkeleton />
-          ) : roots.length === 0 ? (
-            <GlassPanel className="rounded-3xl">
-              {filtering ? (
+          {/* One surface, hairline-separated rows — the timeline is a column of
+              text, not a stack of cards. See the `.feed-post` note in globals. */}
+          <section
+            className="feed-timeline"
+            aria-label="Public feed timeline"
+            aria-busy={loading}
+          >
+            {loading ? (
+              <FeedSkeleton />
+            ) : roots.length === 0 ? (
+              filtering ? (
                 <EmptyState
                   icon={<SearchX size={26} />}
                   title="Nothing matches"
@@ -1276,31 +1325,34 @@ export default function PublicFeedPage() {
                   description="Posts here disappear after 24 hours, so there is nothing to catch up on yet. Say the first thing."
                   action={{ label: "Write a post", onClick: focusComposer }}
                 />
-              )}
-            </GlassPanel>
-          ) : (
-            <>
-              {roots.map((post) => (
-                <FeedPostCard
-                  key={post.id}
-                  node={post}
-                  controller={controller}
-                  depth={0}
-                  impressionRef={impressionRef}
-                  highlighted={highlight === post.id}
-                />
-              ))}
+              )
+            ) : (
+              <>
+                {roots.map((post) => (
+                  <FeedPostCard
+                    key={post.id}
+                    node={post}
+                    controller={controller}
+                    depth={0}
+                    impressionRef={impressionRef}
+                    highlightId={highlight}
+                  />
+                ))}
 
-              {moreAvailable ? (
-                <div ref={sentinelRef} className="feed-sentinel">
-                  <FeedSkeleton rows={1} />
-                </div>
-              ) : (
-                <p className="feed-end">You&apos;re all caught up.</p>
-              )}
-            </>
-          )}
-        </section>
+                {moreAvailable ? (
+                  <div ref={sentinelRef} className="feed-sentinel">
+                    {/* Shimmer only while a page is actually in flight. A
+                        permanent skeleton at the foot of the list claims a
+                        request that isn't running. */}
+                    {loadingMore && <FeedSkeleton rows={1} />}
+                  </div>
+                ) : (
+                  <p className="feed-end">You&apos;re all caught up.</p>
+                )}
+              </>
+            )}
+          </section>
+        </div>
       </div>
 
       {/* Announced rather than injected: a post that jumped into a ranked feed
@@ -1346,9 +1398,10 @@ export default function PublicFeedPage() {
         onSubmit={(post, reason, details) => void submitReport(post, reason, details)}
       />
 
-      <AnimatePresence>
-        {photoUrl && <FeedPhotoViewer src={photoUrl} onClose={closePhoto} />}
-      </AnimatePresence>
+      {/* Rendered unconditionally: the viewer owns its own `AnimatePresence` and
+          reads `src === null` as closed. Unmounting it here instead would delete
+          the exiting element before its exit could play. */}
+      <FeedPhotoViewer src={photoUrl} onClose={closePhoto} />
 
       {/* No reply confirmation: a dialog earns its place when an action spends
           money or destroys something, and a free reply does neither. Delete keeps

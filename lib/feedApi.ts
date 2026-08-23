@@ -46,11 +46,17 @@ const OPTIONAL_COLUMNS = ["parent_post_id", "view_count"] as const;
 /**
  * `image_path` is deliberately absent from every select in this file.
  *
- * Not because the bucket is unguarded — it is private with no select policy — but
- * because the object key is `<author_id>/<uuid>`, and shipping it would let
- * anyone correlate two anonymous posts to the same author. In a feed whose whole
- * premise is anonymity, that is the leak that matters, and the client has no use
- * for the key anyway: bytes come from /api/feed/photo by post id.
+ * Not because the bucket is unguarded — it is private, with no select policy at
+ * all — but because the client has no use for the key: the bytes come from
+ * /api/feed/photo by post id, which is where the view-once receipt and the
+ * blocking check live. Withholding it is defence in depth, so a future component
+ * cannot accidentally build a storage URL and route around either.
+ *
+ * It is not an anonymity measure, and it would be wrong to describe it as one:
+ * `author_id` is in BASE_COLUMNS because the client needs it to render a stable
+ * anonymous name and avatar per author, so correlating two posts to one author is
+ * already possible by design. The pseudonym is the anonymity boundary here, not
+ * the absence of the key.
  */
 
 export type FeedQuery = {

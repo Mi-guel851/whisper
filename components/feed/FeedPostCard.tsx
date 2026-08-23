@@ -67,8 +67,14 @@ type FeedPostCardProps = {
    * read a conversation the user already asked to see.
    */
   threadOpen?: boolean;
-  /** Highlight pulse for a post arrived at from a `?post=` share link. */
-  highlighted?: boolean;
+  /**
+   * The post a `?post=` share link pointed at, pulsed so the reader can find it.
+   *
+   * Threaded through the recursion rather than resolved to a boolean by the page,
+   * because a shared link routinely points at a *reply* — and a page that can only
+   * mark roots would scroll to the right post and then highlight nothing.
+   */
+  highlightId?: string | null;
 };
 
 function FeedPostCardBase({
@@ -78,9 +84,10 @@ function FeedPostCardBase({
   parentAuthorId,
   impressionRef,
   threadOpen = false,
-  highlighted = false,
+  highlightId = null,
 }: FeedPostCardProps) {
   const isRoot = depth === 0;
+  const highlighted = highlightId === node.id;
   const isMine = node.author_id === controller.myId;
   /* Two ids per card, but requests inside the same commit coalesce into one
      query — so a whole thread costs one round trip, not one per post. */
@@ -250,6 +257,7 @@ function FeedPostCardBase({
               controller={controller}
               depth={depth + 1}
               parentAuthorId={node.author_id}
+              highlightId={highlightId}
               threadOpen
             />
           ))}

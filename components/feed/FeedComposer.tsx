@@ -10,6 +10,7 @@ import { FEED_TOPICS, stripLinks, type FeedTopic } from "@/lib/feed";
 import { ImagePrepError, prepareFeedImage, type PreparedFeedImage } from "@/lib/imagePreview";
 import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import { vibrate, HAPTIC } from "@/lib/haptics";
+import FeedAvatar from "./FeedAvatar";
 
 /**
  * The composer.
@@ -63,6 +64,12 @@ export type ComposerDraft = {
 };
 
 type FeedComposerProps = {
+  /**
+   * The poster, for their own anonymous avatar beside the field. Empty until the
+   * session resolves, which `FeedAvatar` already renders as its neutral glyph —
+   * so there is nothing to gate here.
+   */
+  authorId: string;
   ownLink: string;
   postCost: number;
   /** Bumped by the page to replace the draft and focus the field. */
@@ -73,6 +80,7 @@ type FeedComposerProps = {
 };
 
 export default function FeedComposer({
+  authorId,
   ownLink,
   postCost,
   prefillNonce,
@@ -206,17 +214,27 @@ export default function FeedComposer({
   return (
     <GlassPanel strong className="mb-6 rounded-3xl p-5">
       <form onSubmit={submit}>
-        <textarea
-          ref={textareaRef}
-          {...PROSE_INPUT_PROPS}
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          maxLength={MAX_BODY}
-          rows={3}
-          placeholder="Share a thought with the Whisper community..."
-          className="w-full resize-none bg-transparent text-sm outline-none"
-          style={{ color: "var(--theme-text)" }}
-        />
+        {/* The avatar sits beside the field rather than above it, which is what
+            makes the composer read as "you, about to say something" instead of a
+            bare textarea — and it is the same anonymous identity the post will
+            carry, resolved from the same hook the cards use. */}
+        <div className="flex gap-3">
+          <div className="shrink-0 pt-0.5">
+            <FeedAvatar authorId={authorId} size={40} />
+          </div>
+
+          <textarea
+            ref={textareaRef}
+            {...PROSE_INPUT_PROPS}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            maxLength={MAX_BODY}
+            rows={3}
+            placeholder="Share a thought with the Whisper community..."
+            className="min-w-0 flex-1 resize-none bg-transparent pt-1.5 text-sm outline-none"
+            style={{ color: "var(--theme-text)" }}
+          />
+        </div>
 
         {/* Optional, and shown as such. A required topic on a confession app is a
             question people answer wrongly to get past it. */}
@@ -310,7 +328,10 @@ export default function FeedComposer({
           <button
             type="button"
             onClick={() => setBody(SUGGESTED_POST)}
-            className="glass-control min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs transition"
+            /* Clamped to two lines. Unclamped, a 120-character suggestion sets
+               four lines in this column and the prompt ends up taller than the
+               field it is a suggestion for. */
+            className="glass-control line-clamp-2 min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs leading-5 transition"
             style={{ color: "var(--theme-text-secondary)" }}
           >
             <span className="theme-accent-text font-bold">Suggestion:</span> {SUGGESTED_POST}

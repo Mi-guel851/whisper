@@ -3209,10 +3209,13 @@ html.viewport-locked body {
 
 /* --- Reply composer ----------------------------------------------------- */
 
+/* `--fill-1`, not `--theme-card`: the rows now sit on a `--theme-card` stream
+   panel, and a card-coloured box on a card-coloured surface is an invisible
+   input. A translucent fill reads as inset against whatever it lands on. */
 .feed-reply-box {
   border-radius: var(--radius-xl);
-  border: 1px solid var(--theme-border);
-  background: var(--theme-card);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
   padding: 0.625rem 0.75rem;
 }
 
@@ -3229,6 +3232,1213 @@ html.viewport-locked body {
   background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
   color: var(--theme-accent-contrast);
   box-shadow: var(--elev-1);
+}
+
+/* --------------------------------------------------------------------------
+   7c. PUBLIC FEED — CHROME
+
+   Everything above this point paints the timeline *rows*. This paints the frame
+   around them, and the whole section is governed by one rule about where glass
+   is allowed to go.
+
+   The stream panel is a solid raised surface, not glass. It is the tallest
+   element on the page — a loaded feed runs thousands of pixels — and
+   `backdrop-filter` costs in proportion to area: the compositor copies the
+   pixels behind the element, blurs them, and re-blends the result on every
+   frame the page moves. One panel that tall would undo the work the row-level
+   decision was making. The sticky tab bar *is* glass, because it is a 60px
+   strip of chrome that content passes underneath, which is the one place the
+   effect both looks right and costs nothing much.
+
+   The second rule is that vertical space is scarce. Before this pass the page
+   opened with a title, a hero, a composer carrying eight topic chips, a second
+   row of nine topic chips, and a search field — five blocks of chrome above the
+   first whisper. Search and the topic filter are now controls that expand, and
+   the composer's chips scroll in one row instead of wrapping into two. Nothing
+   was removed; it just stopped all being on screen at once.
+   -------------------------------------------------------------------------- */
+
+/* --- Page header --------------------------------------------------------- */
+
+.feed-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 1.25rem 0 1rem;
+}
+
+/* Sized to the title's own line box (`--leading-2xl`) rather than to a round
+   pixel value, so the tile and the first line of the heading share one box
+   instead of missing each other by three or four pixels. */
+.feed-head-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: var(--leading-2xl);
+  width: var(--leading-2xl);
+  border-radius: var(--radius-md);
+  background: linear-gradient(140deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+}
+
+/* 44px, the touch minimum — then pulled back up so the larger circle stays
+   optically centred on the title line rather than sitting below it. */
+.feed-head-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 2.75rem;
+  width: 2.75rem;
+  margin-top: calc((var(--leading-2xl) - 2.75rem) / 2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  color: var(--theme-text-secondary);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-head-icon:hover { background: var(--fill-2); color: var(--theme-text); }
+.feed-head-icon:active { transform: scale(0.94); }
+
+.feed-head-icon.is-active {
+  background: color-mix(in srgb, var(--theme-accent-purple) 16%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 38%, transparent);
+  color: var(--theme-accent-purple);
+}
+
+/* --- Search -------------------------------------------------------------- */
+
+/* The animating wrapper. Height is animated on this, so it clips; the field
+   inside keeps its own box and never gets squashed mid-transition. */
+.feed-search-collapse { overflow: hidden; }
+
+.feed-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  transition:
+    border-color var(--dur-fast) var(--ease-out-quint),
+    box-shadow var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-search:focus-within {
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent-purple) 12%, transparent);
+}
+
+.feed-search-icon { flex: none; color: var(--theme-text-muted); }
+
+.feed-search-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--theme-text);
+}
+
+.feed-search-input::placeholder { color: var(--theme-text-muted); font-weight: 500; }
+
+/* `type="search"` ships a WebKit clear button that would sit beside the one
+   this component draws — two clear affordances, one of which skips the haptic
+   and the debounce reset. */
+.feed-search-input::-webkit-search-cancel-button,
+.feed-search-input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+
+.feed-search-clear {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 1.5rem;
+  width: 1.5rem;
+  border-radius: var(--radius-full);
+  background: var(--fill-2);
+  color: var(--theme-text-muted);
+  transition: color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-search-clear:hover { color: var(--theme-text); }
+
+/* --- Discovery hero ------------------------------------------------------ */
+
+/* The corner glow is a radial gradient rather than the illustration a mock
+   would use: it carries the same "something is happening here" weight, adapts
+   to both themes from tokens, and costs no request and no decode. */
+.feed-discovery {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  padding: 1.125rem 1.25rem 1.25rem;
+  border-radius: var(--radius-3xl);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-purple) 24%, var(--theme-border));
+  background:
+    radial-gradient(
+      118% 132% at 100% 0%,
+      color-mix(in srgb, var(--theme-accent-purple) 22%, transparent) 0%,
+      transparent 62%
+    ),
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, var(--theme-accent-pink) 9%, transparent) 0%,
+      transparent 58%
+    ),
+    var(--theme-card);
+  box-shadow: var(--elev-2), var(--elev-rim);
+}
+
+.feed-discovery-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.feed-discovery-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--theme-accent-purple);
+}
+
+.feed-discovery-live {
+  height: 0.375rem;
+  width: 0.375rem;
+  border-radius: var(--radius-full);
+  background: var(--theme-accent-pink);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent-pink) 45%, transparent);
+  animation: feedLivePulse 2.6s var(--ease-soft) infinite;
+}
+
+.feed-discovery-question {
+  /* Tighter tracking as the size goes up, per the type scale — a headline set
+     at body tracking reads loose. */
+  max-width: 30ch;
+  margin-bottom: 0.9375rem;
+  font-size: 1.0625rem;
+  line-height: 1.32;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  color: var(--theme-text);
+}
+
+.feed-discovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.feed-discovery-answer,
+.feed-discovery-surprise {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius-full);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  transition:
+    transform var(--dur-fast) var(--ease-out-quint),
+    background-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-discovery-answer:active,
+.feed-discovery-surprise:active { transform: scale(0.96); }
+
+.feed-discovery-answer {
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+}
+
+.feed-discovery-surprise {
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  color: var(--theme-text-secondary);
+}
+
+.feed-discovery-surprise:hover { background: var(--fill-2); color: var(--theme-text); }
+.feed-discovery-surprise:disabled { opacity: 0.6; }
+
+/* --- Whisper of the day -------------------------------------------------- */
+
+.feed-spotlight {
+  display: block;
+  width: 100%;
+  margin-top: 0.9375rem;
+  padding: 0.75rem 0.875rem;
+  text-align: left;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  transition:
+    transform var(--dur-fast) var(--ease-out-quint),
+    background-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-spotlight:hover { background: var(--fill-2); }
+.feed-spotlight:active { transform: scale(0.99); }
+
+.feed-spotlight-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--theme-accent-pink);
+}
+
+.feed-spotlight-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--theme-text-secondary);
+}
+
+.feed-spotlight-heat {
+  display: block;
+  margin-top: 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+/* --- Stream panel -------------------------------------------------------- */
+
+/* Deliberately no `overflow: hidden` — it would break the sticky tab bar
+   inside. The rows clip themselves instead. */
+.feed-stream {
+  border-radius: var(--radius-3xl);
+  border: 1px solid var(--theme-border);
+  background: var(--theme-card);
+  box-shadow: var(--elev-2), var(--elev-rim);
+  padding: 0 0.875rem;
+}
+
+.feed-timeline { padding-bottom: 0.25rem; }
+
+/* --- Sorts and topics ---------------------------------------------------- */
+
+.feed-tabs-wrap {
+  position: sticky;
+  /* Not 0: in the Capacitor shell the document scrolls under the status bar, and
+     a tab bar pinned to the viewport edge lands beneath the notch. */
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  /* Spans the panel's inline padding so the glass reaches both edges, then
+     puts the padding back inside itself. */
+  margin: 0 -0.875rem;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--theme-border);
+  border-radius: var(--radius-3xl) var(--radius-3xl) 0 0;
+  background: var(--theme-glass-strong);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.feed-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.feed-tabs {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  border-radius: var(--radius-full);
+  background: var(--fill-1);
+}
+
+.feed-tab {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  height: 2rem;
+  padding: 0 0.25rem;
+  border-radius: var(--radius-full);
+  font-size: 0.78125rem;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--theme-text-muted);
+  transition: color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-tab:hover { color: var(--theme-text-secondary); }
+.feed-tab.is-active { color: var(--theme-text); }
+
+/* An accent-tinted lift rather than a filled gradient: four tabs of gradient
+   would out-shout the posts under them, and the near-black `accent-contrast`
+   this palette pairs with that gradient is a hard read at 12.5px. */
+.feed-tab-indicator {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-purple) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-purple) 18%, var(--fill-2));
+  box-shadow: var(--elev-1);
+}
+
+.feed-tabs-filter {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 2.375rem;
+  width: 2.375rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  color: var(--theme-text-muted);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-tabs-filter:hover { background: var(--fill-2); color: var(--theme-text); }
+.feed-tabs-filter:active { transform: scale(0.94); }
+
+.feed-tabs-filter.is-active {
+  background: color-mix(in srgb, var(--theme-accent-purple) 16%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 38%, transparent);
+  color: var(--theme-accent-purple);
+}
+
+/* Says "a filter is applied" while the row is collapsed and the chips can't. */
+.feed-tabs-filter-dot {
+  position: absolute;
+  top: 0.3125rem;
+  right: 0.3125rem;
+  height: 0.375rem;
+  width: 0.375rem;
+  border-radius: var(--radius-full);
+  background: var(--theme-accent-pink);
+  box-shadow: 0 0 0 2px var(--theme-card);
+}
+
+.feed-topics-collapse { overflow: hidden; }
+
+.feed-topics {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.375rem;
+  padding: 0.625rem 0 0.125rem;
+  overflow-x: auto;
+  /* Stops a horizontal flick from becoming a browser back-navigation. */
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.feed-topics::-webkit-scrollbar { display: none; }
+
+.feed-topic-chip,
+.feed-composer-topic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.375rem 0.6875rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--theme-text-muted);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-topic-chip:hover,
+.feed-composer-topic:hover { background: var(--fill-2); color: var(--theme-text); }
+
+.feed-topic-chip:active,
+.feed-composer-topic:active { transform: scale(0.96); }
+
+/* Filled rather than outlined when active — the same language as `.daily-chip`,
+   so the two chip rows in the app read as one control type. */
+.feed-topic-chip.is-active,
+.feed-composer-topic.is-active {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+}
+
+.feed-topic-emoji { font-size: 0.8125rem; line-height: 1; }
+
+/* --- Post head and topic tag -------------------------------------------- */
+
+.feed-post-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.feed-topic-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  padding: 0.125rem 0.4375rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+/* --- Action row layout --------------------------------------------------- */
+
+/* The negative inline start pulls the first icon's hover pad back so the glyph
+   optically lines up with the body text above it rather than the pad's edge. */
+.feed-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  margin-top: 0.1875rem;
+  margin-left: -0.5rem;
+}
+
+.feed-action-tail {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  margin-left: auto;
+}
+
+.feed-action-more:hover { color: var(--theme-text); }
+.feed-action-more:hover .feed-action-icon { background: var(--fill-2); }
+
+.feed-thread-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* Indented to the body column so it reads as part of the thread, not the row. */
+  padding: 0.75rem 0 0.25rem 3.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+/* --- Deep-link highlight ------------------------------------------------- */
+
+/* The inset bar is the part that survives reduced motion, which slams every
+   animation to 0.01ms and would otherwise leave a shared link landing on an
+   unmarked post. The wash is the part that feels like an arrival. */
+.feed-post.is-highlighted {
+  border-radius: var(--radius-lg);
+  box-shadow: inset 3px 0 0 var(--theme-accent-purple);
+  animation: feedHighlight 2.6s var(--ease-soft) forwards;
+}
+
+@keyframes feedHighlight {
+  0%   { background: color-mix(in srgb, var(--theme-accent-purple) 20%, transparent); }
+  70%  { background: color-mix(in srgb, var(--theme-accent-purple) 14%, transparent); }
+  100% { background: transparent; }
+}
+
+@keyframes feedLivePulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent-pink) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent-pink) 0%, transparent); }
+}
+
+/* --- Composer additions -------------------------------------------------- */
+
+/* One scrolling row, not a wrapping grid. Eight chips wrap to two rows on a
+   phone, which put ~34px of permanent chrome inside the composer for a control
+   most posts never touch. */
+.feed-composer-topics {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+  padding-bottom: 0.125rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.feed-composer-topics::-webkit-scrollbar { display: none; }
+
+.feed-composer-attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.625rem;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+}
+
+.feed-composer-thumb {
+  flex: none;
+  height: 2.75rem;
+  width: 2.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  object-fit: cover;
+}
+
+.feed-composer-attachment-copy { flex: 1; min-width: 0; }
+
+.feed-composer-attachment-title {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--theme-text);
+}
+
+.feed-composer-attachment-note {
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--theme-text-muted);
+}
+
+.feed-composer-attachment-remove,
+.feed-composer-poll-remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 1.75rem;
+  width: 1.75rem;
+  border-radius: var(--radius-full);
+  background: var(--fill-2);
+  color: var(--theme-text-muted);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-composer-attachment-remove:hover,
+.feed-composer-poll-remove:hover {
+  background: color-mix(in srgb, var(--theme-error) 16%, transparent);
+  color: var(--theme-error);
+}
+
+.feed-composer-poll {
+  display: grid;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+}
+
+.feed-composer-poll-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.feed-composer-poll-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  outline: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--theme-text);
+  transition:
+    border-color var(--dur-fast) var(--ease-out-quint),
+    box-shadow var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-composer-poll-input::placeholder { color: var(--theme-text-muted); font-weight: 500; }
+
+.feed-composer-poll-input:focus {
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent-purple) 12%, transparent);
+}
+
+.feed-composer-poll-add {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.75rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--theme-accent-purple);
+  transition: background-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-composer-poll-add:hover { background: var(--fill-2); }
+
+.feed-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.feed-composer-tool {
+  display: grid;
+  place-items: center;
+  height: 2.125rem;
+  width: 2.125rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  color: var(--theme-text-muted);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-composer-tool:hover { background: var(--fill-2); color: var(--theme-text); }
+.feed-composer-tool:active { transform: scale(0.94); }
+.feed-composer-tool:disabled { opacity: 0.5; }
+
+.feed-composer-tool.is-active {
+  background: color-mix(in srgb, var(--theme-accent-purple) 16%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 38%, transparent);
+  color: var(--theme-accent-purple);
+}
+
+.feed-composer-count {
+  margin-left: 0.25rem;
+  min-width: 2.5ch;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+.feed-composer-foot {
+  margin-top: 0.625rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--theme-text-muted);
+}
+
+/* --- Photo whisper: the locked plate ------------------------------------ */
+
+.feed-photo-frame { position: relative; }
+
+.feed-photo-plate {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  transition: transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-photo-plate:active { transform: scale(0.99); }
+.feed-photo-plate.is-spent { cursor: default; }
+.feed-photo-plate.is-spent:active { transform: none; }
+
+/* The scale hides the transparent fringe a blur leaves at the element's edge.
+   The blur itself is cosmetic — what is loaded here is a ~32px image, so there
+   is nothing under it to reveal. See the note in FeedImageWhisper. */
+.feed-photo-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 22rem;
+  object-fit: cover;
+  filter: blur(18px) saturate(1.1);
+  transform: scale(1.12);
+}
+
+.feed-photo-plate.is-spent .feed-photo-preview {
+  filter: blur(20px) saturate(0.35) brightness(0.62);
+}
+
+.feed-photo-fallback {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background:
+    radial-gradient(80% 80% at 30% 25%,
+      color-mix(in srgb, var(--theme-accent-purple) 45%, transparent), transparent 70%),
+    radial-gradient(70% 70% at 75% 80%,
+      color-mix(in srgb, var(--theme-accent-pink) 38%, transparent), transparent 70%),
+    var(--fill-2);
+}
+
+.feed-photo-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+.feed-photo-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.feed-photo-ring {
+  display: grid;
+  place-items: center;
+  height: 2.875rem;
+  width: 2.875rem;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  box-shadow: var(--elev-2);
+}
+
+/* Fixed white, not a token: this sits over a photograph in both themes. */
+.feed-photo-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+}
+
+.feed-photo-note {
+  margin-top: 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--theme-text-muted);
+}
+
+/* --- Photo whisper: the fullscreen viewer ------------------------------- */
+
+.feed-photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(4, 4, 8, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.feed-photo-full {
+  max-width: 100%;
+  max-height: 82vh;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-5);
+  /* The drag-to-dismiss gesture needs the pointer, so the browser's own
+     vertical panning must not claim it first. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.feed-photo-close {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  right: 1rem;
+  display: grid;
+  place-items: center;
+  height: 2.5rem;
+  width: 2.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.feed-photo-spent-note {
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* --- Polls -------------------------------------------------------------- */
+
+.feed-poll { display: grid; gap: 0.375rem; }
+
+.feed-poll-option {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5625rem 0.75rem;
+  text-align: left;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-poll-option:not(.is-resolved):hover { background: var(--fill-2); }
+.feed-poll-option:not(:disabled):active { transform: scale(0.99); }
+/* Every option is disabled while a vote is in flight — dimming the set is the
+   signal that the tally is not settled yet. */
+.feed-poll-option:disabled { opacity: 0.72; }
+
+.feed-poll-option.is-mine {
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 45%, transparent);
+}
+
+/* Scaled on the compositor, clipped by the track's radius. */
+.feed-poll-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  transform-origin: left center;
+  background: color-mix(in srgb, var(--theme-accent-purple) 20%, transparent);
+}
+
+.feed-poll-option.is-mine .feed-poll-fill {
+  background: color-mix(in srgb, var(--theme-accent-purple) 30%, transparent);
+}
+
+.feed-poll-label {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--theme-text);
+}
+
+.feed-poll-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 1rem;
+  width: 1rem;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+}
+
+.feed-poll-share {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--theme-text-secondary);
+}
+
+.feed-poll-total {
+  margin-top: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--theme-text-muted);
+}
+
+/* --- Bottom sheets: menu, share, report --------------------------------- */
+
+.feed-sheet-body {
+  display: grid;
+  gap: 0.375rem;
+  /* The last item in a sheet sits on the home indicator without this. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.feed-sheet-head { padding-bottom: 0.25rem; }
+
+.feed-sheet-quote {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--theme-text-secondary);
+}
+
+.feed-sheet-meta {
+  margin-top: 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+.feed-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.8125rem 0.875rem;
+  text-align: left;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--theme-text);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-sheet-item:hover { background: var(--fill-2); }
+.feed-sheet-item:active { transform: scale(0.99); }
+
+.feed-sheet-item.is-primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+}
+
+.feed-sheet-item.is-danger { color: var(--theme-error); }
+
+.feed-sheet-item.is-danger:hover {
+  background: color-mix(in srgb, var(--theme-error) 12%, transparent);
+}
+
+.feed-sheet-cancel {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.75rem;
+  border: 0;
+  background: none;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--theme-text-muted);
+  transition: color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-sheet-cancel:hover { color: var(--theme-text); }
+
+.feed-share-targets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.feed-share-target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  padding: 0.8125rem 0.375rem;
+  text-align: center;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  color: var(--theme-text-secondary);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-share-target:active { transform: scale(0.97); }
+.feed-share-target svg { color: var(--brand); }
+
+.feed-share-target:hover {
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  border-color: color-mix(in srgb, var(--brand) 38%, transparent);
+}
+
+/* Brand colours, because a share row is one of the few places a product is
+   expected to speak somebody else's visual language. X's mark is monochrome by
+   design, so it takes the theme's own foreground. */
+.feed-share-target.is-whatsapp { --brand: #25d366; }
+.feed-share-target.is-facebook { --brand: #1877f2; }
+.feed-share-target.is-x        { --brand: var(--theme-text); }
+
+.feed-report-reasons { display: grid; gap: 0.375rem; }
+
+.feed-report-reason {
+  display: block;
+  width: 100%;
+  padding: 0.6875rem 0.875rem;
+  text-align: left;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-report-reason:hover { background: var(--fill-2); }
+
+.feed-report-reason.is-active {
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-purple) 12%, transparent);
+}
+
+.feed-report-reason-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--theme-text);
+}
+
+.feed-report-reason-hint {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--theme-text-muted);
+}
+
+.feed-report-details { display: block; margin-top: 0.25rem; }
+
+.feed-report-details-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--theme-text-secondary);
+}
+
+.feed-report-textarea {
+  width: 100%;
+  resize: none;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  outline: none;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--theme-text);
+  transition:
+    border-color var(--dur-fast) var(--ease-out-quint),
+    box-shadow var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-report-textarea::placeholder { color: var(--theme-text-muted); }
+
+.feed-report-textarea:focus {
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent-purple) 12%, transparent);
+}
+
+.feed-report-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.8125rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+  transition: transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-report-submit:active { transform: scale(0.99); }
+.feed-report-submit:disabled { opacity: 0.5; box-shadow: none; }
+
+/* --- Pagination and arrivals -------------------------------------------- */
+
+/* Reserves a little height so the observer has something to intersect even
+   when no shimmer is showing. */
+.feed-sentinel { min-height: 1.5rem; }
+
+.feed-end {
+  padding: 1.25rem 0 0.75rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+/* Centred without a transform, deliberately: Framer animates `y` on this
+   element and writes the whole `transform` property, which would drop a
+   `translateX(-50%)` and slam the pill against the left edge. */
+.feed-new-pill {
+  position: fixed;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
+  top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.9375rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-3);
 }
 
 /* --------------------------------------------------------------------------
