@@ -6,6 +6,7 @@ import { Crown, Dices, Loader2, PenLine } from "lucide-react";
 import { compactCount, shareExcerpt, type FeedPost } from "@/lib/feed";
 import { vibrate, HAPTIC } from "@/lib/haptics";
 import { spring } from "@/lib/motion";
+import FeedQuestionSparks from "./FeedQuestionSparks";
 
 /**
  * The discovery strip — the top of the retention loop.
@@ -53,6 +54,10 @@ function FeedDiscoveryBase({
 
   return (
     <section className="feed-discovery" aria-label="Discover">
+      {/* Sits in the corner the radial glow already occupies, so the two read as
+          one light source rather than two competing decorations. */}
+      <FeedQuestionSparks />
+
       <div className="feed-discovery-head">
         <span className="feed-discovery-eyebrow">Today&apos;s question</span>
         <span className="feed-discovery-live" aria-hidden />

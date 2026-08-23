@@ -15,6 +15,21 @@ type ServiceAccount = {
   private_key: string;
 };
 
+/**
+ * One channel per route, created up front by MainActivity. The channel is what
+ * actually owns the vibration pattern on Android 8+, so a push that names no
+ * channel lands on "default" — which is the one channel that does not vibrate.
+ *
+ * Must stay in step with CHANNELS in supabase/functions/notify-on-notification
+ * and the switch in FCMMessagingService.java.
+ */
+const FCM_CHANNELS: Record<string, string> = {
+  whisper: "whispers",
+  message: "messages",
+  friend_request: "friend_requests",
+  feed: "feed",
+};
+
 // ── Get FCM V1 access token using service account ──
 async function getFCMAccessToken(serviceAccount: ServiceAccount): Promise<string> {
   const header = { alg: "RS256", typ: "JWT" };
@@ -104,6 +119,11 @@ export async function POST(req: NextRequest) {
   let notificationTitle = "";
   let notificationBody = "";
   let notificationUrl = "/dashboard";
+  /* The route key FCMMessagingService switches on, and the channel that decides
+     whether the phone vibrates. Kept in step with CHANNELS in
+     supabase/functions/notify-on-notification/index.ts. */
+  let notificationType = "default";
+  let notificationConversationId: string | null = null;
 
   // ── Whisper (anonymous message) ──
   if (record?.recipient_id) {
@@ -113,6 +133,7 @@ export async function POST(req: NextRequest) {
       ? record.message.slice(0, 100)
       : "You received an anonymous image";
     notificationUrl = "/dashboard";
+    notificationType = "whisper";
   }
 
   // ── Direct message (inbox chat) ──
@@ -137,6 +158,8 @@ export async function POST(req: NextRequest) {
       ? record.content.slice(0, 100)
       : "You have a new message";
     notificationUrl = `/chat/${record.conversation_id}`;
+    notificationType = "message";
+    notificationConversationId = record.conversation_id;
   }
 
   if (!recipientId) {
@@ -144,13 +167,25 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Check recipient has notifications enabled ──
+  /*
+   * `push_notifications`, not `notify`. This route was the only place in the app
+   * reading `profiles.notify` — every other gate (the registration hook, both
+   * notify-* edge functions, notify_new_public_feed_post) reads
+   * `push_notifications`. So a user with push switched on registered a token,
+   * passed every other check, and was dropped here because a column nothing else
+   * maintains was null.
+   *
+   * `!== false` for the same reason those do: the column is nullable and null
+   * means opted in, so a profile created before the column existed still gets
+   * notifications rather than silently never receiving one.
+   */
   const { data: profile } = await supabaseAdmin
     .from("profiles")
-    .select("notify")
+    .select("push_notifications")
     .eq("id", recipientId)
     .single();
 
-  if (!profile?.notify) {
+  if (profile?.push_notifications === false) {
     return NextResponse.json({ sent: 0, reason: "notifications disabled" });
   }
 
@@ -197,14 +232,27 @@ export async function POST(req: NextRequest) {
       const serviceAccount: ServiceAccount = JSON.parse(serviceAccountJson);
       const accessToken = await getFCMAccessToken(serviceAccount);
 
-      const { data: deviceTokens } = await supabaseAdmin
+      /*
+       * `fcm_token`, not `token`. This was the reason no notification from this
+       * route ever reached the Android app: the column is `fcm_token` — it is what
+       * lib/push/useRegisterPushNotifications.ts writes and what both notify-*
+       * edge functions read — so selecting `token` returned an error and a null
+       * set, the `if` below was never entered, and the route still answered
+       * 200 with a `sent` count made up entirely of web-push deliveries. A
+       * silent, successful-looking no-op. See 202608230001_device_tokens.sql.
+       */
+      const { data: deviceTokens, error: tokenError } = await supabaseAdmin
         .from("device_tokens")
-        .select("token")
+        .select("fcm_token")
         .eq("user_id", recipientId);
+
+      if (tokenError) {
+        console.error("[send-push] device_tokens read failed:", tokenError.message);
+      }
 
       if (deviceTokens && deviceTokens.length > 0) {
         await Promise.all(
-          deviceTokens.map(async ({ token }: { token: string }) => {
+          deviceTokens.map(async ({ fcm_token: token }: { fcm_token: string }) => {
             try {
               const fcmRes = await fetch(
                 `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`,
@@ -221,7 +269,41 @@ export async function POST(req: NextRequest) {
                         title: notificationTitle,
                         body: notificationBody,
                       },
-                      data: { url: notificationUrl },
+                      /*
+                       * `type` and `route` are what FCMMessagingService switches
+                       * on to pick a channel and build its `whisperapp://` deep
+                       * link. Without them every push from this route landed on
+                       * the "default" channel — which is the channel with no
+                       * vibration pattern — and opened the dashboard whatever it
+                       * was about.
+                       */
+                      data: {
+                        url: notificationUrl,
+                        route: notificationUrl,
+                        type: notificationType,
+                        ...(notificationConversationId
+                          ? { conversationId: notificationConversationId }
+                          : {}),
+                      },
+                      /*
+                       * High priority plus an explicit channel, matching
+                       * notify-on-notification. Android holds a normal-priority
+                       * message until the next maintenance window when the device
+                       * is dozing, which is exactly when a notification most needs
+                       * to arrive.
+                       */
+                      android: {
+                        priority: "high",
+                        notification: {
+                          channel_id: FCM_CHANNELS[notificationType] ?? "default",
+                          default_vibrate_timings: false,
+                          vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
+                        },
+                      },
+                      apns: {
+                        headers: { "apns-priority": "10" },
+                        payload: { aps: { sound: "default" } },
+                      },
                     },
                   }),
                 }
@@ -241,7 +323,7 @@ export async function POST(req: NextRequest) {
                   await supabaseAdmin
                     .from("device_tokens")
                     .delete()
-                    .eq("token", token);
+                    .eq("fcm_token", token);
                 }
               }
             } catch (err) {

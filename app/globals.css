@@ -3117,8 +3117,6 @@ html.viewport-locked body {
   color: var(--theme-accent-purple);
 }
 
-.feed-cta:hover { text-decoration: underline; }
-
 /* --- Action row --------------------------------------------------------- */
 
 /* X's hit-target trick: the icon gets a circular hover pad larger than the
@@ -3148,28 +3146,19 @@ html.viewport-locked body {
     color var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-action-reply:hover,
+/* ACTIVE STATES — these are real state, so they apply on every device.
+   The matching *hover* states are pointer-only and live in the guarded block at
+   the end of this section; see the note there for why that separation matters
+   more on this screen than anywhere else in the app. */
+
 .feed-action-reply.is-active { color: var(--theme-info); }
-.feed-action-reply:hover .feed-action-icon,
 .feed-action-reply.is-active .feed-action-icon {
   background: color-mix(in srgb, var(--theme-info) 14%, transparent);
 }
 
-.feed-action-like:hover,
 .feed-action-like.is-active { color: var(--theme-accent-pink); }
-.feed-action-like:hover .feed-action-icon,
 .feed-action-like.is-active .feed-action-icon {
   background: color-mix(in srgb, var(--theme-accent-pink) 14%, transparent);
-}
-
-.feed-action-share:hover { color: var(--theme-accent-purple); }
-.feed-action-share:hover .feed-action-icon {
-  background: color-mix(in srgb, var(--theme-accent-purple) 14%, transparent);
-}
-
-.feed-action-delete:hover { color: var(--theme-error); }
-.feed-action-delete:hover .feed-action-icon {
-  background: color-mix(in srgb, var(--theme-error) 14%, transparent);
 }
 
 /* The write-a-reply control that appears once the reply icon has been taken
@@ -3183,7 +3172,6 @@ html.viewport-locked body {
   border-radius: var(--radius-full);
 }
 
-.feed-action-write:hover,
 .feed-action-write.is-active {
   color: var(--theme-info);
   background: color-mix(in srgb, var(--theme-info) 14%, transparent);
@@ -3204,8 +3192,6 @@ html.viewport-locked body {
   background: none;
   border: 0;
 }
-
-.feed-show-more:hover { text-decoration: underline; }
 
 /* --- Reply composer ----------------------------------------------------- */
 
@@ -3302,7 +3288,6 @@ html.viewport-locked body {
     transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-head-icon:hover { background: var(--fill-2); color: var(--theme-text); }
 .feed-head-icon:active { transform: scale(0.94); }
 
 .feed-head-icon.is-active {
@@ -3369,7 +3354,7 @@ html.viewport-locked body {
   transition: color var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-search-clear:hover { color: var(--theme-text); }
+.feed-search-clear:active { color: var(--theme-text); }
 
 /* --- Discovery hero ------------------------------------------------------ */
 
@@ -3472,7 +3457,6 @@ html.viewport-locked body {
   color: var(--theme-text-secondary);
 }
 
-.feed-discovery-surprise:hover { background: var(--fill-2); color: var(--theme-text); }
 .feed-discovery-surprise:disabled { opacity: 0.6; }
 
 /* --- Whisper of the day -------------------------------------------------- */
@@ -3491,7 +3475,6 @@ html.viewport-locked body {
     background-color var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-spotlight:hover { background: var(--fill-2); }
 .feed-spotlight:active { transform: scale(0.99); }
 
 .feed-spotlight-badge {
@@ -3591,7 +3574,6 @@ html.viewport-locked body {
   transition: color var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-tab:hover { color: var(--theme-text-secondary); }
 .feed-tab.is-active { color: var(--theme-text); }
 
 /* An accent-tinted lift rather than a filled gradient: four tabs of gradient
@@ -3625,7 +3607,6 @@ html.viewport-locked body {
     transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-tabs-filter:hover { background: var(--fill-2); color: var(--theme-text); }
 .feed-tabs-filter:active { transform: scale(0.94); }
 
 .feed-tabs-filter.is-active {
@@ -3682,9 +3663,6 @@ html.viewport-locked body {
     color var(--dur-fast) var(--ease-out-quint),
     transform var(--dur-fast) var(--ease-out-quint);
 }
-
-.feed-topic-chip:hover,
-.feed-composer-topic:hover { background: var(--fill-2); color: var(--theme-text); }
 
 .feed-topic-chip:active,
 .feed-composer-topic:active { transform: scale(0.96); }
@@ -3744,9 +3722,6 @@ html.viewport-locked body {
   gap: 0.125rem;
   margin-left: auto;
 }
-
-.feed-action-more:hover { color: var(--theme-text); }
-.feed-action-more:hover .feed-action-icon { background: var(--fill-2); }
 
 .feed-thread-loading {
   display: flex;
@@ -3850,12 +3825,6 @@ html.viewport-locked body {
     color var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-composer-attachment-remove:hover,
-.feed-composer-poll-remove:hover {
-  background: color-mix(in srgb, var(--theme-error) 16%, transparent);
-  color: var(--theme-error);
-}
-
 .feed-composer-poll {
   display: grid;
   gap: 0.375rem;
@@ -3906,7 +3875,7 @@ html.viewport-locked body {
   transition: background-color var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-composer-poll-add:hover { background: var(--fill-2); }
+.feed-composer-poll-add:active { transform: scale(0.96); }
 
 .feed-composer-tools {
   display: flex;
@@ -3930,7 +3899,6 @@ html.viewport-locked body {
     transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-composer-tool:hover { background: var(--fill-2); color: var(--theme-text); }
 .feed-composer-tool:active { transform: scale(0.94); }
 .feed-composer-tool:disabled { opacity: 0.5; }
 
@@ -4126,7 +4094,6 @@ html.viewport-locked body {
     transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-poll-option:not(.is-resolved):hover { background: var(--fill-2); }
 .feed-poll-option:not(:disabled):active { transform: scale(0.99); }
 /* Every option is disabled while a vote is in flight — dimming the set is the
    signal that the tally is not settled yet. */
@@ -4240,7 +4207,6 @@ html.viewport-locked body {
     transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-sheet-item:hover { background: var(--fill-2); }
 .feed-sheet-item:active { transform: scale(0.99); }
 
 .feed-sheet-item.is-primary {
@@ -4251,10 +4217,6 @@ html.viewport-locked body {
 }
 
 .feed-sheet-item.is-danger { color: var(--theme-error); }
-
-.feed-sheet-item.is-danger:hover {
-  background: color-mix(in srgb, var(--theme-error) 12%, transparent);
-}
 
 .feed-sheet-cancel {
   width: 100%;
@@ -4268,7 +4230,7 @@ html.viewport-locked body {
   transition: color var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-sheet-cancel:hover { color: var(--theme-text); }
+.feed-sheet-cancel:active { color: var(--theme-text); }
 
 .feed-share-targets {
   display: grid;
@@ -4300,11 +4262,6 @@ html.viewport-locked body {
 .feed-share-target:active { transform: scale(0.97); }
 .feed-share-target svg { color: var(--brand); }
 
-.feed-share-target:hover {
-  background: color-mix(in srgb, var(--brand) 12%, transparent);
-  border-color: color-mix(in srgb, var(--brand) 38%, transparent);
-}
-
 /* Brand colours, because a share row is one of the few places a product is
    expected to speak somebody else's visual language. X's mark is monochrome by
    design, so it takes the theme's own foreground. */
@@ -4326,8 +4283,6 @@ html.viewport-locked body {
     background-color var(--dur-fast) var(--ease-out-quint),
     border-color var(--dur-fast) var(--ease-out-quint);
 }
-
-.feed-report-reason:hover { background: var(--fill-2); }
 
 .feed-report-reason.is-active {
   border-color: color-mix(in srgb, var(--theme-accent-purple) 50%, transparent);
@@ -4439,6 +4394,191 @@ html.viewport-locked body {
   font-weight: 800;
   color: var(--theme-accent-contrast);
   box-shadow: var(--elev-3);
+}
+
+/* --- Daily Question sparks ---------------------------------------------- */
+
+/*
+ * The cluster in the card's top-right corner. Sized as a fixed box rather than
+ * left to the glyphs, so it can never grow into the headline: the question is
+ * capped at 30ch precisely so these have a corner to live in.
+ */
+.feed-sparks {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.875rem;
+  width: 5.75rem;
+  height: 4.75rem;
+  pointer-events: none;
+}
+
+.feed-spark-slot {
+  position: absolute;
+  display: grid;
+  place-items: center;
+}
+
+/*
+ * Every glyph in a slot is stacked in the same cell, so handing off from one to
+ * the next costs no layout — the slot's box never changes size.
+ *
+ * `drop-shadow` in `currentColor` is the glow, and it is the one filter here on
+ * purpose: a box-shadow would light up the square bounding box instead of the
+ * glyph, which on a star or a flame is the difference between a spark and a
+ * backlit tile.
+ */
+.feed-spark {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  filter: drop-shadow(0 0 5px currentColor);
+  animation-name: feedSparkPop;
+  animation-timing-function: var(--ease-out-quint);
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+  /* Duration and delay come from the component, which owns the cycle maths. */
+}
+
+/*
+ * Visible for roughly a quarter of the cycle, which with three glyphs per slot
+ * leaves a real gap between them — the corner is meant to twinkle, not to run a
+ * carousel. Scale and opacity only, so the whole thing composites.
+ */
+@keyframes feedSparkPop {
+  0%   { opacity: 0; transform: scale(0.4) rotate(-14deg); }
+  5%   { opacity: 1; transform: scale(1.08) rotate(0deg); }
+  9%   { transform: scale(1) rotate(0deg); }
+  22%  { opacity: 1; transform: scale(1) rotate(0deg); }
+  30%  { opacity: 0; transform: scale(0.55) rotate(12deg); }
+  100% { opacity: 0; transform: scale(0.4) rotate(-14deg); }
+}
+
+/*
+ * Reduced motion: section 8 pins every animation to 0.01ms with one iteration,
+ * and `fill-mode: both` then holds all nine glyphs at their 100% frame — opacity
+ * zero — so the corner would just be empty. A held keyframe also outranks a plain
+ * `opacity` declaration in the cascade, which is why this drops the animation by
+ * name instead of trying to out-declare it. One glyph per slot then shows
+ * statically, keeping the composition the card was designed around.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .feed-spark {
+    animation-name: none;
+    transform: none;
+    opacity: 0;
+  }
+  .feed-spark:first-child { opacity: 0.85; }
+}
+
+/* --- Hover, and only where a pointer exists ------------------------------ */
+
+/*
+ * Every hover affordance on this screen lives here, in one guarded block, and
+ * this is the fix for "the app doesn't feel as responsive as the site".
+ *
+ * A touch WebView has no pointer to leave an element with, so after a tap it
+ * *latches* `:hover` and holds it until something else is tapped. Spread through
+ * the section as bare `:hover` rules, that meant a tapped Like stayed pink, a
+ * tapped chip stayed lit, and a tapped sheet row stayed raised — a trail of
+ * controls all looking half-pressed. It reads exactly like an interface that
+ * hasn't finished responding, which is the opposite of what a hover state is for,
+ * and no amount of work on the JavaScript side would have touched it.
+ *
+ * `pointer: fine` as well as `hover: hover` on purpose: a Samsung stylus reports
+ * `hover: hover` while behaving like a finger.
+ *
+ * Press feedback is deliberately NOT in here. `:active` fires on touch-down on
+ * every device, releases on touch-up, and animates transform only — so it stays
+ * on the compositor and lands in the same frame as the tap. That is what makes a
+ * control feel immediate; hover is only ever decoration on top of it.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .feed-cta:hover,
+  .feed-show-more:hover { text-decoration: underline; }
+
+  .feed-action-reply:hover { color: var(--theme-info); }
+  .feed-action-reply:hover .feed-action-icon {
+    background: color-mix(in srgb, var(--theme-info) 14%, transparent);
+  }
+
+  .feed-action-like:hover { color: var(--theme-accent-pink); }
+  .feed-action-like:hover .feed-action-icon {
+    background: color-mix(in srgb, var(--theme-accent-pink) 14%, transparent);
+  }
+
+  .feed-action-share:hover { color: var(--theme-accent-purple); }
+  .feed-action-share:hover .feed-action-icon {
+    background: color-mix(in srgb, var(--theme-accent-purple) 14%, transparent);
+  }
+
+  .feed-action-delete:hover { color: var(--theme-error); }
+  .feed-action-delete:hover .feed-action-icon {
+    background: color-mix(in srgb, var(--theme-error) 14%, transparent);
+  }
+
+  .feed-action-write:hover {
+    color: var(--theme-info);
+    background: color-mix(in srgb, var(--theme-info) 14%, transparent);
+  }
+
+  .feed-action-more:hover { color: var(--theme-text); }
+  .feed-action-more:hover .feed-action-icon { background: var(--fill-2); }
+
+  .feed-head-icon:hover,
+  .feed-tabs-filter:hover,
+  .feed-composer-tool:hover,
+  .feed-topic-chip:hover,
+  .feed-composer-topic:hover,
+  .feed-discovery-surprise:hover {
+    background: var(--fill-2);
+    color: var(--theme-text);
+  }
+
+  .feed-search-clear:hover,
+  .feed-sheet-cancel:hover { color: var(--theme-text); }
+
+  .feed-spotlight:hover,
+  .feed-composer-poll-add:hover,
+  .feed-sheet-item:hover,
+  .feed-report-reason:hover { background: var(--fill-2); }
+
+  /* Not `.is-resolved` — once results are showing, a hover tint sits on top of
+     the fill bar and misreads as a longer bar. */
+  .feed-poll-option:not(.is-resolved):hover { background: var(--fill-2); }
+
+  .feed-sheet-item.is-danger:hover {
+    background: color-mix(in srgb, var(--theme-error) 12%, transparent);
+  }
+
+  .feed-composer-attachment-remove:hover,
+  .feed-composer-poll-remove:hover {
+    background: color-mix(in srgb, var(--theme-error) 16%, transparent);
+    color: var(--theme-error);
+  }
+
+  .feed-share-target:hover {
+    background: color-mix(in srgb, var(--brand) 12%, transparent);
+    border-color: color-mix(in srgb, var(--brand) 38%, transparent);
+  }
+}
+
+/* --- Native shell: cheaper glass ---------------------------------------- */
+
+/*
+ * `data-native` is set by the Capacitor shell (see components/NativeShell.tsx).
+ *
+ * Android's WebView composites `backdrop-filter` markedly slower than desktop
+ * Chrome — it is the same code path, on a fraction of the fill rate — and the one
+ * blurred surface on this screen is the sticky tab bar, which by definition
+ * re-blurs on every frame of every scroll. Halving the radius is invisible over
+ * this app's smooth gradient background (a blur over a gradient converges long
+ * before 20px) and it halves the sample count on the one element that pays it
+ * continuously.
+ */
+[data-native="true"] .feed-tabs-wrap {
+  backdrop-filter: blur(10px) saturate(150%);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
 }
 
 /* --------------------------------------------------------------------------

@@ -46,7 +46,7 @@ supabase/functions/.env
 supabase/functions/.env.*
 supabase/**/.env
 supabase/**/.env.*
-
+supabase/migrations/.env
 # vercel
 .vercel
 
