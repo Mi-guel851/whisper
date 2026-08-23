@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase/client";
+import { isOnline } from "@/lib/offline";
 import type { FeedLike, FeedPost, FeedSort } from "@/lib/feed";
 
 /**
@@ -66,9 +67,66 @@ export type FeedQuery = {
 };
 
 export type FeedPageResponse =
-  | { mode: "rpc"; rows: FeedPost[]; hasMore: boolean }
+  | { mode: "rpc"; rows: FeedPost[]; hasMore: boolean; stale?: boolean }
   /** The whole live window in one response, as before. The caller paginates it. */
   | { mode: "fallback"; rows: FeedPost[]; threaded: boolean };
+
+/* --------------------------------------------------------------------------
+ * The offline snapshot
+ * ------------------------------------------------------------------------ */
+
+const SNAPSHOT_PREFIX = "whisper-feed-snapshot:";
+
+/**
+ * How long a snapshot is worth showing. The feed itself only holds 24 hours, so
+ * anything older than that is guaranteed to be entirely expired posts — showing
+ * them would be presenting a feed of things that no longer exist.
+ */
+const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Search is excluded on purpose — see the note on `fetchFeedPage`. */
+function snapshotKey(query: FeedQuery): string | null {
+  if (query.search.trim()) return null;
+  return `${SNAPSHOT_PREFIX}${query.sort}:${query.topic ?? "all"}`;
+}
+
+function cacheFirstPage(query: FeedQuery, offset: number, rows: FeedPost[]) {
+  if (offset !== 0 || rows.length === 0) return;
+  const key = snapshotKey(query);
+  if (!key || typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      key,
+      /* Capped: a snapshot exists to fill the first screen, not to mirror the
+         feed. Twelve rows is more than fits on a phone. */
+      JSON.stringify({ at: Date.now(), rows: rows.slice(0, 12) })
+    );
+  } catch {
+    /* Quota, or storage denied in a private window. A missing snapshot is a
+       normal state, so there is nothing to report. */
+  }
+}
+
+function readFirstPage(query: FeedQuery): FeedPost[] | null {
+  const key = snapshotKey(query);
+  if (!key || typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as { at?: number; rows?: FeedPost[] };
+    if (!parsed.at || !Array.isArray(parsed.rows)) return null;
+    if (Date.now() - parsed.at > SNAPSHOT_TTL_MS) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.rows;
+  } catch {
+    return null;
+  }
+}
 
 type QueryError = { code?: string; message?: string } | null;
 
@@ -152,6 +210,23 @@ async function fetchWholeWindow(): Promise<{ rows: FeedPost[]; threaded: boolean
  *
  * `offset` is only meaningful on the RPC path; the fallback returns the whole
  * window and the caller slices it, which is what it already did.
+ *
+ * OFFLINE
+ *
+ * Page 0 of each (sort, topic) view is written to localStorage on success and
+ * replayed when the network cannot be reached, so opening the feed with no
+ * connection shows the whispers you last saw rather than an empty state.
+ *
+ * Only page 0, and only when there is no search term. Deeper pages are a
+ * continuation of a list whose head may now be stale, and a cached page 3 grafted
+ * onto a fresh page 0 produces a feed with holes and repeats in it. A search is a
+ * question about live data; answering it from a snapshot would be inventing
+ * results.
+ *
+ * The feed needs this explicitly, unlike the rest of the app: every other screen
+ * reads with `.select()`, which is a GET the service worker can cache on its own.
+ * `public_feed_page` is an RPC — a POST — and POSTs are deliberately never cached
+ * there, because that is also how coins are spent and photos are claimed.
  */
 export async function fetchFeedPage(
   query: FeedQuery,
@@ -164,6 +239,7 @@ export async function fetchFeedPage(
     if (!error) {
       rpcAvailable = true;
       const rows = (data || []) as FeedPost[];
+      cacheFirstPage(query, offset, rows);
       /* A short page is the end of the feed. Asking for a count as well would
          double the query cost to learn something the page length already says. */
       return { mode: "rpc", rows, hasMore: rows.length === limit };
@@ -180,6 +256,17 @@ export async function fetchFeedPage(
   }
 
   const { rows, threaded } = await fetchWholeWindow();
+
+  /* Nothing came back and there is no connection to explain it — so this is the
+     offline case rather than a genuinely empty feed, and the snapshot is a better
+     answer than a blank screen. Checked in this order deliberately: an empty feed
+     on a working connection must still read as empty. */
+  if (rows.length === 0 && !isOnline()) {
+    const snapshot = readFirstPage(query);
+    if (snapshot) return { mode: "rpc", rows: snapshot, hasMore: false, stale: true };
+  }
+
+  cacheFirstPage(query, offset, rows);
   return { mode: "fallback", rows, threaded };
 }
 

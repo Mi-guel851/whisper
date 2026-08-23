@@ -24,8 +24,12 @@ export async function enablePushNotifications() {
       return { success: false, reason: "denied" };
     }
 
-    const registration = await navigator.serviceWorker.register("/sw.js");
-    await navigator.serviceWorker.ready;
+    /* Registration is no longer this function's job — components/
+       ServiceWorkerRegistrar installs the worker for every visitor on app start.
+       It used to happen here, which meant the worker (and therefore the entire
+       offline cache) only ever existed for people who found this toggle and
+       turned it on. All this needs now is whatever that installed. */
+    const registration = await navigator.serviceWorker.ready;
 
     const existing = await registration.pushManager.getSubscription();
 

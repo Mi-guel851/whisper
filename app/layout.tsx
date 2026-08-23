@@ -11,6 +11,7 @@ import ClickHaptics from "@/components/ClickHaptics";
 import TypingSparks from "@/components/TypingSparks";
 import AppUrlHandler from "@/components/AppUrlHandler";
 import NativeShell from "@/components/NativeShell";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import OfflineHandler from "@/components/OfflineHandler";
 import WhispersAiAssistant from "@/components/ai/WhispersAiAssistant";
 import SocialFollowPrompt from "@/components/SocialFollowPrompt";
@@ -106,6 +107,7 @@ export default function RootLayout({
         <OfflineHandler />
         <AppUrlHandler />
         <NativeShell />
+        <ServiceWorkerRegistrar />
         <ClickHaptics />
         {/* Both are delegated listeners on `document`, mounted once: taps get a
             haptic, keystrokes get caret sparks. Neither renders anything, and

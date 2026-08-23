@@ -4581,6 +4581,41 @@ html.viewport-locked body {
   -webkit-backdrop-filter: blur(10px) saturate(150%);
 }
 
+/* --- Offline indicator --------------------------------------------------- */
+
+/*
+ * Sits above the bottom navigation, which is 5rem tall plus its safe-area inset.
+ * Token-based rather than the `bg-red-500/20 text-red-200` it replaced — that was
+ * fixed dark-mode colour on a surface that exists in both themes, so in light
+ * theme it read as pale pink text on white.
+ *
+ * Centred without a transform, because Framer animates `y` here and writes the
+ * whole `transform` property.
+ */
+.offline-pill {
+  position: fixed;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
+  max-width: calc(100vw - 2rem);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6rem);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  padding: 0.4375rem 0.875rem;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--theme-warning) 34%, transparent);
+  background: color-mix(in srgb, var(--theme-warning) 16%, var(--theme-card));
+  color: var(--theme-text);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow: var(--elev-2);
+}
+
 /* --------------------------------------------------------------------------
    Daily Whisper — prompt category chips
 

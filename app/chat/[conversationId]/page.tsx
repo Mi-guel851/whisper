@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 import { getCachedSession } from "@/lib/supabase/session";
 import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST, SEND_VOICE_COST } from "@/lib/coins";
+import { requireOnline } from "@/lib/offline";
 import { anonNameOf, resolveAnonName } from "@/lib/anonNames";
 import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import { typingManager } from "@/lib/realtime/typing";
@@ -943,6 +944,10 @@ export default function ChatPage() {
       return;
     }
     if (!hasMessage || !myId) return;
+    /* Refused rather than queued: a message that arrives hours after it was
+       written, into a conversation that has moved on, is worse than one that
+       visibly failed and can be re-sent deliberately. */
+    if (!requireOnline(showToast, "Sending")) return;
     const content = input.trim();
 
     /* Measured here, before the input clears. Emptying it swaps the send button

@@ -44,6 +44,7 @@ import {
   type ReportReason,
 } from "@/lib/feedApi";
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
+import { requireOnline, isOnline } from "@/lib/offline";
 import { tween } from "@/lib/motion";
 import { vibrate, HAPTIC } from "@/lib/haptics";
 
@@ -215,6 +216,16 @@ export default function PublicFeedPage() {
     const batch = Array.from(pendingImpressions.current);
     pendingImpressions.current.clear();
     if (!batch.length) return;
+
+    /* Held rather than spent while offline. These are real views — the reader is
+       looking at cached posts — so putting them back means they are counted once
+       on reconnect instead of thrown away by a request that cannot succeed. The
+       set is bounded by the size of the loaded feed, so it cannot grow without
+       limit. */
+    if (!isOnline()) {
+      for (const id of batch) pendingImpressions.current.add(id);
+      return;
+    }
 
     const { error } = await supabase.rpc("record_public_feed_impressions", { post_ids: batch });
     if (error) {
@@ -662,6 +673,11 @@ export default function PublicFeedPage() {
         return false;
       }
 
+      /* Refused rather than queued. Posting spends coins, so a write that lands
+         later — against a balance that has since changed, into a feed window that
+         has since rolled over — is worse than one that plainly didn't happen. */
+      if (!requireOnline(showToast, "Posting")) return false;
+
       let imagePath: string | null = null;
 
       try {
@@ -745,6 +761,7 @@ export default function PublicFeedPage() {
     async (postId: string) => {
       const text = (replyTextMap[postId] || "").trim();
       if (!text) { showToast("Write a reply first"); return; }
+      if (!requireOnline(showToast, "Replying")) return;
 
       setReplySendingMap((map) => ({ ...map, [postId]: true }));
       try {

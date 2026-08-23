@@ -18,7 +18,7 @@
 --
 -- Granted to `authenticated` rather than `service_role` because it is read from
 -- the browser and there is nothing sensitive in the result. `anon` is excluded so
--- the landing page can't be used as a free metrics endpoint.
+-- the landing page can't be used as cba free metrics endpoint.
 -- =============================================================================
 
 create or replace function public.whisper_live_activity()

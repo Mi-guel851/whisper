@@ -1,110 +1,65 @@
- "use client";
+"use client";
 
 import { useEffect, useState } from "react";
-import { Network } from "@capacitor/network";
-import { WifiOff, X } from "lucide-react";
-import GlassPanel from "./GlassPanel";
-import Button from "./Button";
+import { AnimatePresence, motion } from "framer-motion";
+import { WifiOff } from "lucide-react";
+import { subscribeToConnectivity, isOnline } from "@/lib/offline";
 
+/**
+ * The offline indicator.
+ *
+ * WHAT THIS USED TO DO, AND WHY IT HAD TO STOP
+ *
+ * It installed a capturing listener on `document` that called `preventDefault()`
+ * and `stopPropagation()` on *every* click while offline, then opened a modal
+ * saying "Please connect to the internet to continue using Whisper." Which it
+ * meant literally: with no connection the entire app was inert — not a single
+ * navigation, no scrolling to something already on screen, no reading a
+ * conversation the device had already downloaded.
+ *
+ * That is the opposite of what the cache exists for. Now that the service worker
+ * actually installs for everyone and holds the shell plus the last synced data,
+ * offline is a *state the app works in*, so this is reduced to what it should
+ * always have been: a small honest label saying what you are looking at.
+ *
+ * Refusing an individual action is a separate job, and belongs to the action.
+ * `requireOnline()` in lib/offline.ts does it at the point of the write, which is
+ * where the message can be specific about what failed — rather than here, where
+ * every tap looks identical and the only available message is a shrug.
+ *
+ * WHY THE COPY MENTIONS SYNCING
+ *
+ * The lists on screen may be minutes or hours old. Saying so is the difference
+ * between an app that feels reliable and one that appears to be showing live data
+ * and quietly is not.
+ */
 export default function OfflineHandler() {
-  const [isOffline, setIsOffline] = useState(false);
-  const [showPopup, setShowPopup] = useState(false);
+  const [offline, setOffline] = useState(false);
 
   useEffect(() => {
-    let listener: Awaited<ReturnType<typeof Network.addListener>> | null = null;
-
-    async function setup() {
-      const status = await Network.getStatus();
-      setIsOffline(!status.connected);
-
-      listener = await Network.addListener("networkStatusChange", (status) => {
-        setIsOffline(!status.connected);
-        if (status.connected) {
-          setShowPopup(false);
-        }
-      });
-    }
-
-    setup();
-
-    return () => {
-      listener?.remove();
-    };
+    /* Read once on mount as well as subscribing: the subscription only fires on
+       transitions, so a page opened while already offline would otherwise show
+       nothing until connectivity changed. */
+    setOffline(!isOnline());
+    return subscribeToConnectivity((online) => setOffline(!online));
   }, []);
 
-  useEffect(() => {
-    if (!isOffline) return;
-
-    function handleDocumentClick(e: MouseEvent) {
-      if (isOffline) {
-        setShowPopup(true);
-        e.stopPropagation();
-        e.preventDefault();
-      }
-    }
-
-    document.addEventListener("click", handleDocumentClick, true);
-    return () => document.removeEventListener("click", handleDocumentClick, true);
-  }, [isOffline]);
-
-  if (!isOffline) return null;
-
   return (
-    <>
-      {/* Subtle Offline Indicator */}
-      <div className="fixed bottom-24 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-red-500/20 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-red-200 backdrop-blur-md animate-pulse border border-red-500/30">
-        <div className="flex items-center gap-2">
-          <WifiOff size={12} />
-          Offline Mode
-        </div>
-      </div>
-
-      {/* The "Please Connect" Popup */}
-      {showPopup && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-md p-6">
-          <GlassPanel strong className="relative w-full max-w-sm rounded-3xl p-8 text-center border border-white/10 shadow-2xl">
-            <button
-              onClick={() => setShowPopup(false)}
-              /* Bridged colour plus an opacity fade, not `text-white/40
-                 hover:text-white`. Tailwind's opacity modifier and its variant
-                 prefixes each compile to their own class (`.text-white\/40`,
-                 `.hover\:text-white:hover`), and the theme bridge in globals.css
-                 only rewrites the bare `.text-white` — so both the resting and
-                 the hover state were literally white, which is an invisible X on
-                 this `GlassPanel`'s light-theme surface. On the one dialog that
-                 blocks the whole app. Opacity is theme-independent, so it gives
-                 the same two states in both themes. */
-              className="absolute top-4 right-4 text-white opacity-50 transition-opacity hover:opacity-100"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-purple-600/10 text-purple-500">
-              <WifiOff size={40} />
-            </div>
-
-            <h2 className="page-title text-white">Connection Lost</h2>
-            <p className="mt-3 text-gray-400">
-              Please connect to the internet to continue using Whisper.
-            </p>
-
-            <Button
-              className="mt-8"
-              size="lg"
-              fullWidth
-              onClick={async () => {
-                const status = await Network.getStatus();
-                if (status.connected) {
-                  setIsOffline(false);
-                  setShowPopup(false);
-                }
-              }}
-            >
-              Retry Connection
-            </Button>
-          </GlassPanel>
-        </div>
+    <AnimatePresence>
+      {offline && (
+        <motion.div
+          role="status"
+          aria-live="polite"
+          className="offline-pill"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 8 }}
+          transition={{ type: "spring", stiffness: 420, damping: 34 }}
+        >
+          <WifiOff size={12} aria-hidden />
+          Offline — showing your last synced copy
+        </motion.div>
       )}
-    </>
+    </AnimatePresence>
   );
 }
