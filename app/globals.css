@@ -129,6 +129,26 @@
   --theme-glass-border: rgba(255, 255, 255, 0.14);
   --theme-glass-sheen:  rgba(255, 255, 255, 0.09);
 
+  /* Glass for chrome that content scrolls *under*, which is a different job from
+     the two above.
+
+     `--theme-glass` and `--theme-glass-strong` are for panels and sheets: things
+     you look at, laid over a background that is not moving, where the film needs
+     enough body to keep its own text crisp. At 72–82% opacity the blur behind them
+     is almost academic — and that is fine, because there is nothing behind them
+     worth seeing.
+
+     A sticky top bar is the opposite. Real posts pass beneath it, and if the film
+     is dense enough to hide them the surface reads as a solid band that happens to
+     be a slightly different colour — no depth, no material, no sense that the
+     timeline continues underneath. Thinning it to ~60% is what lets the blur
+     actually show: text below smears into soft colour, which is the whole effect.
+     Legibility of the bar's *own* text survives because a 24px blur destroys the
+     detail of whatever it samples; it is contrast against mush, not against words. */
+  --theme-glass-chrome:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03)),
+    rgba(11, 11, 16, 0.60);
+
   /* Opaque counterpart to --theme-glass-strong, for surfaces that must not show
      anything through them: floating chrome, and popovers that open on top of a
      card. A hair lighter than --theme-card (#111114) because these float above
@@ -245,6 +265,14 @@
     rgba(255, 255, 255, 0.84);
   --theme-glass-border: rgba(22, 23, 44, 0.11);
   --theme-glass-sheen:  rgba(255, 255, 255, 0.95);
+
+  /* The chrome film, light theme. Same reasoning as the dark one — thin enough
+     that posts scrolling under the bar genuinely blur rather than disappear behind
+     an opaque band. Kept a touch denser than dark because dark text on a light
+     blur has less contrast headroom than the reverse. */
+  --theme-glass-chrome:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.62)),
+    rgba(248, 249, 253, 0.66);
 
   /* Pure white rather than the tinted canvas — an opaque popover in the light
      theme should read as paper lifted off the page. */
@@ -462,18 +490,46 @@ img, svg, video, canvas {
   max-width: 100%;
 }
 
-/* Scrollbars, themed. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--fill-4) transparent;
+/*
+   Scrollbars, themed — and only where a pointer exists.
+
+   A visible scrollbar is a desktop affordance: it exists because a mouse needs
+   something to grab and because a window's contents are otherwise unbounded. On a
+   touch screen there is nothing to grab, the gesture already tells you where you
+   are, and a rail that fades in and out down the right edge is one of the loudest
+   tells that an "app" is a website in a shell. No native feed on any phone draws
+   one.
+
+   So the styling is gated behind `pointer: fine`. Touch devices get no track and no
+   thumb at all — `scrollbar-width: none` for Firefox and the standards property,
+   `::-webkit-scrollbar { display: none }` for the Chromium WebView the Capacitor
+   shell runs on. Scrolling itself is untouched; only the drawn rail goes.
+*/
+@media (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--fill-4) transparent;
+  }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: var(--fill-3);
+    border-radius: var(--radius-full);
+  }
+  *::-webkit-scrollbar-thumb:hover { background: var(--fill-4); }
 }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb {
-  background: var(--fill-3);
-  border-radius: var(--radius-full);
+
+@media (pointer: coarse) {
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; }
 }
-*::-webkit-scrollbar-thumb:hover { background: var(--fill-4); }
+
+/* The Capacitor shell, unconditionally. A Samsung stylus reports `pointer: fine`
+   while behaving like a finger, and a tablet in a dock can report either — inside
+   the native app there is never a case for a drawn scrollbar, so it is settled by
+   the shell attribute rather than left to a media query to guess. */
+[data-native="true"] * { scrollbar-width: none; }
+[data-native="true"] *::-webkit-scrollbar { display: none; }
 
 } /* end @layer base */
 
@@ -3273,8 +3329,20 @@ html.viewport-locked body {
    `top` — which is exactly the pair of numbers that silently drift apart.
 */
 .feed-page {
-  --feed-topbar-h: 3.375rem;
-  --feed-tabs-h: 3.125rem;
+  /*
+     3rem, down from 3.375rem. The bar holds a 2rem avatar and a 1.625rem mark, so
+     3.375rem was 22px of pure padding around a 32px object. 3rem still clears both
+     comfortably and the account button keeps a 44px hit area via its own padding.
+  */
+  --feed-topbar-h: 3rem;
+  /*
+     2.75rem, down from 3.125rem. The row is a *selector*, not a destination — it
+     sits directly under a 3.375rem bar, so the two together were 6.5rem of chrome
+     above the first post on a screen that is often only 10rem tall before the fold.
+     2.75rem is still the 44px touch minimum, so nothing became harder to hit; what
+     went was slack, not target.
+  */
+  --feed-tabs-h: 2.75rem;
   /* How much chrome is actually pinned below the safe area. The retracted state
      overrides this rather than each dependent element knowing about it. */
   --feed-chrome-h: calc(var(--feed-topbar-h) + var(--feed-tabs-h));
@@ -3318,7 +3386,10 @@ html.viewport-locked body {
   position: sticky;
   top: env(safe-area-inset-top, 0px);
   z-index: 6;
-  background: var(--theme-glass-strong);
+  /* The thinner chrome film, not `--theme-glass-strong` — see the token. The
+     stronger film is 82% opaque, which made this a solid band and wasted the
+     blur entirely. */
+  background: var(--theme-glass-chrome);
   backdrop-filter: blur(24px) saturate(190%);
   -webkit-backdrop-filter: blur(24px) saturate(190%);
   /* The glass gets the same top-edge highlight every other glass surface in the
@@ -3362,7 +3433,7 @@ html.viewport-locked body {
   /* Above the chrome (6) so the retracting bar passes behind it. */
   z-index: 7;
   pointer-events: none;
-  background: var(--theme-glass-strong);
+  background: var(--theme-glass-chrome);
   backdrop-filter: blur(24px) saturate(190%);
   -webkit-backdrop-filter: blur(24px) saturate(190%);
 }
@@ -3375,16 +3446,36 @@ html.viewport-locked body {
   padding: 0 var(--feed-gutter, 1rem);
 }
 
+/*
+   The avatar is 2rem, which is well under the 44px touch minimum on its own. The
+   negative inline margin is what buys the target without spending layout: the
+   button's box grows to 2.75rem in both axes, the padding absorbs the difference,
+   and the margin pulls the *visual* left edge back onto the gutter so the avatar
+   still lines up with the post text below it.
+*/
 .feed-topbar-account {
   position: relative;
   flex: none;
   display: grid;
   place-items: center;
+  height: 2.75rem;
+  width: 2.75rem;
+  margin-inline-start: -0.375rem;
   border-radius: var(--radius-full);
   transition: transform var(--dur-fast) var(--ease-out-quint);
 }
 
 .feed-topbar-account:active { transform: scale(0.92); }
+
+/* The badge anchor. Sized to the avatar rather than the button so the glyph and
+   the dot ride the avatar's own corners. */
+.feed-topbar-account-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 2rem;
+  width: 2rem;
+}
 
 /* Rides the avatar's bottom-right, half off it, so it reads as a badge on the
    avatar rather than a second control beside it. The ring in `--theme-surface`
@@ -3710,9 +3801,16 @@ html.viewport-locked body {
   display: flex;
   align-items: stretch;
   gap: 0;
-  /* Deliberately zero. `.feed-tab` pays 1rem of its own, which is the gutter, so
-     the first label lands exactly above the post text below it. */
-  padding-inline: 0;
+  /*
+     The difference between the column gutter and a tab's own inline padding, so
+     the first label still lands exactly above the post text below it.
+
+     This was `0` while a tab paid the full 1rem gutter itself. Now that a tab pays
+     0.8125rem, the scroller makes up the remainder — the alignment is preserved
+     without giving the tabs back the horizontal bulk that was removed. The trailing
+     copy also stops the last tab butting against the edge mid-scroll.
+  */
+  padding-inline: calc(var(--feed-gutter, 1rem) - 0.8125rem);
   overflow-x: auto;
   /* Stops a horizontal flick from becoming a browser back-navigation. */
   overscroll-behavior-x: contain;
@@ -3732,8 +3830,11 @@ html.viewport-locked body {
   flex: none;
   display: grid;
   place-items: center;
-  height: var(--feed-tabs-h, 3.125rem);
-  padding: 0 1rem;
+  height: var(--feed-tabs-h, 2.75rem);
+  /* 0.8125rem, from 1rem. With the row shorter, a wide horizontal pad made each
+     tab read as a squat block; this keeps the label's own breathing room while
+     fitting one more tab on screen before the row has to be scrolled. */
+  padding: 0 0.8125rem;
   font-size: 0.9375rem;
   font-weight: 700;
   white-space: nowrap;
@@ -3753,8 +3854,11 @@ html.viewport-locked body {
 */
 .feed-tab-indicator {
   position: absolute;
-  left: 1rem;
-  right: 1rem;
+  /* Matches `.feed-tab`'s inline padding, so the bar spans the label and not the
+     hit target. These two numbers have to agree; if the tab's padding changes,
+     this changes with it. */
+  left: 0.8125rem;
+  right: 0.8125rem;
   bottom: 0;
   height: 0.1875rem;
   border-radius: var(--radius-full) var(--radius-full) 0 0;
@@ -4040,12 +4144,22 @@ html.viewport-locked body {
    The quill, above the bottom nav. See components/feed/FeedFab.tsx for why it is
    a quill rather than a plus and why it sits outside the nav bar.
 
+   LEFT, NOT RIGHT
+
+   The right corner belongs to the Whispers AI button, which is mounted in the root
+   layout and therefore present on this screen too. Both are 3.5rem circles; the
+   assistant sits at `z-80` against this one's `z-40`, so with both on the right the
+   assistant simply covered the compose button on the one screen whose entire
+   purpose is writing posts. The assistant is now draggable (lib/useDraggableFab.ts)
+   and this one is parked on the opposite side, so the two read as two distinct
+   controls and neither can be buried by the other.
+
    `position: fixed` on a `transform`ed ancestor would resolve against that
    ancestor, so this is mounted as a sibling of `.feed-shell`, not inside it.
 */
 .feed-fab {
   position: fixed;
-  right: 1.125rem;
+  left: max(1.125rem, env(safe-area-inset-left, 0px));
   /* Clears the 5rem bottom nav plus its inset, with a thumb's gap. */
   bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
   z-index: 40;

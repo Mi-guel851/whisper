@@ -3,24 +3,34 @@
 // Shown wherever a user's real profile must stay hidden: Discover, Friends,
 // Requests, the Inbox list, and the Chat header.
 //
-// THIS IS THE FALLBACK, NOT THE HANDLE.
+// THIS AGREES WITH THE DATABASE, EXACTLY.
 //
-// The real handle is `profiles.anon_name` — assigned once by the database under
-// a unique index, so no two users can hold the same one (see
-// `202608210001_unique_identities.sql`). `lib/anonNames.ts` fetches it. What
-// this file does is fill the gap: `anonNameOf` is synchronous and the fetch is
-// not, so this produces a plausible handle for the frame or two before the
-// stored one lands.
+// The stored handle is `profiles.anon_name`, assigned once under a unique index
+// (see `202608210001_unique_identities.sql`), and `lib/anonNames.ts` fetches it.
+// This file computes the same string locally, so it can be rendered synchronously
+// in the first frame instead of waiting for that fetch.
 //
-// It used to be the handle, and that was the bug. Fifteen prefixes and a
-// two-digit suffix is 1,500 names, so one user in fifteen was called "DarkWolf"
-// and the same handle showed up four times in a list of sixty accounts. The
-// namespace below is 30 x 28 x 9000 = 7,560,000 and matches the database's word
-// lists exactly, so a fallback and a stored handle are indistinguishable — the
-// swap never flickers into a different-looking name.
+// "The same string" is load-bearing and it used not to be true. The original pair
+// only matched in *shape*: this file hashed the user id to `DarkWolf.4821` while
+// the trigger took a sequence value and produced `NeonRaven.1234`. Two namespaces
+// for one person. Usually that was a flicker nobody caught — but a profile row
+// created after the user is already on screen (a first Google sign-in, where the
+// row is written at /setup) meant the name they had been shown was replaced by an
+// unrelated one, and it looked like the handle changed on every login.
 //
-// It is still a hash, so it can still collide; only the stored handle is
-// guaranteed unique. That is why it is the fallback and not the source.
+// `202608240001_stable_anon_names.sql` moved the database onto this derivation:
+// `whisper_anon_name_from_id` reimplements the FNV-1a triple-hash below in plpgsql
+// and the insert trigger prefers it. So a handle is now a function of the user id
+// on both sides — it survives the profile row, and the swap from local to stored
+// is invisible because there is nothing to swap.
+//
+// It is still a hash into 30 x 28 x 9000 = 7,560,000 names, so it can still
+// collide; the unique index remains the authority and a losing row falls back to
+// the sequence. That case is rare and, once stored, stable.
+//
+// The word lists and the hash are mirrored in that migration. All three — this
+// file, `whisper_anon_name_from_id`, and `whisper_anon_name_for` — must stay in
+// step.
 
 /** Mirrors `whisper_anon_name_for` in the migration. Keep the two in step. */
 const ADJECTIVES = [

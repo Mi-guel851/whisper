@@ -17,6 +17,7 @@ import { getCachedSession, onSessionChange } from "@/lib/supabase/session";
 import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import { spring, tween, respectMotion } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+import { useDraggableFab } from "@/lib/useDraggableFab";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { vibrate } from "@/lib/haptics";
 import {
@@ -209,11 +210,34 @@ export default function WhispersAiAssistant() {
   const hidden = assistantHiddenOn(pathname);
   const liftForNav = hasBottomNav(pathname);
 
-  /* Clear of the bottom tab bar where there is one (the bar is ~4.5rem tall
-     plus its own 0.75rem inset), and a normal inset where there isn't. */
-  const fabBottom = liftForNav
-    ? "calc(env(safe-area-inset-bottom, 0px) + 6.25rem)"
-    : "calc(env(safe-area-inset-bottom, 0px) + 1.5rem)";
+  /*
+   * WHERE THE BUTTON STARTS, AND WHY IT IS NO LONGER THE BOTTOM-RIGHT CORNER
+   *
+   * The public feed puts its compose button at `bottom: 5.75rem; right: 1.125rem`,
+   * which is the same corner this one used — two 3.5rem circles roughly half a
+   * centimetre apart, with this one on top at `z-80`. The compose button was
+   * reachable only by the few pixels the assistant did not cover, and on a screen
+   * whose entire purpose is writing posts, the assistant was eating the one control
+   * that does it.
+   *
+   * Rather than pick a new fixed corner and wait to collide with whatever is added
+   * next, the default is lifted clear of the compose button and the whole thing is
+   * draggable — so the resolution is the user's, permanently, and the two controls
+   * can never be stacked by a layout change. The fraction is stored, not the
+   * pixels; see lib/useDraggableFab.ts.
+   */
+  const insetBottom = liftForNav ? 100 : 24;
+
+  const fab = useDraggableFab({
+    storageKey: "whisper-ai-fab-anchor",
+    /* Right side, and above the feed's compose button rather than on top of it. */
+    fallback: { x: 1, y: liftForNav ? 0.62 : 1 },
+    size: 56,
+    /* Clear of the status bar and any pinned chrome under it. */
+    insetTop: 72,
+    insetBottom,
+    insetX: 20,
+  });
 
   const context = useMemo(() => {
     const tab =
@@ -390,7 +414,9 @@ export default function WhispersAiAssistant() {
             exit="exit"
             className="fixed z-[80] flex flex-col overflow-hidden rounded-[1.75rem]"
             style={{
-              transformOrigin: "bottom right",
+              /* Grows out of whichever side the button is parked on, so the panel
+                 always appears to come from the control that opened it. */
+              transformOrigin: fab.side === "left" ? "bottom left" : "bottom right",
               background: "var(--theme-glass-strong)",
               border: "1px solid var(--theme-glass-border)",
               boxShadow: "var(--elev-5), var(--elev-rim)",
@@ -399,8 +425,15 @@ export default function WhispersAiAssistant() {
               color: "var(--theme-text)",
               ...(isDesktop
                 ? {
-                    right: "max(1.25rem, env(safe-area-inset-right, 0px))",
-                    bottom: `calc(${fabBottom} + 4.5rem)`,
+                    /* Pinned to the button's own edge rather than a fixed corner,
+                       since the button may have been dragged to the other side.
+                       `bottom` is measured from the button's top so the panel sits
+                       above it with a gap, and is floored so a button dragged to
+                       the very top of the screen cannot push the panel off it. */
+                    ...(fab.side === "left"
+                      ? { left: fab.left }
+                      : { right: `max(1.25rem, calc(100vw - ${fab.left + 56}px))` }),
+                    bottom: `max(1.25rem, calc(100dvh - ${fab.top - 12}px))`,
                     width: "22.5rem",
                     height: "min(34rem, calc(100dvh - 11rem))",
                   }
@@ -692,7 +725,12 @@ export default function WhispersAiAssistant() {
             key="whispers-ai-fab"
             ref={fabRef}
             type="button"
-            onClick={toggleOpen}
+            onClick={() => {
+              /* The pointer-up that ends a drag also fires a click. Without this
+                 the panel opened every single time the button was moved. */
+              if (fab.consumeClick()) return;
+              toggleOpen();
+            }}
             aria-expanded={open}
             aria-controls={panelId}
             aria-label={open ? "Close Whispers AI" : "Open Whispers AI"}
@@ -700,12 +738,30 @@ export default function WhispersAiAssistant() {
             initial="hidden"
             animate="visible"
             exit="exit"
+            /* Dragging is a direct manipulation, so it is exempt from reduced
+               motion — the finger is the animation. What reduced motion drops is
+               the momentum and the hover lift, not the ability to move a control
+               out of the way. */
+            drag
+            dragMomentum={false}
+            dragElastic={0.12}
+            /* Clamped by the hook against the live viewport on release rather than
+               by `dragConstraints`, which measures a parent this has none of. */
+            onDragStart={fab.onDragStart}
+            onDrag={(_, info) =>
+              fab.onDragMove(Math.hypot(info.offset.x, info.offset.y))
+            }
+            onDragEnd={(_, info) => fab.onDragEnd(info.offset.x, info.offset.y)}
+            whileDrag={{ scale: 1.08, cursor: "grabbing" }}
             whileHover={reduced ? undefined : { y: -2 }}
             whileTap={reduced ? undefined : { scale: 0.92 }}
-            className="no-press fixed z-[80] grid h-14 w-14 place-items-center rounded-full"
+            className="no-press fixed z-[80] grid h-14 w-14 cursor-grab touch-none place-items-center rounded-full"
             style={{
-              right: "max(1.25rem, env(safe-area-inset-right, 0px))",
-              bottom: fabBottom,
+              /* Driven off the remembered fraction, and `left`/`top` rather than
+                 `right`/`bottom` because Framer writes `transform` during the drag
+                 and the two have to agree about which corner is the origin. */
+              left: fab.left,
+              top: fab.top,
               background:
                 "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))",
               color: "var(--theme-accent-contrast)",

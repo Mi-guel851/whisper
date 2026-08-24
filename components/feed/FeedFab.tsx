@@ -20,7 +20,10 @@ import { vibrate, HAPTIC } from "@/lib/haptics";
  *
  * It sits above the bottom navigation rather than inside it: the nav is where you
  * go, this is what you do, and merging the two makes a five-item bar out of a
- * four-item one.
+ * four-item one. It sits on the *left*, because the right corner is the Whispers
+ * AI button's — that one is mounted in the root layout, is 56px like this one, and
+ * renders above it, so sharing a corner meant the assistant covered the compose
+ * button on the one screen built for composing.
  *
  * A quill rather than a plus. X uses a plus at small sizes and a quill at large
  * ones for the same reason — a bare plus is the universal "add", which on a page

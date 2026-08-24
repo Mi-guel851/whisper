@@ -54,14 +54,19 @@ function FeedTopBarBase({
         aria-haspopup="dialog"
         className="feed-topbar-account"
       >
-        <FeedAvatar authorId={authorId} size={32} />
-        <span aria-hidden className="feed-topbar-account-glyph">
-          <Menu size={9} strokeWidth={3.5} />
+        {/* The badge and the dot hang off the *avatar*, not off the button. The
+            button is deliberately larger than the avatar to reach the 44px touch
+            minimum, so anchoring them to it would float them out in the padding. */}
+        <span className="feed-topbar-account-avatar">
+          <FeedAvatar authorId={authorId} size={32} />
+          <span aria-hidden className="feed-topbar-account-glyph">
+            <Menu size={9} strokeWidth={3.5} />
+          </span>
+          {/* Says "there is something in here" while the Daily Question is
+              unanswered and out of sight. Absent once there is nothing to find,
+              rather than a permanent decoration people learn to ignore. */}
+          {hasDiscovery && <span aria-hidden className="feed-topbar-dot" />}
         </span>
-        {/* Says "there is something in here" while the Daily Question is
-            unanswered and out of sight. Absent once there is nothing to find,
-            rather than a permanent decoration people learn to ignore. */}
-        {hasDiscovery && <span aria-hidden className="feed-topbar-dot" />}
       </button>
 
       <span className="feed-topbar-mark" aria-hidden>
