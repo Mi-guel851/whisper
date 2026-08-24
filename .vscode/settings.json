@@ -4,5 +4,11 @@
   "deno.enablePaths": [
     "supabase/functions"
   ],
-  "deno.unstable": []
+  "deno.unstable": [],
+  // Tailwind v4 moves the design tokens into CSS via `@theme`, `@utility` and
+  // friends. VS Code's built-in CSS validator only knows the standard at-rules,
+  // so it flags every one of them as unknown — a warning per token block, on a
+  // file that is correct. Ignoring the rule keeps the Problems panel meaningful
+  // instead of teaching us to skip past it.
+  "css.lint.unknownAtRules": "ignore"
 }

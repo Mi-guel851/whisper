@@ -3060,7 +3060,11 @@ html.viewport-locked body {
    ========================================================================== */
 
 .feed-post {
-  padding: 0.875rem 0.25rem 0.75rem;
+  /* Was `0.25rem` while the stream panel contributed the other 0.875rem. The
+     panel is gone, so the row carries the whole inset now — and because the
+     border is on the row rather than on a padded container, the hairline runs
+     the full width of the column. */
+  padding: 0.875rem var(--feed-gutter, 1rem) 0.75rem;
   border-bottom: 1px solid var(--theme-border);
 }
 
@@ -3244,42 +3248,202 @@ html.viewport-locked body {
    was removed; it just stopped all being on screen at once.
    -------------------------------------------------------------------------- */
 
-/* --- Page header --------------------------------------------------------- */
+/* --- Page shell and top bar ---------------------------------------------- */
 
-.feed-head {
+/*
+   The feed is the one page in the app that is NOT inset from the screen edge.
+   Everywhere else, a card floating on the gradient is right: the content is a
+   discrete object you are looking at. A timeline is not an object — it is a
+   column you are moving through, and the edges of the screen are its edges. So
+   the shell carries no horizontal padding of its own and each row pays for its
+   own gutter, which is what lets a hairline run the full width the way it does
+   on X.
+*/
+/*
+   `--feed-gutter` is declared here and consumed by the top bar, the search field
+   and every post row, so the whole column shares one inset. While the panel
+   supplied that padding the number lived in one place by accident; now that four
+   elements pay it themselves, it has to live in one place on purpose.
+*/
+/*
+   The page's metrics live on the page, not on the column: the compose button and
+   the "new whispers" pill are siblings of `.feed-shell`, not children, and they
+   both have to know how tall the pinned chrome is. `3.375rem` was previously
+   written twice — once as the bar's height and once inside the tab row's sticky
+   `top` — which is exactly the pair of numbers that silently drift apart.
+*/
+.feed-page {
+  --feed-topbar-h: 3.375rem;
+  --feed-tabs-h: 3.125rem;
+  /* How much chrome is actually pinned below the safe area. The retracted state
+     overrides this rather than each dependent element knowing about it. */
+  --feed-chrome-h: calc(var(--feed-topbar-h) + var(--feed-tabs-h));
+}
+
+.feed-page.is-chrome-hidden { --feed-chrome-h: var(--feed-tabs-h); }
+
+.feed-shell {
+  --feed-gutter: 1rem;
+  width: 100%;
+  max-width: 36rem;
+  margin-inline: auto;
+  /* A hairline down both sides on wide screens, so the column reads as a column
+     rather than as text floating in space. Absent on phones, where the viewport
+     edge already does that job. */
+  border-inline: 1px solid transparent;
+}
+
+@media (min-width: 40rem) {
+  .feed-shell { border-inline-color: var(--theme-border); }
+}
+
+/*
+   THE PINNED CHROME — the top bar and the tab row as one object.
+
+   Sticky rather than fixed: fixed would take it out of flow and the timeline
+   would need a matching top pad, which is two numbers that must agree forever.
+   `top` is the safe-area inset because in the Capacitor shell the document
+   scrolls under the status bar, and a bar pinned to 0 lands beneath the notch.
+
+   WHY THE TWO SHARE ONE WRAPPER
+
+   They were separately sticky, each with its own `backdrop-filter` — two
+   full-width blurred layers stacked directly on top of each other, which is the
+   most expensive thing this page could have asked for and the one arrangement
+   where the second blur samples the first instead of the content. One wrapper
+   means one blur over the whole chrome, and it means the retraction below can
+   move both as a unit instead of animating the tab row's sticky `top` to keep up.
+*/
+.feed-chrome {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 6;
+  background: var(--theme-glass-strong);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  /* The glass gets the same top-edge highlight every other glass surface in the
+     app carries, so the chrome reads as the same material as the panels and
+     sheets rather than as a plain translucent band. */
+  box-shadow: var(--elev-rim);
+  /* Retracts by exactly the bar's height, which lands the tab row on the safe
+     area — the tabs become the top edge, they do not move relative to it. */
+  transition: transform var(--dur-base) var(--ease-out-quint);
+  /* No `will-change` here on purpose. `backdrop-filter` already promotes this to
+     its own composited layer, so it would buy nothing — and it would make the
+     chrome a containing block for `position: fixed`, which is a trap for whatever
+     gets added inside it next. */
+}
+
+.feed-page.is-chrome-hidden .feed-chrome {
+  transform: translate3d(0, calc(-1 * var(--feed-topbar-h)), 0);
+}
+
+/*
+   The strip behind the status bar.
+
+   `body` pads by `env(safe-area-inset-top)`, so the document's content box starts
+   *below* the notch — which means that as the page scrolls, posts travel up into
+   that strip and sit under the clock with nothing behind them. On every other
+   screen the content is inset and never reaches it; this is the one page whose
+   column runs to the edge, so it is the one page that needs a mask.
+
+   It also catches the top bar on its way out: the bar retracts into this strip
+   before it clears the viewport, and without a mask you would watch it slide
+   under the time and battery.
+
+   Zero height, and therefore free, on any device without an inset.
+*/
+.feed-statusbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  /* Above the chrome (6) so the retracting bar passes behind it. */
+  z-index: 7;
+  pointer-events: none;
+  background: var(--theme-glass-strong);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+}
+
+.feed-topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.75rem;
-  margin: 1.25rem 0 1rem;
+  height: var(--feed-topbar-h, 3.375rem);
+  padding: 0 var(--feed-gutter, 1rem);
 }
 
-/* Sized to the title's own line box (`--leading-2xl`) rather than to a round
-   pixel value, so the tile and the first line of the heading share one box
-   instead of missing each other by three or four pixels. */
-.feed-head-badge {
+.feed-topbar-account {
+  position: relative;
   flex: none;
   display: grid;
   place-items: center;
-  height: var(--leading-2xl);
-  width: var(--leading-2xl);
-  border-radius: var(--radius-md);
-  background: linear-gradient(140deg, var(--theme-accent-from), var(--theme-accent-to));
-  color: var(--theme-accent-contrast);
-  box-shadow: var(--elev-1);
+  border-radius: var(--radius-full);
+  transition: transform var(--dur-fast) var(--ease-out-quint);
 }
 
-/* 44px, the touch minimum — then pulled back up so the larger circle stays
-   optically centred on the title line rather than sitting below it. */
-.feed-head-icon {
+.feed-topbar-account:active { transform: scale(0.92); }
+
+/* Rides the avatar's bottom-right, half off it, so it reads as a badge on the
+   avatar rather than a second control beside it. The ring in `--theme-surface`
+   is what keeps it legible over whichever colours the generated avatar landed
+   on. */
+.feed-topbar-account-glyph {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  height: 0.875rem;
+  width: 0.875rem;
+  border-radius: var(--radius-full);
+  background: var(--theme-text);
+  color: var(--theme-surface);
+  box-shadow: 0 0 0 1.5px var(--theme-surface);
+}
+
+.feed-topbar-dot {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--theme-accent-pink);
+  box-shadow: 0 0 0 2px var(--theme-surface);
+}
+
+/* Centred by the two flexible spacers around it rather than by `absolute`, so a
+   long label on either side pushes it instead of overlapping it. */
+.feed-topbar-mark {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+
+.feed-topbar-mark img {
+  height: 1.625rem;
+  width: 1.625rem;
+  object-fit: contain;
+  /* The mark is the same ghost as everywhere else, so it inherits the app's
+     drop shadow rather than getting a treatment of its own. */
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.22));
+}
+
+.feed-topbar-search {
   flex: none;
   display: grid;
   place-items: center;
-  height: 2.75rem;
-  width: 2.75rem;
-  margin-top: calc((var(--leading-2xl) - 2.75rem) / 2);
+  height: 2rem;
+  padding: 0 0.75rem;
   border-radius: var(--radius-full);
   border: 1px solid var(--hairline);
   background: var(--fill-1);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: var(--tracking-sm, 0);
   color: var(--theme-text-secondary);
   transition:
     background-color var(--dur-fast) var(--ease-out-quint),
@@ -3288,9 +3452,9 @@ html.viewport-locked body {
     transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-head-icon:active { transform: scale(0.94); }
+.feed-topbar-search:active { transform: scale(0.94); }
 
-.feed-head-icon.is-active {
+.feed-topbar-search.is-active {
   background: color-mix(in srgb, var(--theme-accent-purple) 16%, transparent);
   border-color: color-mix(in srgb, var(--theme-accent-purple) 38%, transparent);
   color: var(--theme-accent-purple);
@@ -3299,8 +3463,14 @@ html.viewport-locked body {
 /* --- Search -------------------------------------------------------------- */
 
 /* The animating wrapper. Height is animated on this, so it clips; the field
-   inside keeps its own box and never gets squashed mid-transition. */
-.feed-search-collapse { overflow: hidden; }
+   inside keeps its own box and never gets squashed mid-transition. The gutter
+   lives here rather than on `.feed-search`, because a horizontal margin inside a
+   height-animated box is fine while a padding on the animated box itself would
+   still be painted at height 0. */
+.feed-search-collapse {
+  overflow: hidden;
+  padding-inline: var(--feed-gutter, 1rem);
+}
 
 .feed-search {
   display: flex;
@@ -3508,132 +3678,41 @@ html.viewport-locked body {
   color: var(--theme-text-muted);
 }
 
-/* --- Stream panel -------------------------------------------------------- */
+/* --- Timeline ------------------------------------------------------------- */
 
-/* Deliberately no `overflow: hidden` — it would break the sticky tab bar
-   inside. The rows clip themselves instead. */
-.feed-stream {
-  border-radius: var(--radius-3xl);
-  border: 1px solid var(--theme-border);
-  background: var(--theme-card);
-  box-shadow: var(--elev-2), var(--elev-rim);
-  padding: 0 0.875rem;
-}
-
+/*
+   No panel. The stream used to sit inside a rounded, bordered, elevated card —
+   which put every post inside a rounded rectangle, inside another rounded
+   rectangle, on a gradient. Three frames around one paragraph, and it is exactly
+   what made the page read as a grid of boxes instead of a feed. The rows now run
+   to the shell's edges and separate themselves with a hairline.
+*/
 .feed-timeline { padding-bottom: 0.25rem; }
 
-/* --- Sorts and topics ---------------------------------------------------- */
+/* --- Feed tabs ----------------------------------------------------------- */
 
+/*
+   One horizontally scrollable row, sorts and topics together, with a sliding
+   underline. See components/feed/FeedTabs.tsx for why the two axes merged.
+
+   No `position: sticky` and no glass of its own: `.feed-chrome` above pins both
+   rows as one unit and supplies the single shared blur. This row keeps only the
+   hairline that closes the chrome off from the timeline — and when the top bar
+   retracts, that hairline becomes the top edge of the page.
+*/
 .feed-tabs-wrap {
-  position: sticky;
-  /* Not 0: in the Capacitor shell the document scrolls under the status bar, and
-     a tab bar pinned to the viewport edge lands beneath the notch. */
-  top: env(safe-area-inset-top, 0px);
-  z-index: 5;
-  /* Spans the panel's inline padding so the glass reaches both edges, then
-     puts the padding back inside itself. */
-  margin: 0 -0.875rem;
-  padding: 0.625rem 0.875rem;
+  position: relative;
   border-bottom: 1px solid var(--theme-border);
-  border-radius: var(--radius-3xl) var(--radius-3xl) 0 0;
-  background: var(--theme-glass-strong);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-}
-
-.feed-tabs-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .feed-tabs {
   position: relative;
   display: flex;
-  flex: 1;
-  min-width: 0;
-  gap: 0.125rem;
-  padding: 0.1875rem;
-  border-radius: var(--radius-full);
-  background: var(--fill-1);
-}
-
-.feed-tab {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  place-items: center;
-  height: 2rem;
-  padding: 0 0.25rem;
-  border-radius: var(--radius-full);
-  font-size: 0.78125rem;
-  font-weight: 800;
-  white-space: nowrap;
-  color: var(--theme-text-muted);
-  transition: color var(--dur-fast) var(--ease-out-quint);
-}
-
-.feed-tab.is-active { color: var(--theme-text); }
-
-/* An accent-tinted lift rather than a filled gradient: four tabs of gradient
-   would out-shout the posts under them, and the near-black `accent-contrast`
-   this palette pairs with that gradient is a hard read at 12.5px. */
-.feed-tab-indicator {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: var(--radius-full);
-  border: 1px solid color-mix(in srgb, var(--theme-accent-purple) 30%, transparent);
-  background: color-mix(in srgb, var(--theme-accent-purple) 18%, var(--fill-2));
-  box-shadow: var(--elev-1);
-}
-
-.feed-tabs-filter {
-  position: relative;
-  flex: none;
-  display: grid;
-  place-items: center;
-  height: 2.375rem;
-  width: 2.375rem;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--hairline);
-  background: var(--fill-1);
-  color: var(--theme-text-muted);
-  transition:
-    background-color var(--dur-fast) var(--ease-out-quint),
-    border-color var(--dur-fast) var(--ease-out-quint),
-    color var(--dur-fast) var(--ease-out-quint),
-    transform var(--dur-fast) var(--ease-out-quint);
-}
-
-.feed-tabs-filter:active { transform: scale(0.94); }
-
-.feed-tabs-filter.is-active {
-  background: color-mix(in srgb, var(--theme-accent-purple) 16%, transparent);
-  border-color: color-mix(in srgb, var(--theme-accent-purple) 38%, transparent);
-  color: var(--theme-accent-purple);
-}
-
-/* Says "a filter is applied" while the row is collapsed and the chips can't. */
-.feed-tabs-filter-dot {
-  position: absolute;
-  top: 0.3125rem;
-  right: 0.3125rem;
-  height: 0.375rem;
-  width: 0.375rem;
-  border-radius: var(--radius-full);
-  background: var(--theme-accent-pink);
-  box-shadow: 0 0 0 2px var(--theme-card);
-}
-
-.feed-topics-collapse { overflow: hidden; }
-
-.feed-topics {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 0.375rem;
-  padding: 0.625rem 0 0.125rem;
+  align-items: stretch;
+  gap: 0;
+  /* Deliberately zero. `.feed-tab` pays 1rem of its own, which is the gutter, so
+     the first label lands exactly above the post text below it. */
+  padding-inline: 0;
   overflow-x: auto;
   /* Stops a horizontal flick from becoming a browser back-navigation. */
   overscroll-behavior-x: contain;
@@ -3641,9 +3720,55 @@ html.viewport-locked body {
   scrollbar-width: none;
 }
 
-.feed-topics::-webkit-scrollbar { display: none; }
+.feed-tabs::-webkit-scrollbar { display: none; }
 
-.feed-topic-chip,
+/*
+   `flex: none` and a generous inline padding rather than `flex: 1`: an equal-share
+   tab only makes sense for a bounded set, and this row runs off the right edge. A
+   tab is as wide as its label plus a thumb's worth of margin.
+*/
+.feed-tab {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: var(--feed-tabs-h, 3.125rem);
+  padding: 0 1rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--theme-text-muted);
+  transition: color var(--dur-base) var(--ease-out-quint);
+}
+
+.feed-tab.is-active {
+  color: var(--theme-text);
+  font-weight: 800;
+}
+
+/*
+   Two pixels of accent, inset from the tab's own padding so the bar matches the
+   width of the *text* rather than of the hit target — a rule that runs the full
+   tab width reads as a segment of a track, which is the pill this replaced.
+*/
+.feed-tab-indicator {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 0;
+  height: 0.1875rem;
+  border-radius: var(--radius-full) var(--radius-full) 0 0;
+  background: linear-gradient(90deg, var(--theme-accent-from), var(--theme-accent-to));
+}
+
+/* --- Composer topic chips ------------------------------------------------ */
+
+/*
+   Split from the feed's own topic row, which no longer exists as chips — the feed
+   picks a topic through the tab row above, and the composer assigns one to a post.
+   Two different jobs that happened to look alike; sharing a rule meant a change to
+   either silently changed both.
+*/
 .feed-composer-topic {
   flex: none;
   display: inline-flex;
@@ -3664,12 +3789,10 @@ html.viewport-locked body {
     transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-topic-chip:active,
 .feed-composer-topic:active { transform: scale(0.96); }
 
 /* Filled rather than outlined when active — the same language as `.daily-chip`,
-   so the two chip rows in the app read as one control type. */
-.feed-topic-chip.is-active,
+   so every chip row in the app reads as one control type. */
 .feed-composer-topic.is-active {
   border-color: transparent;
   background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
@@ -3678,6 +3801,288 @@ html.viewport-locked body {
 }
 
 .feed-topic-emoji { font-size: 0.8125rem; line-height: 1; }
+
+/* --- Left drawer --------------------------------------------------------- */
+
+/*
+   The panel behind the avatar in the top bar. It holds the Daily Question,
+   Whisper of the Day, Surprise Me, the poll shortcut and the routes the bottom
+   nav has no room for — see components/feed/FeedDrawer.tsx for why those moved
+   off the top of the timeline.
+
+   Solid, not glass, and for the same reason the timeline is: this is a
+   full-height surface, `backdrop-filter` costs in proportion to area, and it
+   animates its transform across the whole screen on open. Blurring a moving
+   surface that tall means re-sampling every pixel behind it on every frame of
+   the entrance. The scrim carries the depth instead, which costs one opacity.
+*/
+.feed-drawer-layer {
+  position: fixed;
+  inset: 0;
+  /* Above the bottom navigation (50) and the compose button (40) — a drawer that
+     a nav bar cut a hole through would read as a bug, not a layer. Below Modal's
+     999, so the composer sheet the drawer's poll row opens lands on top of it. */
+  z-index: 60;
+}
+
+.feed-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.5);
+  /* A modal task, so the background is dimmed *and* pushed back. Kept to a
+     small radius: this is separation, not a frosted sheet. */
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.feed-drawer {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  display: flex;
+  width: min(20rem, 86vw);
+  flex-direction: column;
+  border-right: 1px solid var(--theme-border);
+  background: var(--theme-surface);
+  box-shadow: var(--elev-5);
+  /* The panel is dragged, so the compositor is told in advance. */
+  will-change: transform;
+  outline: none;
+}
+
+.feed-drawer-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  /* The insets are the status bar and the home indicator; the extra 1rem at the
+     foot keeps the last row clear of the gesture area. */
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 1.125rem) 1rem
+    calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
+  scrollbar-width: none;
+}
+
+.feed-drawer-scroll::-webkit-scrollbar { display: none; }
+
+.feed-drawer-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.feed-drawer-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  /* Negative inline margin so the row's own hover/press fill reaches the panel
+     padding instead of floating inside it. */
+  margin-inline: -0.5rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-2xl);
+  transition: background-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-drawer-identity:active { background: var(--fill-2); }
+
+.feed-drawer-names {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.feed-drawer-name {
+  font-size: 1rem;
+  font-weight: 800;
+  /* Tighter as the size goes up, matching the rest of the scale. */
+  letter-spacing: -0.01em;
+  color: var(--theme-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-drawer-handle {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--theme-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where X puts "312 Following · 116 Followers". Whisper has neither, and
+   inventing a pair would be a fake counter dressed as social proof — so this
+   is the coin balance, which is real and is what the compose button spends. */
+.feed-drawer-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-inline: -0.375rem;
+  padding: 0.3125rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--theme-text-muted);
+  transition: background-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-drawer-stats strong {
+  font-weight: 800;
+  color: var(--theme-text);
+}
+
+.feed-drawer-stats:active { background: var(--fill-2); }
+
+/* The discovery card, unchanged, in a narrower box. It sheds its own bottom
+   margin here because the drawer's flow owns the spacing between blocks. */
+.feed-drawer-discovery { padding-top: 1rem; }
+
+.feed-drawer-discovery .feed-discovery {
+  margin-bottom: 0;
+  padding: 1rem 1.0625rem 1.0625rem;
+}
+
+.feed-drawer-poll {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 0.625rem;
+  padding: 0.75rem 0.875rem;
+  text-align: left;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: var(--theme-text);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-drawer-poll:active {
+  transform: scale(0.98);
+  background: var(--fill-2);
+}
+
+.feed-drawer-poll > svg {
+  flex: none;
+  color: var(--theme-accent-purple);
+}
+
+.feed-drawer-poll > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.feed-drawer-poll small {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--theme-text-muted);
+}
+
+.feed-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--theme-border);
+}
+
+/* Pushed to the bottom of the column when the panel is taller than its rows, so
+   Settings sits at the foot the way it does on X rather than floating halfway. */
+.feed-drawer-nav.is-footer { margin-top: auto; }
+
+.feed-drawer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9375rem;
+  /* Wide rows: this is the one list in the app read entirely with a thumb, and
+     44px is the floor for that. */
+  min-height: 2.875rem;
+  margin-inline: -0.5rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-xl);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  color: var(--theme-text);
+  transition: background-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-drawer-row > svg { flex: none; color: var(--theme-text-secondary); }
+
+.feed-drawer-row:active { background: var(--fill-2); }
+
+/* The account group reads one step quieter than the destinations above it —
+   these are places you visit rarely and deliberately. */
+.feed-drawer-row.is-quiet {
+  min-height: 2.625rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--theme-text-secondary);
+}
+
+.feed-drawer-row.is-quiet > svg { color: var(--theme-text-muted); }
+
+/* --- Compose button ------------------------------------------------------ */
+
+/*
+   The quill, above the bottom nav. See components/feed/FeedFab.tsx for why it is
+   a quill rather than a plus and why it sits outside the nav bar.
+
+   `position: fixed` on a `transform`ed ancestor would resolve against that
+   ancestor, so this is mounted as a sibling of `.feed-shell`, not inside it.
+*/
+.feed-fab {
+  position: fixed;
+  right: 1.125rem;
+  /* Clears the 5rem bottom nav plus its inset, with a thumb's gap. */
+  bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  height: 3.5rem;
+  width: 3.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-contrast) 16%, transparent);
+  background: linear-gradient(140deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  /* A rim over the elevation: the button floats over a scrolling timeline, and
+     on a light photo the shadow alone stops separating it from the content. */
+  box-shadow: var(--elev-3), var(--elev-rim);
+  will-change: transform, opacity;
+}
+
+/* --- Composer sheet ------------------------------------------------------ */
+
+/*
+   `Modal variant="sheet"` supplies the surface, so there is deliberately no
+   background, border or blur here — adding one would stack a second translucent
+   layer inside the first, which is the one thing that reliably ruins both.
+*/
+.feed-composer-sheet-body {
+  /* The sheet is capped at 85vh by Modal, and a poll with four options plus the
+     suggestion list overruns that on a short phone. */
+  max-height: min(70vh, 34rem);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  /* Room for the focus ring on the last control, which a flush edge clips. */
+  padding: 0.125rem;
+  scrollbar-width: none;
+}
+
+.feed-composer-sheet-body::-webkit-scrollbar { display: none; }
 
 /* --- Post head and topic tag -------------------------------------------- */
 
@@ -4374,14 +4779,23 @@ html.viewport-locked body {
 
 /* Centred without a transform, deliberately: Framer animates `y` on this
    element and writes the whole `transform` property, which would drop a
-   `translateX(-50%)` and slam the pill against the left edge. */
+   `translateX(-50%)` and slam the pill against the left edge.
+
+   Sits below the pinned chrome rather than at the top of the screen. It used to
+   be `inset + 0.75rem`, which was clear of the old page header but lands
+   directly on the top bar's centre now that one is pinned there — the pill and
+   the ghost mark were drawn in the same place. Following `--feed-chrome-h` also
+   means it rises with the bar when the bar retracts, so it stays tucked under
+   the tab row instead of leaving a gap. */
 .feed-new-pill {
   position: fixed;
   left: 0;
   right: 0;
   margin-inline: auto;
   width: fit-content;
-  top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  top: calc(
+    env(safe-area-inset-top, 0px) + var(--feed-chrome-h, 6.5rem) + 0.75rem
+  );
   z-index: 40;
   display: inline-flex;
   align-items: center;
@@ -4394,6 +4808,7 @@ html.viewport-locked body {
   font-weight: 800;
   color: var(--theme-accent-contrast);
   box-shadow: var(--elev-3);
+  transition: top var(--dur-base) var(--ease-out-quint);
 }
 
 /* --- Daily Question sparks ---------------------------------------------- */
@@ -4525,15 +4940,22 @@ html.viewport-locked body {
   .feed-action-more:hover { color: var(--theme-text); }
   .feed-action-more:hover .feed-action-icon { background: var(--fill-2); }
 
-  .feed-head-icon:hover,
-  .feed-tabs-filter:hover,
   .feed-composer-tool:hover,
-  .feed-topic-chip:hover,
   .feed-composer-topic:hover,
+  .feed-topbar-search:hover,
   .feed-discovery-surprise:hover {
     background: var(--fill-2);
     color: var(--theme-text);
   }
+
+  .feed-tab:hover:not(.is-active) { color: var(--theme-text-secondary); }
+
+  .feed-drawer-identity:hover,
+  .feed-drawer-stats:hover,
+  .feed-drawer-poll:hover,
+  .feed-drawer-row:hover { background: var(--fill-1); }
+
+  .feed-fab:hover { filter: brightness(1.06); }
 
   .feed-search-clear:hover,
   .feed-sheet-cancel:hover { color: var(--theme-text); }
@@ -4569,16 +4991,70 @@ html.viewport-locked body {
  * `data-native` is set by the Capacitor shell (see components/NativeShell.tsx).
  *
  * Android's WebView composites `backdrop-filter` markedly slower than desktop
- * Chrome — it is the same code path, on a fraction of the fill rate — and the one
- * blurred surface on this screen is the sticky tab bar, which by definition
- * re-blurs on every frame of every scroll. Halving the radius is invisible over
- * this app's smooth gradient background (a blur over a gradient converges long
- * before 20px) and it halves the sample count on the one element that pays it
- * continuously.
+ * Chrome — it is the same code path, on a fraction of the fill rate — and the
+ * blurred surfaces on this screen are the pinned chrome and the strip behind the
+ * status bar, which by definition re-blur on every frame of every scroll. Halving
+ * the radius is invisible over this app's smooth gradient background (a blur over
+ * a gradient converges long before 20px) and it halves the sample count on the
+ * elements that pay it continuously.
  */
-[data-native="true"] .feed-tabs-wrap {
+[data-native="true"] .feed-chrome,
+[data-native="true"] .feed-statusbar {
   backdrop-filter: blur(10px) saturate(150%);
   -webkit-backdrop-filter: blur(10px) saturate(150%);
+}
+
+/*
+ * The drawer's scrim animates `opacity` across the whole viewport, and a blurred
+ * layer that fades has to re-sample everything behind it on every frame of the
+ * fade — the one combination worth refusing outright on this hardware. The dim
+ * alone still separates the panel from the page, which is the scrim's actual job.
+ */
+[data-native="true"] .feed-drawer-scrim {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgb(0 0 0 / 0.58);
+}
+
+/* --- Feed chrome: accessibility fallbacks -------------------------------- */
+
+/*
+ * Blur is a paint effect rather than motion, but it is the effect this setting is
+ * specifically about. The chrome is pinned over moving content, so it cannot just
+ * drop the blur and stay translucent — text would cross text. It goes opaque
+ * instead, which is what `--theme-surface-solid` exists for.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  .feed-chrome,
+  .feed-statusbar {
+    background: var(--theme-surface-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .feed-drawer-scrim {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgb(0 0 0 / 0.66);
+  }
+}
+
+/*
+ * The retraction is honest motion — content moving out from under the reader — so
+ * it is dropped rather than shortened. `useHideOnScroll` is also passed the same
+ * preference and stops reporting `hidden` at all; this is the belt to that
+ * braces, for the frame where the class is still on the element.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .feed-chrome {
+    transition: none;
+  }
+
+  .feed-page.is-chrome-hidden .feed-chrome {
+    transform: none;
+  }
+
+  .feed-new-pill { transition: none; }
 }
 
 /* --- Offline indicator --------------------------------------------------- */

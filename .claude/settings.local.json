@@ -9,7 +9,6 @@
       "Bash(npm uninstall *)",
       "Bash(npx *)",
       "Bash(node *)",
-
       "Bash(git status)",
       "Bash(git diff *)",
       "Bash(git log *)",
@@ -19,16 +18,26 @@
       "Bash(git commit *)",
       "Bash(git checkout *)",
       "Bash(git switch *)",
-      "Bash(git pull *)"
-    ],
-    "ask": [
-      "Bash(git push *)"
+      "Bash(git pull *)",
+      "mcp__ide__getDiagnostics",
+      "Bash(echo \"=== TSC EXIT: $? ===\")",
+      "Bash(awk '/^\\\\.feed-shell \\\\{/,/^\\\\}/' app/globals.css)",
+      "Bash(awk '/^\\\\.feed-timeline/,/^\\\\}/' app/globals.css)",
+      "Bash(awk '/\\\\.theme-bg-gradient \\\\{/,/^\\\\}/' app/globals.css)",
+      "Bash(awk '/^\\\\.feed-drawer-scrim \\\\{/,/^\\\\}/' app/globals.css)",
+      "Bash(awk '/^\\\\.feed-chrome \\\\{/,/^\\\\}/' app/globals.css)",
+      "Bash(echo \"=== EXIT: $? ===\")",
+      "Bash(git stash *)",
+      "Read(//tmp/**)"
     ],
     "deny": [
       "Bash(git push --force *)",
       "Bash(git push * --force *)",
       "Bash(git reset --hard *)",
       "Bash(git clean *)"
+    ],
+    "ask": [
+      "Bash(git push *)"
     ],
     "defaultMode": "acceptEdits"
   }

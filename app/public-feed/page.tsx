@@ -1,17 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowUp, MessageSquareDashed, Search, SearchX, Sparkles, X } from "lucide-react";
-import BackButton from "@/components/BackButton";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowUp, MessageSquareDashed, SearchX } from "lucide-react";
 import BottomNavigation from "@/components/BottomNavigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import FeedPostCard from "@/components/feed/FeedPostCard";
 import FeedTabs from "@/components/feed/FeedTabs";
+import FeedTopBar from "@/components/feed/FeedTopBar";
+import FeedDrawer from "@/components/feed/FeedDrawer";
+import FeedFab from "@/components/feed/FeedFab";
 import FeedSearchBar from "@/components/feed/FeedSearchBar";
-import FeedComposer, { type ComposerDraft } from "@/components/feed/FeedComposer";
-import FeedDiscovery from "@/components/feed/FeedDiscovery";
+import FeedComposerSheet from "@/components/feed/FeedComposerSheet";
+import { type ComposerDraft } from "@/components/feed/FeedComposer";
 import FeedSkeleton from "@/components/feed/FeedSkeleton";
 import FeedPhotoViewer from "@/components/feed/FeedPhotoViewer";
 import FeedPostMenu from "@/components/feed/FeedPostMenu";
@@ -28,6 +30,7 @@ import {
   type FeedPost,
   type FeedPostNode,
   type FeedSort,
+  type FeedTopic,
 } from "@/lib/feed";
 import {
   FEED_PAGE_SIZE,
@@ -45,7 +48,10 @@ import {
 } from "@/lib/feedApi";
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
 import { requireOnline, isOnline } from "@/lib/offline";
+import { useAnonNames } from "@/lib/anonNames";
 import { tween } from "@/lib/motion";
+import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
+import useHideOnScroll from "@/lib/useHideOnScroll";
 import { vibrate, HAPTIC } from "@/lib/haptics";
 
 /**
@@ -114,8 +120,14 @@ function mergeRows(current: FeedPost[], incoming: FeedPost[]): FeedPost[] {
 export default function PublicFeedPage() {
   const { showToast } = useToast();
   /* Resolved once here and passed down through the controller. Forty cards each
-     subscribing to the same media query is forty listeners for one boolean. */
-  const reducedMotion = useReducedMotion() ?? false;
+     subscribing to the same media query is forty listeners for one boolean.
+
+     `useSafeReducedMotion` rather than Framer's `useReducedMotion`: this value
+     decides `initial` transforms and whether decorative elements mount at all, so
+     reading the media query during the hydration render — which is what Framer's
+     hook does — disagrees with the server HTML and throws the whole tree away for
+     exactly the users who asked for less work. See lib/useSafeReducedMotion.ts. */
+  const reducedMotion = useSafeReducedMotion();
 
   const [myId, setMyId] = useState("");
   const [username, setUsername] = useState("");
@@ -167,8 +179,55 @@ export default function PublicFeedPage() {
 
   const [prefillNonce, setPrefillNonce] = useState(0);
   const [prefillBody, setPrefillBody] = useState("");
+  const [prefillTopic, setPrefillTopic] = useState<FeedTopic | null>(null);
+  const [prefillPoll, setPrefillPoll] = useState(false);
+
+  /* The two surfaces the X layout replaces the old stacked chrome with. Both are
+     page state rather than component state because more than one control opens
+     each: the avatar and the attention dot both open the drawer, and the FAB, the
+     empty state, the Daily Question and the drawer's poll row all open the
+     composer. */
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+
+  /*
+   * The top bar retracts on the way down the timeline and comes back the moment
+   * the reader turns around, leaving the tab row as the top edge. See
+   * lib/useHideOnScroll.ts for the gesture handling.
+   *
+   * The hook reports scroll direction only; the exceptions are composed here.
+   * Search, because the field's toggle lives *in* the bar — retracting it hides
+   * the only way to close a filter that is currently emptying the feed. The
+   * drawer and the composer, so momentum still in flight when a surface opens
+   * cannot finish retracting the bar behind it, which would leave it missing on
+   * dismiss. Reduced motion is the hook's own `enabled`, since that one is
+   * permanent for the session rather than a passing state.
+   */
+  const scrolledAway = useHideOnScroll({ enabled: !reducedMotion });
+  const chromeHidden = scrolledAway && !searchOpen && !drawerOpen && !composerOpen;
+
+  /* Whether this user has already answered today's question, so the drawer button
+     only carries a dot while there is genuinely something new behind it. Derived
+     from what is already loaded — no extra query — by looking for one of their own
+     posts on today's question topic since the question rolled over at 00:00 UTC. */
+  const answeredToday = useMemo(() => {
+    if (!myId) return false;
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const cutoff = dayStart.getTime();
+    return posts.some(
+      (post) =>
+        post.author_id === myId &&
+        post.topic === "question" &&
+        new Date(post.created_at).getTime() >= cutoff
+    );
+  }, [posts, myId]);
 
   const ownLink = username ? `/u/${username}` : "";
+  /* One id, so this is a cache read in every case but the first. The drawer shows
+     the poster their own generated identity — the same one their posts carry, which
+     is the only name that means anything on an anonymous feed. */
+  const anonName = useAnonNames([myId]);
   const dailyQuestion = useMemo(() => dailyQuestionFor(), []);
   const query = useMemo<FeedQuery>(() => ({ sort, topic, search }), [sort, topic, search]);
 
@@ -1112,14 +1171,36 @@ export default function PublicFeedPage() {
     }
   }, [focusPost, showToast]);
 
+  /*
+   * The three ways into the composer.
+   *
+   * All of them open the same sheet and differ only in what it opens *with*, which
+   * is why they all bump one nonce rather than each owning a flag: the composer
+   * reads the prefill triplet at the moment the nonce changes, so setting the three
+   * values and then bumping is the whole protocol.
+   */
   const answerDailyQuestion = useCallback(() => {
     setPrefillBody(`${dailyQuestion}\n\n`);
+    setPrefillTopic("question");
+    setPrefillPoll(false);
     setPrefillNonce((nonce) => nonce + 1);
+    setComposerOpen(true);
   }, [dailyQuestion]);
 
   const focusComposer = useCallback(() => {
     setPrefillBody("");
+    setPrefillTopic(null);
+    setPrefillPoll(false);
     setPrefillNonce((nonce) => nonce + 1);
+    setComposerOpen(true);
+  }, []);
+
+  const startPoll = useCallback(() => {
+    setPrefillBody("");
+    setPrefillTopic(null);
+    setPrefillPoll(true);
+    setPrefillNonce((nonce) => nonce + 1);
+    setComposerOpen(true);
   }, []);
 
   /* ---------------------------------------------------------------------
@@ -1230,38 +1311,44 @@ export default function PublicFeedPage() {
   );
 
   return (
-    <main className="min-h-screen theme-bg-gradient px-4 pb-28 pt-10">
-      <div className="mx-auto max-w-xl">
-        <BackButton />
+    <main
+      className={`feed-page min-h-screen theme-bg-gradient pb-28 ${
+        chromeHidden ? "is-chrome-hidden" : ""
+      }`}
+    >
+      {/* `body` pads by the safe-area inset, so the timeline scrolls up into the
+          strip under the notch with nothing behind it. Every other screen is
+          inset and never reaches that strip; this is the one whose column runs to
+          the edge. Zero height, and therefore free, without an inset. */}
+      <div className="feed-statusbar" aria-hidden />
 
-        <header className="feed-head">
-          <span aria-hidden className="feed-head-badge">
-            <Sparkles size={16} strokeWidth={2.4} />
-          </span>
-
-          <div className="min-w-0 flex-1">
-            <h1 className="page-title">Public Feed</h1>
-            <p className="page-subtitle mt-1">
-              Real thoughts from the Whisper community. Posts clear after 24 hours.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              vibrate(HAPTIC.tap);
-              /* Closing clears the term for the same reason the topic filter
-                 does — a filter nobody can see reads as an empty feed. */
+      <div className="feed-shell">
+        {/* The bar and the tabs pin as one object and retract as one object —
+            two separately sticky elements meant two stacked blurs and a tab row
+            whose sticky `top` had to be animated to keep up. */}
+        <div className="feed-chrome">
+          <FeedTopBar
+            authorId={myId}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onOpenSearch={() => {
+              /* Closing clears the term for the same reason the topic filter does —
+                 a filter nobody can see reads as an empty feed. */
               if (searchOpen && search) setSearch("");
               setSearchOpen((open) => !open);
             }}
-            aria-expanded={searchOpen}
-            aria-label={searchOpen ? "Close search" : "Search whispers"}
-            className={`feed-head-icon ${searchOpen ? "is-active" : ""}`}
-          >
-            {searchOpen ? <X size={17} /> : <Search size={17} />}
-          </button>
-        </header>
+            searchOpen={searchOpen}
+            hasDiscovery={Boolean(spotlight) || !answeredToday}
+          />
+
+          <FeedTabs
+            sort={sort}
+            topic={topic}
+            onSortChange={setSort}
+            onTopicChange={setTopic}
+            reducedMotion={reducedMotion}
+            showTopics={mode !== "fallback"}
+          />
+        </div>
 
         <AnimatePresence initial={false}>
           {(searchOpen || Boolean(search)) && (
@@ -1278,99 +1365,104 @@ export default function PublicFeedPage() {
           )}
         </AnimatePresence>
 
-        <FeedDiscovery
-          question={dailyQuestion}
-          spotlight={spotlight}
-          surprising={surprising}
-          onAnswerQuestion={answerDailyQuestion}
-          onOpenSpotlight={(post) => void focusPost(post.id, post)}
-          onSurprise={() => void surprise()}
-          reducedMotion={reducedMotion}
-        />
-
-        <FeedComposer
-          authorId={myId}
-          ownLink={ownLink}
-          postCost={FEED_POST_COST}
-          prefillNonce={prefillNonce}
-          prefillBody={prefillBody}
-          prefillTopic="question"
-          onSubmit={createPost}
-        />
-
-        {/* Tabs and timeline share one panel so the feed reads as a single
-            surface with a header, the way a timeline does — rather than as three
-            unrelated blocks stacked on a gradient. The panel deliberately has no
-            `overflow: hidden`: that would kill the sticky tab bar inside it. */}
-        <div className="feed-stream">
-          <FeedTabs
-            sort={sort}
-            topic={topic}
-            onSortChange={setSort}
-            onTopicChange={setTopic}
-            reducedMotion={reducedMotion}
-            showTopics={mode !== "fallback"}
-          />
-
-          {/* One surface, hairline-separated rows — the timeline is a column of
-              text, not a stack of cards. See the `.feed-post` note in globals. */}
-          <section
-            className="feed-timeline"
-            aria-label="Public feed timeline"
-            aria-busy={loading}
-          >
-            {loading ? (
-              <FeedSkeleton />
-            ) : roots.length === 0 ? (
-              filtering ? (
-                <EmptyState
-                  icon={<SearchX size={26} />}
-                  title="Nothing matches"
-                  description="No live whisper fits that filter. The feed only holds the last 24 hours, so there is less here than you might expect."
-                  action={{
-                    label: "Clear filters",
-                    onClick: () => {
-                      setTopic(null);
-                      setSearch("");
-                    },
-                  }}
-                />
-              ) : (
-                <EmptyState
-                  icon={<MessageSquareDashed size={26} />}
-                  title="The feed is quiet"
-                  description="Posts here disappear after 24 hours, so there is nothing to catch up on yet. Say the first thing."
-                  action={{ label: "Write a post", onClick: focusComposer }}
-                />
-              )
+        {/* No panel around this. The timeline is one column of hairline-separated
+            rows running edge to edge — a post inside its own rounded rectangle,
+            inside another rounded rectangle, on a gradient, is three frames around
+            one paragraph, and it is what made the page read as boxes rather than
+            as a feed. */}
+        <section
+          className="feed-timeline"
+          aria-label="Public feed timeline"
+          aria-busy={loading}
+        >
+          {loading ? (
+            <FeedSkeleton />
+          ) : roots.length === 0 ? (
+            filtering ? (
+              <EmptyState
+                icon={<SearchX size={26} />}
+                title="Nothing matches"
+                description="No live whisper fits that filter. The feed only holds the last 24 hours, so there is less here than you might expect."
+                action={{
+                  label: "Clear filters",
+                  onClick: () => {
+                    setTopic(null);
+                    setSearch("");
+                  },
+                }}
+              />
             ) : (
-              <>
-                {roots.map((post) => (
-                  <FeedPostCard
-                    key={post.id}
-                    node={post}
-                    controller={controller}
-                    depth={0}
-                    impressionRef={impressionRef}
-                    highlightId={highlight}
-                  />
-                ))}
+              <EmptyState
+                icon={<MessageSquareDashed size={26} />}
+                title="The feed is quiet"
+                description="Posts here disappear after 24 hours, so there is nothing to catch up on yet. Say the first thing."
+                action={{ label: "Write a post", onClick: focusComposer }}
+              />
+            )
+          ) : (
+            <>
+              {roots.map((post) => (
+                <FeedPostCard
+                  key={post.id}
+                  node={post}
+                  controller={controller}
+                  depth={0}
+                  impressionRef={impressionRef}
+                  highlightId={highlight}
+                />
+              ))}
 
-                {moreAvailable ? (
-                  <div ref={sentinelRef} className="feed-sentinel">
-                    {/* Shimmer only while a page is actually in flight. A
-                        permanent skeleton at the foot of the list claims a
-                        request that isn't running. */}
-                    {loadingMore && <FeedSkeleton rows={1} />}
-                  </div>
-                ) : (
-                  <p className="feed-end">You&apos;re all caught up.</p>
-                )}
-              </>
-            )}
-          </section>
-        </div>
+              {moreAvailable ? (
+                <div ref={sentinelRef} className="feed-sentinel">
+                  {/* Shimmer only while a page is actually in flight. A
+                      permanent skeleton at the foot of the list claims a
+                      request that isn't running. */}
+                  {loadingMore && <FeedSkeleton rows={1} />}
+                </div>
+              ) : (
+                <p className="feed-end">You&apos;re all caught up.</p>
+              )}
+            </>
+          )}
+        </section>
       </div>
+
+      <FeedDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        authorId={myId}
+        displayName={anonName(myId)}
+        handle={username || null}
+        question={dailyQuestion}
+        spotlight={spotlight}
+        surprising={surprising}
+        onAnswerQuestion={answerDailyQuestion}
+        onOpenSpotlight={(post) => void focusPost(post.id, post)}
+        onSurprise={() => void surprise()}
+        onStartPoll={startPoll}
+        reducedMotion={reducedMotion}
+      />
+
+      <FeedComposerSheet
+        open={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        authorId={myId}
+        ownLink={ownLink}
+        postCost={FEED_POST_COST}
+        prefillNonce={prefillNonce}
+        prefillBody={prefillBody}
+        prefillTopic={prefillTopic}
+        prefillPoll={prefillPoll}
+        onSubmit={createPost}
+      />
+
+      {/* Hidden while a full-screen surface is up, so it cannot float over a
+          sheet it has no relationship with. */}
+      <FeedFab
+        onClick={focusComposer}
+        hidden={drawerOpen || composerOpen || Boolean(photoUrl)}
+        reducedMotion={reducedMotion}
+      />
 
       {/* Announced rather than injected: a post that jumped into a ranked feed
           would reorder the list under the reader's thumb. */}

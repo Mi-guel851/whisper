@@ -106,9 +106,6 @@ self.addEventListener("activate", (event) => {
 
       /* Serve the fresh shell to tabs that are already open, so a deploy does
          not leave a half-updated app running until the next cold start. */
-      if (self.registration.navigationPreload) {
-        await self.registration.navigationPreload.disable();
-      }
       await self.clients.claim();
     })()
   );
@@ -230,7 +227,17 @@ async function networkFirst(request, cacheName, timeoutMs, fallback) {
  * Routing
  * ------------------------------------------------------------------------- */
 
+/*
+ * Same-origin only, deliberately.
+ *
+ * An earlier draft matched image extensions on any host, which quietly took in
+ * Supabase Storage. Those are signed URLs: the token lives in the query string
+ * and rotates, so every fresh signature is a new cache key for bytes already
+ * held — a cache that grows without bound and never serves a hit. Cross-origin
+ * media is left to the browser's own HTTP cache, which handles it correctly.
+ */
 function isImmutableAsset(url) {
+  if (url.origin !== self.location.origin) return false;
   return (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/_next/image") ||

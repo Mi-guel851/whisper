@@ -1,35 +1,38 @@
 "use client";
 
-import { memo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { SlidersHorizontal } from "lucide-react";
+import { memo, useEffect, useRef } from "react";
+import { motion } from "framer-motion";
 import { FEED_SORTS, FEED_TOPICS, type FeedSort } from "@/lib/feed";
-import { tween } from "@/lib/motion";
 import { vibrate, HAPTIC } from "@/lib/haptics";
 
 /**
- * The navigation above the timeline: what to rank by, and what to rank within.
+ * The feed selector, laid out the way X lays it out.
  *
- * They are deliberately different shapes. The sorts are a *segmented control* —
- * four mutually exclusive views of the same feed, so they share one track and a
- * single indicator slides between them, which is the only affordance that says
- * "these four are one choice". The topics are *chips* — an optional filter that
- * can also be off, so they scroll, they can all be inactive, and "All" is a
- * first-class option rather than an implied default.
+ * ONE ROW, NOT TWO
  *
- * WHY THE TOPICS COLLAPSE
+ * This used to be a segmented pill for the four sorts with a second collapsible
+ * row of nine topic chips underneath, plus a filter toggle to reveal it. Three
+ * controls, two rows, and the same eight topics were *also* drawn inside the
+ * composer — so the page opened with two nearly identical chip rows above the
+ * first whisper.
  *
- * Nine chips is a row of permanent height above every post, and the composer
- * already shows the same eight topics — so on first paint the feed read as two
- * identical chip rows and a search box before a single whisper. Collapsing them
- * behind one control is the difference between a toolbar and a wall. The row
- * stays open on its own whenever a topic is actually applied: a hidden active
- * filter is how a feed ends up looking broken to the person who set it.
+ * X solves this by refusing the distinction. "For you" and "Following" sit in the
+ * same scroller as topic feeds because, to the person reading, they are all
+ * answers to one question: which feed am I looking at. Sort-versus-filter is an
+ * implementation detail, and exposing it as two separate axes made the reader do
+ * the modelling. So the two collapse into one horizontal row with a single active
+ * item and a sliding underline.
  *
- * The indicator is a `layoutId` rather than a transform computed from offsets.
- * Framer measures both positions itself, which means the slide stays correct
- * when the labels reflow at a narrow width — the case a hand-computed translate
- * always gets wrong.
+ * Picking a sort clears the topic; picking a topic keeps the sort, so "Love"
+ * stays ranked the way the reader last chose rather than silently reverting to
+ * newest-first.
+ *
+ * WHY AN UNDERLINE AND NOT A FILLED PILL
+ *
+ * A filled indicator has to sit on a track, a track needs a background, and a
+ * background is another rectangle competing with the posts. An underline is two
+ * pixels. It is also the only indicator that reads correctly when the row scrolls
+ * — a pill implies a bounded set of options, and this set runs off both edges.
  */
 
 type FeedTabsProps = {
@@ -37,13 +40,11 @@ type FeedTabsProps = {
   topic: string | null;
   onSortChange: (sort: FeedSort) => void;
   onTopicChange: (topic: string | null) => void;
-  /** Suppresses the layout animation for `prefers-reduced-motion`. */
   reducedMotion: boolean;
   /**
-   * False on a database without the premium feed migration. The topic column
-   * ships with it, so there is nothing to filter on there — and eight chips that
-   * always return an empty feed are worse than no chips. The sorts stay, because
-   * `rankFeedPosts` can still order the rows it has.
+   * False on a database without the premium feed migration — the topic column
+   * ships with it, so the topic tabs would every one of them return an empty
+   * feed. The sorts stay, because `rankFeedPosts` can still order what it has.
    */
   showTopics?: boolean;
 };
@@ -56,122 +57,88 @@ function FeedTabsBase({
   reducedMotion,
   showTopics = true,
 }: FeedTabsProps) {
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const topicsVisible = showTopics && (filtersOpen || topic !== null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  /* Keep the selection on screen. Selecting "Discussed" and then a topic tab
+     leaves the active item off the right edge otherwise, which reads as having
+     lost the selection entirely. `nearest` rather than `center` so an already
+     visible tab does not make the row jump for no reason. */
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({
+      behavior: reducedMotion ? "auto" : "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [sort, topic, reducedMotion]);
+
+  const activeKey = topic ?? sort;
+
+  const tabs: { key: string; label: string; select: () => void }[] = [
+    ...FEED_SORTS.map((entry) => ({
+      key: entry.key as string,
+      label: entry.label,
+      select: () => {
+        onSortChange(entry.key);
+        onTopicChange(null);
+      },
+    })),
+    ...(showTopics
+      ? FEED_TOPICS.map((entry) => ({
+          key: entry.key,
+          label: entry.label,
+          /* Tapping the active topic returns to the sort it was filtering, which
+             is the only way back that does not require finding "For You" again
+             on a scrolled row. */
+          select: () => onTopicChange(topic === entry.key ? null : entry.key),
+        }))
+      : []),
+  ];
 
   return (
     <div className="feed-tabs-wrap">
-      <div className="feed-tabs-row">
-        <div className="feed-tabs" role="tablist" aria-label="Sort the feed">
-          {FEED_SORTS.map((entry) => {
-            const active = entry.key === sort;
-            return (
-              <button
-                key={entry.key}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => {
-                  if (active) return;
-                  vibrate(HAPTIC.tap);
-                  onSortChange(entry.key);
-                }}
-                className={`feed-tab ${active ? "is-active" : ""}`}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="feed-tab-indicator"
-                    className="feed-tab-indicator"
-                    aria-hidden
-                    transition={
-                      reducedMotion
-                        ? { duration: 0 }
-                        : { type: "spring", stiffness: 460, damping: 36, mass: 0.8 }
-                    }
-                  />
-                )}
-                <span className="relative z-[1]">{entry.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {showTopics && (
-          <button
-            type="button"
-            onClick={() => {
-              vibrate(HAPTIC.tap);
-              /* Closing while a topic is applied clears it, because the row is
-                 about to be hidden and leaving an invisible filter behind is
-                 the one outcome nobody expects from a control like this. */
-              if (topicsVisible && topic !== null) onTopicChange(null);
-              setFiltersOpen((open) => !open);
-            }}
-            aria-expanded={topicsVisible}
-            aria-label={topicsVisible ? "Hide topic filters" : "Filter by topic"}
-            className={`feed-tabs-filter ${topicsVisible ? "is-active" : ""}`}
-          >
-            <SlidersHorizontal size={15} strokeWidth={2.2} />
-            {topic !== null && <span className="feed-tabs-filter-dot" aria-hidden />}
-          </button>
-        )}
+      <div
+        ref={scrollerRef}
+        className="feed-tabs"
+        role="tablist"
+        aria-label="Choose a feed"
+      >
+        {tabs.map((tab) => {
+          const active = tab.key === activeKey;
+          return (
+            <button
+              key={tab.key}
+              ref={active ? activeRef : undefined}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                vibrate(HAPTIC.tap);
+                tab.select();
+              }}
+              className={`feed-tab ${active ? "is-active" : ""}`}
+            >
+              {tab.label}
+              {active && (
+                /* `layoutId` rather than a computed translate: Framer measures
+                   both positions itself, so the slide stays correct when the row
+                   is mid-scroll — the case a hand-computed offset always gets
+                   wrong. */
+                <motion.span
+                  layoutId="feed-tab-underline"
+                  className="feed-tab-indicator"
+                  aria-hidden
+                  transition={
+                    reducedMotion
+                      ? { duration: 0 }
+                      : { type: "spring", stiffness: 480, damping: 38, mass: 0.7 }
+                  }
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
-
-      <AnimatePresence initial={false}>
-        {topicsVisible && (
-          /* Height animates on a wrapper so the scroller underneath keeps its
-             own `overflow-x` — animating height directly on the scroll
-             container would clip the chips mid-transition. */
-          <motion.div
-            key="topics"
-            className="feed-topics-collapse"
-            initial={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            animate={reducedMotion ? { opacity: 1 } : { height: "auto", opacity: 1 }}
-            exit={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={reducedMotion ? { duration: 0 } : tween.base}
-          >
-            {/* `overscroll-behavior-x: contain` on the class stops a horizontal
-                flick here from becoming a browser back-navigation on Android. */}
-            <div className="feed-topics" role="group" aria-label="Filter by topic">
-              <button
-                type="button"
-                aria-pressed={topic === null}
-                onClick={() => {
-                  vibrate(HAPTIC.tap);
-                  onTopicChange(null);
-                }}
-                className={`feed-topic-chip ${topic === null ? "is-active" : ""}`}
-              >
-                All
-              </button>
-
-              {FEED_TOPICS.map((entry) => {
-                const active = topic === entry.key;
-                return (
-                  <button
-                    key={entry.key}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => {
-                      vibrate(HAPTIC.tap);
-                      /* Tapping the active chip clears it. Without this the only
-                         way back to everything is to find "All" again, which on a
-                         scrolled row can be off-screen. */
-                      onTopicChange(active ? null : entry.key);
-                    }}
-                    className={`feed-topic-chip ${active ? "is-active" : ""}`}
-                  >
-                    <span aria-hidden className="feed-topic-emoji">
-                      {entry.emoji}
-                    </span>
-                    {entry.label}
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

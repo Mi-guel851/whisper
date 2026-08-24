@@ -76,6 +76,19 @@ type FeedComposerProps = {
   prefillNonce: number;
   prefillBody: string;
   prefillTopic: FeedTopic | null;
+  /**
+   * Open with two blank poll options already showing. The drawer's "Start a poll"
+   * row is the only caller — it is a promise that tapping it produces a poll, and
+   * landing on an empty textarea with the poll tool still un-toggled would break
+   * that promise.
+   */
+  prefillPoll?: boolean;
+  /**
+   * "bare" drops the glass panel, for when the composer is already inside one.
+   * Stacking two translucent surfaces is the one thing that reliably ruins them:
+   * the blur compounds, the borders double, and text over the pair loses contrast.
+   */
+  variant?: "panel" | "bare";
   onSubmit: (draft: ComposerDraft) => Promise<boolean>;
 };
 
@@ -86,6 +99,8 @@ export default function FeedComposer({
   prefillNonce,
   prefillBody,
   prefillTopic,
+  prefillPoll = false,
+  variant = "panel",
   onSubmit,
 }: FeedComposerProps) {
   const { showToast } = useToast();
@@ -112,6 +127,13 @@ export default function FeedComposer({
     if (prefillBody) {
       setBody(prefillBody);
       setTopic(prefillTopic);
+    }
+    if (prefillPoll) {
+      /* A photo cannot ride with a poll, so the poll request wins and the photo
+         is dropped — the caller asked for a poll explicitly. */
+      setImage(null);
+      setImageUrl(null);
+      setPollOptions((current) => current ?? ["", ""]);
     }
     const field = textareaRef.current;
     field?.focus();
@@ -211,9 +233,8 @@ export default function FeedComposer({
     }
   }
 
-  return (
-    <GlassPanel strong className="mb-6 rounded-3xl p-5">
-      <form onSubmit={submit}>
+  const form = (
+    <form onSubmit={submit}>
         {/* The avatar sits beside the field rather than above it, which is what
             makes the composer read as "you, about to say something" instead of a
             bare textarea — and it is the same anonymous identity the post will
@@ -431,6 +452,13 @@ export default function FeedComposer({
           )}
         </p>
       </form>
+  );
+
+  if (variant === "bare") return form;
+
+  return (
+    <GlassPanel strong className="mb-6 rounded-3xl p-5">
+      {form}
     </GlassPanel>
   );
 }

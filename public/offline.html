@@ -3,72 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Whisper - Offline</title>
+    <title>Whisper — Reconnecting</title>
+    <!--
+      THIS PAGE IS A LAST RESORT, NOT THE OFFLINE EXPERIENCE.
+
+      Capacitor shows it via `errorPath` in capacitor.config.ts when the WebView's
+      top-level load of `server.url` fails outright. Once the service worker is
+      installed it answers that navigation from cache instead, so the app opens on
+      the real dashboard with last-synced data and this file is never reached.
+
+      Which makes what it does matter mostly for one case: the very first launch
+      after install, before any cache exists.
+
+      WHY THE OLD RETRY BUTTON SENT PEOPLE TO localhost
+
+      It ran `window.location.href = '/'`. This document is served from the *bundled*
+      assets, and with `androidScheme: "https"` those live at `https://localhost/`.
+      So "/" resolved to the local bundle root — public/index.html, a Capacitor
+      placeholder — and not to the app at all. Every retry landed on a blank
+      localhost page, which looked like the app had been replaced by a browser.
+
+      The origin therefore has to be absolute. It is duplicated from
+      capacitor.config.ts's `server.url`; if that ever changes, change it here too.
+    -->
     <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
         body {
             margin: 0;
-            padding: 0;
             background: #05010f;
-            color: white;
+            color: #fff;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
+            padding: env(safe-area-inset-top) 1.5rem env(safe-area-inset-bottom);
             text-align: center;
+            -webkit-tap-highlight-color: transparent;
         }
-        .container {
-            padding: 2rem;
-        }
+        .container { max-width: 22rem; }
         .icon {
-            font-size: 4rem;
-            margin-bottom: 1.5rem;
-            animation: bounce 2s infinite;
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 1.5rem;
+            animation: float 3s ease-in-out infinite;
         }
-        @keyframes bounce {
-            0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
-            40% {transform: translateY(-20px);}
-            60% {transform: translateY(-10px);}
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-10px); }
         }
         h1 {
-            font-size: 2.5rem;
+            font-size: 1.875rem;
             font-weight: 900;
+            letter-spacing: -0.02em;
             margin: 0;
-            background: linear-gradient(to right, #22d3ee, #a855f7);
+            background: linear-gradient(100deg, #22d3ee, #a855f7);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         p {
             color: #94a3b8;
-            margin-top: 1rem;
-            font-size: 1rem;
-            line-height: 1.5;
+            margin: 0.875rem 0 0;
+            font-size: 0.9375rem;
+            line-height: 1.55;
         }
         .btn {
-            margin-top: 2.5rem;
-            background: linear-gradient(to right, #22d3ee, #a855f7);
+            display: block;
+            width: 100%;
+            margin-top: 2rem;
+            padding: 1rem 1.5rem;
             border: none;
-            padding: 1.2rem 2.5rem;
-            border-radius: 1.2rem;
-            color: black;
+            border-radius: 1.125rem;
+            background: linear-gradient(100deg, #22d3ee, #a855f7);
+            color: #05050a;
+            font-family: inherit;
             font-weight: 800;
-            font-size: 1.1rem;
-            box-shadow: 0 10px 20px -5px rgba(34, 211, 238, 0.3);
+            font-size: 1rem;
+            box-shadow: 0 10px 24px -8px rgba(120, 90, 250, 0.55);
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        .btn:active {
-            transform: scale(0.95);
+        .btn:active { transform: scale(0.97); }
+        .btn[disabled] { opacity: 0.6; }
+        .status {
+            margin-top: 1rem;
+            min-height: 1.25rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            color: #64748b;
+        }
+        .dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            margin-right: 0.4375rem;
+            border-radius: 999px;
+            background: #f472b6;
+            vertical-align: middle;
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.25; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .icon, .dot { animation: none; }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="icon">👻</div>
-        <h1>Connection Lost</h1>
-        <p>Your inbox is safely stored, but we can't reach the server right now.<br>Check your internet and try again.</p>
-        <button class="btn" onclick="window.location.href='/'">RETRY CONNECTION</button>
+        <img src="ghost.png" alt="" class="icon">
+        <h1>Reconnecting</h1>
+        <p>Whisper needs to reach the server once before it can work offline. We&rsquo;ll take you straight in as soon as you&rsquo;re back.</p>
+
+        <button class="btn" id="retry" type="button">Try now</button>
+        <p class="status" id="status"><span class="dot"></span>Watching for a connection&hellip;</p>
     </div>
+
+    <script>
+    (function () {
+      /* Absolute, because a relative path resolves against the bundled assets at
+         https://localhost — see the comment in <head>. */
+      var APP_ORIGIN = "https://whisper-anonymous.vercel.app";
+
+      var retry = document.getElementById("retry");
+      var status = document.getElementById("status");
+      var navigating = false;
+
+      function enter() {
+        if (navigating) return;
+        navigating = true;
+        status.textContent = "Connected — opening Whisper";
+        /* `replace`, so the back gesture cannot return to this page once the app
+           has loaded. */
+        window.location.replace(APP_ORIGIN + "/dashboard");
+      }
+
+      /*
+       * A real request, not `navigator.onLine`. On Android that flag reports true
+       * for a captive portal, a hotspot with no upstream, and a data connection
+       * that has not finished attaching — all of which would bounce someone into a
+       * navigation that fails again and returns them right back here.
+       *
+       * `no-store` keeps a cached 200 from standing in for a live server.
+       */
+      function probe() {
+        if (navigating) return;
+        fetch(APP_ORIGIN + "/favicon.ico?probe=" + Date.now(), {
+          method: "HEAD",
+          cache: "no-store",
+        })
+          .then(function (response) {
+            if (response && (response.ok || response.type === "opaque")) enter();
+          })
+          .catch(function () {
+            /* Still down. The interval below tries again. */
+          });
+      }
+
+      retry.addEventListener("click", function () {
+        retry.disabled = true;
+        status.innerHTML = '<span class="dot"></span>Checking&hellip;';
+        probe();
+        /* Re-enabled rather than left dead, so a failed attempt can be repeated. */
+        setTimeout(function () {
+          if (navigating) return;
+          retry.disabled = false;
+          status.innerHTML = '<span class="dot"></span>Still offline — watching for a connection&hellip;';
+        }, 2500);
+      });
+
+      /* The browser's own signal is a useful hint for *when* to probe, even though
+         it is not trustworthy enough to act on by itself. */
+      window.addEventListener("online", probe);
+
+      /* Coming back from the app switcher is the other common moment for data to
+         have returned. */
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) probe();
+      });
+
+      /* Every 4s. Frequent enough to feel automatic, sparse enough that it costs
+         nothing while someone is on a train with no signal. */
+      setInterval(probe, 4000);
+      probe();
+    })();
+    </script>
 </body>
 </html>
