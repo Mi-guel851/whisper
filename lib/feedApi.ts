@@ -147,6 +147,65 @@ function isMissingSchema(error: QueryError) {
 /** Cached across calls: once we know, we stop asking. */
 let rpcAvailable: boolean | null = null;
 
+/*
+ * Whether `record_public_feed_impressions` exists. Tracked separately from
+ * `rpcAvailable`: impressions ship in a different migration
+ * (202608030001_public_feed_metrics.sql) from the feed reader, so a database can
+ * easily have one and not the other, and letting a missing counter disable the
+ * whole ranked feed would be a bad trade.
+ */
+let impressionsAvailable: boolean | null = null;
+
+/**
+ * Records views for a batch of posts.
+ *
+ * Returns the ids that were **not** recorded, so the caller can put them back and
+ * try again on the next flush. That return value is the point of this function
+ * existing here rather than inline in the page: a transient network failure used to
+ * clear the pending set and then bail, which silently threw away real views and is
+ * the likeliest reason a post's counter sits at zero while people are plainly
+ * reading it.
+ *
+ * An empty array means "all recorded". The permanent case — the function does not
+ * exist — also returns empty, because retrying it forever would be worse than
+ * losing the count.
+ */
+export async function recordImpressions(postIds: string[]): Promise<string[]> {
+  if (postIds.length === 0) return [];
+  if (impressionsAvailable === false) return [];
+
+  const { error } = await supabase.rpc("record_public_feed_impressions", {
+    post_ids: postIds,
+  });
+
+  if (!error) {
+    impressionsAvailable = true;
+    return [];
+  }
+
+  if (isMissingSchema(error)) {
+    /* Permanent. Said once, then never again — this is called on every scroll and a
+       warning per batch would bury the console. The early return above already
+       guarantees we have not been here before, so this needs no second guard. */
+    console.warn(
+      "Feed impressions are not recorded: record_public_feed_impressions is missing. " +
+        "Apply supabase/migrations/202608030001_public_feed_metrics.sql to enable view counts."
+    );
+    impressionsAvailable = false;
+    return [];
+  }
+
+  /* Transient — a dropped connection, a timeout, a rate limit. These are real
+     views and they are worth keeping, so they go back to the caller. */
+  console.warn("Impression batch failed, will retry:", error.message);
+  return postIds;
+}
+
+/** True when view counts are known to be unavailable on this database. */
+export function areImpressionsAvailable() {
+  return impressionsAvailable;
+}
+
 /** Exposed for the page's one-time "running in degraded mode" notice. */
 export function isFeedRpcAvailable() {
   return rpcAvailable;

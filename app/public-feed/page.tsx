@@ -41,6 +41,7 @@ import {
   fetchRandomPost,
   fetchSpotlight,
   fetchThread,
+  recordImpressions,
   reportPost,
   votePoll,
   type FeedQuery,
@@ -286,16 +287,28 @@ export default function PublicFeedPage() {
       return;
     }
 
-    const { error } = await supabase.rpc("record_public_feed_impressions", { post_ids: batch });
-    if (error) {
-      // Migration may not be applied yet — degrade silently, the counter stays put.
-      console.warn("Impression recording skipped:", error.message);
-      return;
+    const failed = await recordImpressions(batch);
+
+    /* Real views that failed on a transient error go back in the queue rather than
+       being dropped. The set is bounded by the loaded feed, so it cannot grow
+       without limit, and the ids are also cleared from `recordedImpressions` so a
+       later pass is allowed to try them again — leaving them marked as recorded
+       would guarantee they were never counted. */
+    if (failed.length) {
+      for (const id of failed) {
+        pendingImpressions.current.add(id);
+        recordedImpressions.current.delete(id);
+      }
     }
+
+    const recorded = batch.filter((id) => !failed.includes(id));
+    if (!recorded.length) return;
 
     setPosts((current) =>
       current.map((post) =>
-        batch.includes(post.id) ? { ...post, view_count: (post.view_count ?? 0) + 1 } : post
+        recorded.includes(post.id)
+          ? { ...post, view_count: (post.view_count ?? 0) + 1 }
+          : post
       )
     );
   }, []);
@@ -314,6 +327,35 @@ export default function PublicFeedPage() {
   useEffect(() => {
     return () => { if (flushTimer.current) clearTimeout(flushTimer.current); };
   }, []);
+
+  /*
+   * The two moments a held backlog has to be given another chance.
+   *
+   * `flushImpressions` is otherwise only reached from `trackImpression`, i.e. when a
+   * *new* post comes into view — so a reader who went offline, or hit a transient
+   * failure, and then stopped scrolling would keep those views in the queue forever
+   * and the counters would sit wrong.
+   *
+   *   `online`           — the reconnect the offline branch is explicitly waiting for.
+   *   `visibilitychange` — leaving the tab or backgrounding the app, which is the
+   *                        last chance to spend the queue before the page may be
+   *                        discarded outright.
+   *
+   * `flushImpressions` is stable (`useCallback` with no dependencies), so this
+   * subscribes once for the life of the page.
+   */
+  useEffect(() => {
+    const onOnline = () => { void flushImpressions(); };
+    const onHide = () => { if (document.hidden) void flushImpressions(); };
+
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onHide);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [flushImpressions]);
 
   // A single observer for every root card, so a long feed costs one observer.
   const observer = useRef<IntersectionObserver | null>(null);

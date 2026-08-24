@@ -4925,6 +4925,24 @@ html.viewport-locked body {
   transition: top var(--dur-base) var(--ease-out-quint);
 }
 
+/* --- Analytics stat tiles ------------------------------------------------- */
+
+/*
+   Three tiles, not two, since Post Views joined the row — and three does not
+   divide into a two-column grid without leaving one tile orphaned at half width.
+
+   `auto-fit` with a floor solves it without a media query per breakpoint: on a
+   phone the tiles stack to one column, and as soon as there is room for two 9rem
+   tracks they go side by side, then three. The orphan is handled by letting the
+   last row's items stretch, so a 2+1 layout has the single tile fill the width
+   rather than sit next to a hole.
+*/
+.stats-row-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
 /* --- Daily Question sparks ---------------------------------------------- */
 
 /*

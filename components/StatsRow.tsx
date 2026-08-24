@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { MessageSquare, Eye } from "lucide-react";
+import { MessageSquare, Eye, BarChart3 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import EdgeLitCard from "./EdgeLitCard";
 import AnimatedCounter from "./AnimatedCounter";
@@ -17,6 +17,10 @@ type Stats = {
   messagesThisWeek: number;
   totalViews: number;
   viewsToday: number;
+  /** Impressions across every public-feed post this user has written. */
+  postViews: number;
+  /** Posts currently alive in the 24h feed window. */
+  livePosts: number;
 };
 
 const EMPTY: Stats = {
@@ -24,6 +28,8 @@ const EMPTY: Stats = {
   messagesThisWeek: 0,
   totalViews: 0,
   viewsToday: 0,
+  postViews: 0,
+  livePosts: 0,
 };
 
 export default function StatsRow() {
@@ -52,6 +58,7 @@ export default function StatsRow() {
       { count: weekMsgCount },
       { count: totalViewCount },
       { count: todayViewCount },
+      feedPosts,
     ] = await Promise.all([
       supabase
         .from("messages")
@@ -71,15 +78,43 @@ export default function StatsRow() {
         .select("*", { count: "exact", head: true })
         .eq("profile_id", uid)
         .gte("created_at", todayStart.toISOString()),
+      /*
+       * Feed impressions, summed client-side from the user's own rows.
+       *
+       * `view_count` is already denormalised onto the post by a trigger (see
+       * 202608030001_public_feed_metrics.sql), so this reads a column rather than
+       * counting a join table — the aggregate is the cheap part.
+       *
+       * Not `head: true` with a count, because the wanted number is a *sum* of a
+       * column and PostgREST has no aggregate for that without a view. The row
+       * count here is bounded by how many posts one person has written inside a
+       * 24-hour window, so selecting the column is genuinely cheaper than adding
+       * a database object for it.
+       *
+       * The feed expires posts after 24h, and this is deliberately *not* filtered
+       * on `expires_at`: total impressions earned is a lifetime figure, and having
+       * it reset to zero every night is the opposite of a stat.
+       */
+      supabase
+        .from("public_feed_posts")
+        .select("view_count,expires_at")
+        .eq("author_id", uid),
     ]);
 
     if (!alive.current) return;
+
+    /* A missing table or column resolves with `data: null` and an error rather
+       than throwing, so both degrade to zero instead of blanking the tiles. */
+    const rows = (feedPosts.data ?? []) as { view_count: number | null; expires_at: string }[];
+    const now = Date.now();
 
     setStats({
       totalMessages: totalMsgCount || 0,
       messagesThisWeek: weekMsgCount || 0,
       totalViews: totalViewCount || 0,
       viewsToday: todayViewCount || 0,
+      postViews: rows.reduce((sum, row) => sum + (row.view_count ?? 0), 0),
+      livePosts: rows.filter((row) => new Date(row.expires_at).getTime() > now).length,
     });
     setLoading(false);
   }, []);
@@ -135,7 +170,7 @@ export default function StatsRow() {
 
   return (
     <motion.div
-      className="grid grid-cols-2 gap-4"
+      className="stats-row-grid"
       variants={staggerContainer(0.07)}
       initial="hidden"
       animate="visible"
@@ -155,6 +190,19 @@ export default function StatsRow() {
         value={stats.totalViews}
         delta={stats.viewsToday}
         deltaLabel="today"
+        loading={loading}
+        reduced={reduced}
+      />
+      {/* Feed impressions. The delta is "live now" rather than a time window,
+          because a post only exists for 24 hours — how many are currently earning
+          views is the actionable number, and a "+N today" next to a lifetime total
+          would be two different clocks in one tile. */}
+      <StatTile
+        icon={<BarChart3 size={13} />}
+        label="Post Views"
+        value={stats.postViews}
+        delta={stats.livePosts}
+        deltaLabel={stats.livePosts === 1 ? "post live now" : "posts live now"}
         loading={loading}
         reduced={reduced}
       />
