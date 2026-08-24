@@ -29,7 +29,8 @@
       "Bash(echo \"=== EXIT: $? ===\")",
       "Bash(git stash *)",
       "Read(//tmp/**)",
-      "Bash(awk 'NR>=1540 && NR<=1600 && /relative/' app/chat/\\\\[conversationId\\\\]/page.tsx)"
+      "Bash(awk 'NR>=1540 && NR<=1600 && /relative/' app/chat/\\\\[conversationId\\\\]/page.tsx)",
+      "Bash(grep -oE \"^\\\\.[a-z0-9-]+[ ,{]\")"
     ],
     "deny": [
       "Bash(git push --force *)",

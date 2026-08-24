@@ -527,9 +527,22 @@ img, svg, video, canvas {
 /* The Capacitor shell, unconditionally. A Samsung stylus reports `pointer: fine`
    while behaving like a finger, and a tablet in a dock can report either — inside
    the native app there is never a case for a drawn scrollbar, so it is settled by
-   the shell attribute rather than left to a media query to guess. */
-[data-native="true"] * { scrollbar-width: none; }
-[data-native="true"] *::-webkit-scrollbar { display: none; }
+   the shell attribute rather than left to a media query to guess.
+
+   `[data-native="true"]` is listed as well as `[data-native="true"] *` because the
+   attribute is set on `<html>` (see components/NativeShell.tsx) and the descendant
+   combinator would skip that element — which is the document scrolling element, and
+   therefore the one that draws the main page scrollbar. Matching only its children
+   would hide every scrollbar except the one people actually see. */
+[data-native="true"],
+[data-native="true"] * {
+  scrollbar-width: none;
+}
+
+[data-native="true"]::-webkit-scrollbar,
+[data-native="true"] *::-webkit-scrollbar {
+  display: none;
+}
 
 } /* end @layer base */
 
@@ -5348,18 +5361,56 @@ html.viewport-locked body {
 /*
  * `data-native` is set by the Capacitor shell (see components/NativeShell.tsx).
  *
- * Android's WebView composites `backdrop-filter` markedly slower than desktop
- * Chrome — it is the same code path, on a fraction of the fill rate — and the
- * blurred surfaces on this screen are the pinned chrome and the strip behind the
- * status bar, which by definition re-blur on every frame of every scroll. Halving
- * the radius is invisible over this app's smooth gradient background (a blur over
- * a gradient converges long before 20px) and it halves the sample count on the
- * elements that pay it continuously.
+ * WHY THE APP FEELS SLOWER THAN THE SITE
+ *
+ * Same code, same markup — the difference is the compositor. Android's WebView
+ * composites `backdrop-filter` markedly slower than desktop Chrome: it is the same
+ * code path on a fraction of the fill rate, and the cost scales with blurred *area*
+ * times radius. This stylesheet has 57 `backdrop-filter` declarations with radii up
+ * to 40px. On a laptop that is free. On a mid-range Android phone, a full-width
+ * blurred bar pinned over a scrolling list re-samples every pixel behind it on every
+ * frame, and that is the single largest reason the installed app does not feel like
+ * the website.
+ *
+ * Halving the radius is close to invisible here and roughly halves the sample count.
+ * The app's background is a smooth multi-stop gradient, and a Gaussian blur over a
+ * gradient converges long before 20px — past that, more radius buys almost no visual
+ * change and costs linearly. The surfaces below are the ones that re-blur
+ * continuously (they sit over scrolling content) or cover a large area, which is
+ * where the whole cost is concentrated.
  */
 [data-native="true"] .feed-chrome,
 [data-native="true"] .feed-statusbar {
   backdrop-filter: blur(10px) saturate(150%);
   -webkit-backdrop-filter: blur(10px) saturate(150%);
+}
+
+/*
+ * The rest of the app's large or scroll-adjacent glass, at roughly half radius.
+ *
+ * Enumerated rather than applied as a wildcard: a blanket `[data-native] *` override
+ * would also hit the small decorative blurs where the radius *is* the effect — the
+ * edge-lit rim's glow, the 120px ambient background blobs — and flattening those
+ * would change the design rather than its cost. Every selector here was checked to
+ * actually carry a 20px-or-larger `backdrop-filter`; the ones whose blur lives on an
+ * inner element are named by that inner element, which is why `.edge-lit-inner` and
+ * `.auth-card-inner` appear rather than their wrappers.
+ *
+ * `.chat-canvas` and `.person-list` are the two biggest wins: both cover most of the
+ * viewport, and `.chat-canvas` sits behind a scrolling message list.
+ */
+[data-native="true"] .chat-canvas,
+[data-native="true"] .chat-chrome,
+[data-native="true"] .person-list,
+[data-native="true"] .glass-control,
+[data-native="true"] .app-nav,
+[data-native="true"] .auth-card-inner,
+[data-native="true"] .edge-lit-inner,
+[data-native="true"] .home-pill,
+[data-native="true"] .segmented-tab,
+[data-native="true"] .voice-preview {
+  backdrop-filter: blur(12px) saturate(155%);
+  -webkit-backdrop-filter: blur(12px) saturate(155%);
 }
 
 /*
