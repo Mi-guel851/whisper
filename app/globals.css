@@ -3147,9 +3147,22 @@ html.viewport-locked body {
   );
 }
 
+/*
+   Aligns a depth-1 reply's avatar *centre* with the rail dropping from the root's.
+
+   The number is derived, not chosen: the root avatar is 42px and a reply's is 34px,
+   so their centres sit 21px and 17px from their own left edges. Indenting by the
+   difference — 4px, or 0.25rem — puts both centres on the same vertical line, which
+   is what lets the rail run straight through them the way it does on X.
+
+   It was 0.75rem, which pushed the reply avatar 8px right of the rail: the connector
+   ended in empty space beside the avatar instead of joining the two posts, and a
+   thread read as two separate rows rather than one conversation. Deeper replies reuse
+   this same column (only depth 1 indents — see FeedPostCard), and since every reply
+   avatar is 34px they all stay on the line.
+*/
 .feed-thread-children {
-  /* Aligns a depth-1 reply's avatar under the rail dropping from the root. */
-  padding-left: 0.75rem;
+  padding-left: 0.25rem;
 }
 
 .feed-author { color: var(--theme-text); }
