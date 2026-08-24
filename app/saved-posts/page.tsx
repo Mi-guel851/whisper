@@ -82,32 +82,42 @@ export default function SavedPostsPage() {
     return () => { alive.current = false; };
   }, []);
 
-  const load = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      if (alive.current) setLoading(false);
-      return;
-    }
-    if (alive.current) setMyId(session.user.id);
-
-    try {
-      const result = await fetchSavedPosts(0, 30);
+  /*
+   * Load once on mount.
+   *
+   * The fetch lives inside the effect rather than in a `useCallback` the effect
+   * calls: the lint rule that forbids synchronous setState in an effect cannot see
+   * through a callback boundary and flags the first `setState` in `load` as if it
+   * ran during render. Inlining puts a real `await` first, which is what the rule is
+   * actually checking for. `alive` still guards every write against a late resolve.
+   */
+  useEffect(() => {
+    void (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (!alive.current) return;
-
-      if (result.mode === "unavailable") {
-        setAvailable(false);
+      if (!session) {
+        setLoading(false);
         return;
       }
-      setRows(result.rows);
-    } catch (error) {
-      console.error(error);
-      if (alive.current) showToast("Couldn't load your saved whispers.");
-    } finally {
-      if (alive.current) setLoading(false);
-    }
-  }, [showToast]);
+      setMyId(session.user.id);
 
-  useEffect(() => { void load(); }, [load]);
+      try {
+        const result = await fetchSavedPosts(0, 30);
+        if (!alive.current) return;
+
+        if (result.mode === "unavailable") {
+          setAvailable(false);
+          return;
+        }
+        setRows(result.rows);
+      } catch (error) {
+        console.error(error);
+        if (alive.current) showToast("Couldn't load your saved whispers.");
+      } finally {
+        if (alive.current) setLoading(false);
+      }
+    })();
+  }, [showToast]);
 
   /*
    * Unsaving removes the row immediately.
