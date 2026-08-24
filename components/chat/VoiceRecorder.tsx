@@ -1,11 +1,12 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { motion, useMotionValue, useTransform, animate } from "framer-motion";
+import { AnimatePresence, motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { Mic, Trash2, Send, Lock, ChevronUp, Pause, Play, Eye, Loader2 } from "lucide-react";
 import { HAPTIC, vibrate } from "@/lib/haptics";
 import { Capacitor } from "@capacitor/core";
 import MicPermissionDialog from "./MicPermissionDialog";
+import VoiceNotePreview from "./VoiceNotePreview";
 import { useToast } from "@/components/ToastProvider";
 import {
   useVoiceRecorder,
@@ -195,6 +196,16 @@ function VoiceRecorderBase({
     animate(dragY, 0, { duration: 0.18 });
   }, [dragX, dragY]);
 
+  /*
+   * Where a finished recording waits.
+   *
+   * Releasing the mic used to call `onSend` straight from here. It now parks the
+   * recording in state and renders `VoiceNotePreview`, because a voice note is the
+   * one message you cannot proofread — see that file's header. `onSend` is reached
+   * only from the preview's send button.
+   */
+  const [pending, setPending] = useState<VoiceRecording | null>(null);
+
   const deliver = useCallback(
     (recording: VoiceRecording | null) => {
       setLocked(false);
@@ -206,10 +217,12 @@ function VoiceRecorderBase({
         onError("Hold the mic to record a voice note.");
         return;
       }
-      vibrate(HAPTIC.select);
-      onSend(recording);
+      /* `success`, not `select`: the recording is finished and waiting, which is a
+         completed step rather than the send it used to be. */
+      vibrate(HAPTIC.success);
+      setPending(recording);
     },
-    [resetGesture, onSend, onError]
+    [resetGesture, onError]
   );
 
   const {
@@ -262,10 +275,14 @@ function VoiceRecorderBase({
   const onRecordingChangeRef = useRef(onRecordingChange);
   useEffect(() => { onRecordingChangeRef.current = onRecordingChange; }, [onRecordingChange]);
   /* Reports `active`, not `isRecording`, so the composer the parent hides
-     collapses on the press instead of a moment later when the mic opens. */
+     collapses on the press instead of a moment later when the mic opens.
+
+     `pending` counts too: the preview sits in the composer's box, so the text
+     field has to stay collapsed while a finished note is being reviewed — the
+     alternative is a preview overlapping the input it replaced. */
   useEffect(() => {
-    onRecordingChangeRef.current?.(active);
-  }, [active]);
+    onRecordingChangeRef.current?.(active || pending !== null);
+  }, [active, pending]);
 
   /** Hand the recording over to the panel and let go of the finger. */
   const latch = useCallback(() => {
@@ -428,6 +445,34 @@ function VoiceRecorderBase({
         />
       )}
 
+      {/* The finished recording, waiting to be heard. Sits in the composer's own
+          box like the recording bar does, so the row does not change height when a
+          recording finishes. `AnimatePresence` so discarding it fades rather than
+          snapping the composer back. */}
+      <AnimatePresence>
+        {pending && (
+          <VoiceNotePreview
+            key="voice-preview"
+            recording={pending}
+            sending={busy}
+            cost={cost}
+            onSend={() => {
+              const recording = pending;
+              /* Cleared first: `onSend` is async upstream and a second tap before
+                 it resolves would upload the same note twice. `busy` also disables
+                 the button, but the parent controls that flag and this does not
+                 depend on it being wired. */
+              setPending(null);
+              onSend(recording);
+            }}
+            onDiscard={() => {
+              vibrate(HAPTIC.warning);
+              setPending(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {holding && (
         <div className="chat-recording-bar absolute inset-0 z-20 flex items-center gap-2 rounded-[26px] pl-3 pr-16">
           <button
@@ -536,7 +581,10 @@ function VoiceRecorderBase({
         </motion.div>
       )}
 
-      {!locked && (
+      {/* Also hidden while a finished recording is being reviewed — the mic and the
+          preview both occupy the composer, and drawing both would offer a second
+          recording over the top of one that has not been sent yet. */}
+      {!locked && !pending && (
         <div className="relative flex shrink-0 items-center">
           {holding && (
             <motion.div

@@ -4925,6 +4925,106 @@ html.viewport-locked body {
   transition: top var(--dur-base) var(--ease-out-quint);
 }
 
+/* --- Voice note preview -------------------------------------------------- */
+
+/*
+   The finished recording, sitting in the composer's own box until it is heard and
+   sent. See components/chat/VoiceNotePreview.tsx for why a voice note is not sent
+   on release.
+
+   Absolutely positioned over the composer rather than pushed in beside it, exactly
+   as `.chat-recording-bar` is: the composer row keeps one height whether it holds a
+   text field, a live recording or a finished one, so nothing below it moves when the
+   state changes.
+*/
+.voice-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline: 0.5rem;
+  border-radius: 26px;
+  background: var(--chat-composer-bg, var(--theme-glass-strong));
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+}
+
+.voice-preview-discard,
+.voice-preview-play,
+.voice-preview-send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 2.25rem;
+  width: 2.25rem;
+  border-radius: var(--radius-full);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    transform var(--dur-fast) var(--ease-out-quint),
+    opacity var(--dur-fast) var(--ease-out-quint);
+}
+
+.voice-preview-discard { color: var(--chat-danger, var(--theme-accent-pink)); }
+.voice-preview-discard:active { transform: scale(0.9); }
+
+.voice-preview-play {
+  background: var(--fill-2);
+  color: var(--theme-text);
+}
+
+.voice-preview-play:active { transform: scale(0.9); }
+
+/* The accent fill marks this as the primary action of the row — the recording is
+   made, and sending it is the only thing left to decide. */
+.voice-preview-send {
+  margin-left: auto;
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: var(--elev-1);
+}
+
+.voice-preview-discard:disabled,
+.voice-preview-play:disabled,
+.voice-preview-send:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* `min-width: 0` so the bars are what yields when the row is tight, rather than the
+   duration text wrapping or the buttons shrinking below their touch size. */
+.voice-preview-wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  height: 1.5rem;
+  overflow: hidden;
+}
+
+.voice-preview-bar {
+  flex: 1;
+  min-width: 2px;
+  max-width: 3px;
+  border-radius: var(--radius-full);
+  /* Unplayed audio is quiet; the played portion below takes the accent. */
+  background: var(--fill-4, var(--theme-border-strong));
+  transition: background-color 90ms linear;
+}
+
+.voice-preview-bar.is-played {
+  background: linear-gradient(180deg, var(--theme-accent-from), var(--theme-accent-to));
+}
+
+.voice-preview-time {
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--theme-text-secondary);
+}
+
 /* --- Analytics stat tiles ------------------------------------------------- */
 
 /*

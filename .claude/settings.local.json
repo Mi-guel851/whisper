@@ -28,7 +28,8 @@
       "Bash(awk '/^\\\\.feed-chrome \\\\{/,/^\\\\}/' app/globals.css)",
       "Bash(echo \"=== EXIT: $? ===\")",
       "Bash(git stash *)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(awk 'NR>=1540 && NR<=1600 && /relative/' app/chat/\\\\[conversationId\\\\]/page.tsx)"
     ],
     "deny": [
       "Bash(git push --force *)",

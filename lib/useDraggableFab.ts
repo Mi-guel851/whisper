@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 
 /**
  * Remembered position for a floating button the user can drag.
@@ -75,6 +75,66 @@ function readAnchor(storageKey: string, fallback: FabAnchor): FabAnchor {
   }
 }
 
+/* --------------------------------------------------------------------------
+ * Viewport size, as an external store.
+ *
+ * `useSyncExternalStore` rather than `useState` + an effect that measures: the
+ * window *is* an external store, and reading it in an effect means committing a
+ * render with the wrong size and then correcting it — the cascading render the
+ * repo's lint rules reject, and the reason `useSafeReducedMotion` is written this
+ * way too.
+ *
+ * One subscription for the whole app: every draggable control shares these
+ * listeners and the cached snapshot, so N controls cost one resize handler.
+ * ------------------------------------------------------------------------ */
+
+type Viewport = { w: number; h: number };
+
+/* `useSyncExternalStore` compares snapshots by identity, so this must return the
+   same object until the size actually changes or React re-renders forever. */
+let viewportCache: Viewport = { w: 0, h: 0 };
+const viewportListeners = new Set<() => void>();
+
+function readViewport() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (w !== viewportCache.w || h !== viewportCache.h) viewportCache = { w, h };
+  return viewportCache;
+}
+
+function subscribeViewport(onChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  if (viewportListeners.size === 0) readViewport();
+  viewportListeners.add(onChange);
+
+  const handle = () => {
+    readViewport();
+    for (const listener of viewportListeners) listener();
+  };
+
+  window.addEventListener("resize", handle);
+  window.addEventListener("orientationchange", handle);
+
+  return () => {
+    viewportListeners.delete(onChange);
+    window.removeEventListener("resize", handle);
+    window.removeEventListener("orientationchange", handle);
+  };
+}
+
+function getViewportSnapshot(): Viewport {
+  return viewportCache;
+}
+
+/* The server has no window. Zero means "not measured yet", which the hook reports
+   as `ready: false` so the caller can render the fallback position without
+   animating to it. */
+const SERVER_VIEWPORT: Viewport = { w: 0, h: 0 };
+function getServerViewport(): Viewport {
+  return SERVER_VIEWPORT;
+}
+
 export function useDraggableFab({
   storageKey,
   fallback,
@@ -84,40 +144,29 @@ export function useDraggableFab({
   insetX,
 }: Options) {
   /*
-   * `null` until mounted, and the caller renders the fallback position until then.
-   * Reading localStorage during the first render would put a remembered position
-   * in the client's HTML that the server could not have produced — the hydration
-   * mismatch `useSafeReducedMotion` exists to avoid, for the same reason.
+   * `null` until the first drag, and the stored value is read lazily.
+   *
+   * `useState` with an initialiser function runs it once, on the first render —
+   * on the client that is after hydration for a component this deep, but to be
+   * safe against a mismatch the initialiser returns `null` on the server and the
+   * stored anchor only ever comes from `readAnchor` in the browser.
    */
-  const [anchor, setAnchor] = useState<FabAnchor | null>(null);
-  const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
+  const [anchor, setAnchor] = useState<FabAnchor | null>(() =>
+    typeof window === "undefined" ? null : readAnchor(storageKey, fallback)
+  );
 
-  useEffect(() => {
-    setAnchor(readAnchor(storageKey, fallback));
-    // `fallback` is a literal at the call site; re-reading on identity churn would
-    // clobber a position the user just set.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
+  const viewport = useSyncExternalStore(
+    subscribeViewport,
+    getViewportSnapshot,
+    getServerViewport
+  );
 
-  /* Rotation and desktop resizes both change what "against the right edge" means,
-     so the derived pixels are recomputed rather than cached. */
-  useEffect(() => {
-    const measure = () =>
-      setViewport({ w: window.innerWidth, h: window.innerHeight });
-    measure();
-    window.addEventListener("resize", measure);
-    window.addEventListener("orientationchange", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("orientationchange", measure);
-    };
-  }, []);
-
+  const measured = viewport.w > 0 && viewport.h > 0;
   const active = anchor ?? fallback;
 
   /* The rectangle the button's top-left corner may occupy. */
-  const bandX = viewport ? Math.max(0, viewport.w - size - insetX * 2) : 0;
-  const bandY = viewport
+  const bandX = measured ? Math.max(0, viewport.w - size - insetX * 2) : 0;
+  const bandY = measured
     ? Math.max(0, viewport.h - size - insetTop - insetBottom)
     : 0;
 
@@ -146,7 +195,7 @@ export function useDraggableFab({
   const onDragEnd = useCallback(
     (offsetX: number, offsetY: number) => {
       dragging.current = false;
-      if (!viewport) return;
+      if (!measured) return;
 
       const nextLeft = clamp(left + offsetX, insetX, insetX + bandX);
       const nextTop = clamp(top + offsetY, insetTop, insetTop + bandY);
