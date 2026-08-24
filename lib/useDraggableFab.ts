@@ -213,7 +213,7 @@ export function useDraggableFab({
         // Storage disabled — the position still holds for this session.
       }
     },
-    [viewport, left, top, bandX, bandY, insetX, insetTop, size, storageKey]
+    [measured, viewport.w, left, top, bandX, bandY, insetX, insetTop, size, storageKey]
   );
 
   const consumeClick = useCallback(() => {
@@ -228,7 +228,7 @@ export function useDraggableFab({
     /** Pixels from the top of the viewport. */
     top,
     /** True once the viewport has been measured — before that, avoid animating. */
-    ready: viewport !== null,
+    ready: measured,
     /** Which side it is parked on, for the panel to open away from it. */
     side: active.x < 0.5 ? ("left" as const) : ("right" as const),
     onDragStart,

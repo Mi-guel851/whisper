@@ -67,7 +67,7 @@ const PRIMARY_ROWS: NavRow[] = [
   { href: "/profile", label: "Profile", icon: User },
   { href: "/friends", label: "Friends", icon: Users },
   { href: "/discover", label: "Discover", icon: Compass },
-  { href: "/saved-messages", label: "Saved", icon: Bookmark },
+  { href: "/saved-posts", label: "Saved posts", icon: Bookmark },
   { href: "/analytics", label: "Your stats", icon: BarChart3 },
   { href: "/games", label: "Games", icon: Gamepad2 },
 ];

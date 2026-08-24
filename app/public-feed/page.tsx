@@ -41,6 +41,8 @@ import {
   fetchRandomPost,
   fetchSpotlight,
   fetchThread,
+  fetchSavedIds,
+  toggleSave,
   recordImpressions,
   reportPost,
   votePoll,
@@ -168,6 +170,16 @@ export default function PublicFeedPage() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   const [menuPost, setMenuPost] = useState<FeedPost | null>(null);
+  /*
+   * Which posts the viewer has saved, and whether saving exists at all.
+   *
+   * A Set rather than a per-post flag on the row: a save is the viewer's private
+   * state, not a property of the post, and the RPC that reads it takes a page of ids
+   * at once. `savesOn` is null until the first call answers — the menu row stays
+   * hidden rather than flickering in on a database without the migration.
+   */
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [savesOn, setSavesOn] = useState<boolean | null>(null);
   const [sharePost, setSharePost] = useState<FeedPost | null>(null);
   const [reportTarget, setReportTarget] = useState<FeedPost | null>(null);
   const [reporting, setReporting] = useState(false);
@@ -711,6 +723,48 @@ export default function PublicFeedPage() {
       moreAvailable: ranked.length > visibleCount,
     };
   }, [mode, tree, rootOrder, hasMore, search, topic, sort, likesByPost, myId, visibleCount]);
+
+  /*
+   * Which of the visible posts are already saved.
+   *
+   * Keyed on the rendered root ids rather than on every loaded post: the bookmark
+   * only appears in the overflow sheet of a post you can see, and asking about
+   * replies would multiply the id list for nothing.
+   *
+   * Ids already known — saved or confirmed-unsaved — are not re-asked, so scrolling
+   * a long feed costs one call per new page rather than one per render. `savesOn`
+   * going false stops it permanently on a database without the migration.
+   */
+  const savesProbed = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!myId || savesOn === false) return;
+
+    const unknown = roots
+      .map((post) => post.id)
+      .filter((id) => !savesProbed.current.has(id));
+    if (unknown.length === 0) return;
+
+    for (const id of unknown) savesProbed.current.add(id);
+
+    let cancelled = false;
+    void (async () => {
+      const found = await fetchSavedIds(unknown);
+      if (cancelled) return;
+      /* An empty result is normal — most posts are not saved — so this cannot be
+         used to infer that the feature is missing. `toggleSave` is what settles
+         that, and it reports through `savesOn`. */
+      if (found.size > 0) {
+        setSavedIds((current) => {
+          const next = new Set(current);
+          for (const id of found) next.add(id);
+          return next;
+        });
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [roots, myId, savesOn]);
 
   const filtering = Boolean(topic) || Boolean(search.trim());
 
@@ -1300,6 +1354,66 @@ export default function PublicFeedPage() {
     [myId, showToast]
   );
 
+  /*
+   * Save or unsave a post.
+   *
+   * Optimistic, because a save is the viewer's own fact and moves by exactly one —
+   * the same reasoning that makes likes optimistic. The Set is flipped before the
+   * round trip and rolled back only if the server disagrees, so the bookmark fills
+   * the instant it is tapped. A `null` result means the feature is not installed;
+   * the menu already hides the control in that case, so this just no-ops.
+   */
+  const toggleSavePost = useCallback(
+    async (post: FeedPost) => {
+      const id = post.id;
+      const wasSaved = savedIds.has(id);
+
+      setSavedIds((current) => {
+        const next = new Set(current);
+        if (wasSaved) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+
+      try {
+        const nowSaved = await toggleSave(id);
+        if (nowSaved === null) {
+          /* No migration — undo the optimistic flip and remember it is off, so the
+             menu stops offering the row. */
+          setSavedIds((current) => {
+            const next = new Set(current);
+            if (wasSaved) next.add(id);
+            else next.delete(id);
+            return next;
+          });
+          setSavesOn(false);
+          return;
+        }
+
+        setSavesOn(true);
+        /* Reconcile with the server's answer in case it disagrees with the guess —
+           e.g. the same post was saved on another device between load and tap. */
+        setSavedIds((current) => {
+          const next = new Set(current);
+          if (nowSaved) next.add(id);
+          else next.delete(id);
+          return next;
+        });
+        showToast(nowSaved ? "Saved." : "Removed from saved.");
+      } catch (error) {
+        console.error(error);
+        setSavedIds((current) => {
+          const next = new Set(current);
+          if (wasSaved) next.add(id);
+          else next.delete(id);
+          return next;
+        });
+        showToast("Couldn't save that. Try again.");
+      }
+    },
+    [savedIds, showToast]
+  );
+
   const requestDelete = useCallback((postId: string) => setDeleteTarget(postId), []);
   const openMenu = useCallback((post: FeedPost) => setMenuPost(post), []);
   const openShare = useCallback((post: FeedPost) => setSharePost(post), []);
@@ -1528,9 +1642,11 @@ export default function PublicFeedPage() {
       <FeedPostMenu
         post={menuPost}
         isMine={Boolean(menuPost && menuPost.author_id === myId)}
+        saved={savesOn === false ? null : Boolean(menuPost && savedIds.has(menuPost.id))}
         onClose={() => setMenuPost(null)}
         onCopyLink={(post) => void copyLink(post)}
         onShare={openShare}
+        onToggleSave={(post) => void toggleSavePost(post)}
         onReport={setReportTarget}
         onBlock={(post) => void block(post)}
         onDelete={(post) => requestDelete(post.id)}

@@ -495,3 +495,101 @@ export async function blockAuthor(
   if (/duplicate key/i.test(error.message)) return { ok: true };
   return { ok: false, error: error.message };
 }
+
+/* --------------------------------------------------------------------------
+ * Saved posts
+ *
+ * A save is a private pointer at a post, good for the rest of that post's 24-hour
+ * life — see supabase/migrations/202608240002_saved_posts.sql for why it is a
+ * pointer and not an archive. Three calls: toggle one, list mine, and mark which of
+ * a page are already saved.
+ * ------------------------------------------------------------------------ */
+
+let savesAvailable: boolean | null = null;
+
+/** True when saved posts are known to be unavailable on this database. */
+export function areSavesAvailable() {
+  return savesAvailable;
+}
+
+/**
+ * Saves or unsaves a post. Returns the resulting state — `true` when it is now
+ * saved — or `null` when the feature is not installed, so a caller can quietly hide
+ * the control rather than show a toggle that does nothing.
+ */
+export async function toggleSave(postId: string): Promise<boolean | null> {
+  const { data, error } = await supabase.rpc("toggle_public_feed_save", {
+    p_post_id: postId,
+  });
+
+  if (!error) {
+    savesAvailable = true;
+    return Boolean(data);
+  }
+
+  if (isMissingSchema(error)) {
+    savesAvailable = false;
+    return null;
+  }
+  throw new Error(error.message);
+}
+
+/**
+ * The signed-in user's saved posts, newest save first. Each row is a `FeedPost`
+ * with a `saved_at`, so the feed's own components render it unchanged.
+ *
+ * Returns `mode: "unavailable"` rather than throwing on a database without the
+ * migration, so the Saved page can show "not set up yet" instead of an error.
+ */
+export type SavedPost = FeedPost & { saved_at: string };
+
+export async function fetchSavedPosts(
+  offset = 0,
+  limit = 20
+): Promise<
+  | { mode: "ok"; rows: SavedPost[]; hasMore: boolean }
+  | { mode: "unavailable" }
+> {
+  const { data, error } = await supabase.rpc("public_feed_saved", {
+    p_limit: limit,
+    p_offset: offset,
+  });
+
+  if (error) {
+    if (isMissingSchema(error)) {
+      savesAvailable = false;
+      return { mode: "unavailable" };
+    }
+    throw new Error(error.message);
+  }
+
+  savesAvailable = true;
+  const rows = (data || []) as SavedPost[];
+  return { mode: "ok", rows, hasMore: rows.length === limit };
+}
+
+/**
+ * Which of these post ids the viewer has saved. One call for a page of the feed, so
+ * bookmark icons render filled without a query per card. Empty set on any error —
+ * an unfilled bookmark is the safe default.
+ */
+export async function fetchSavedIds(postIds: string[]): Promise<Set<string>> {
+  if (postIds.length === 0) return new Set();
+
+  const { data, error } = await supabase.rpc("public_feed_saved_ids", {
+    p_post_ids: postIds,
+  });
+
+  if (error) {
+    if (isMissingSchema(error)) savesAvailable = false;
+    return new Set();
+  }
+
+  savesAvailable = true;
+  /* The RPC returns a set of uuids, which supabase-js delivers as either bare
+     strings or `{ public_feed_saved_ids: uuid }` rows depending on version. */
+  const ids = (data as unknown[]).map((row) =>
+    typeof row === "string" ? row : (row as Record<string, string>).public_feed_saved_ids
+  );
+  return new Set(ids.filter(Boolean));
+}

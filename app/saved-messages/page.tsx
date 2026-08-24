@@ -1,18 +1,18 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import BackButton from "@/components/BackButton";
-
-export default function SavedMessagesPage() {
-  return (
-    <main className="relative min-h-screen overflow-hidden theme-bg-gradient text-white px-4 py-16">
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-purple-600/20 blur-[150px]" />
-      <div className="relative z-10 mx-auto max-w-xl">
-        <BackButton />
-        <div className="flex flex-col items-center justify-center text-center py-24">
-          <h1 className="page-title mb-2">Saved Messages</h1>
-          <p className="page-subtitle">This feature is coming soon.</p>
-        </div>
-      </div>
-    </main>
-  );
+/**
+ * The old name for Saved posts.
+ *
+ * The feature was called "Saved Messages" while it was a placeholder, which was
+ * always the wrong noun: it saves public-feed posts, not the private messages in the
+ * inbox, and two features whose names suggest the same thing is exactly how someone
+ * ends up looking for a saved whisper in their DMs.
+ *
+ * A redirect rather than a deletion, because this path is already in the wild — it
+ * has been linked from the feed drawer, and a bookmark or a back-button landing on a
+ * 404 is a worse outcome than one extra file. Permanent, so clients and crawlers
+ * stop asking.
+ */
+export default function SavedMessagesRedirect() {
+  redirect("/saved-posts");
 }

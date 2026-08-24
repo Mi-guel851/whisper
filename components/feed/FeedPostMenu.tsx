@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Copy, Flag, Share2, Trash2 } from "lucide-react";
+import { Ban, Bookmark, Copy, Flag, Share2, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import { timeAgo, topicMeta, type FeedPost } from "@/lib/feed";
 import { vibrate, HAPTIC } from "@/lib/haptics";
@@ -21,9 +21,16 @@ import { vibrate, HAPTIC } from "@/lib/haptics";
 type FeedPostMenuProps = {
   post: FeedPost | null;
   isMine: boolean;
+  /**
+   * Whether this post is currently saved, so the row reads "Save" or "Unsave". Null
+   * hides the row entirely — the database has no saved-posts migration and a control
+   * that cannot work is worse than one that is absent.
+   */
+  saved: boolean | null;
   onClose: () => void;
   onCopyLink: (post: FeedPost) => void;
   onShare: (post: FeedPost) => void;
+  onToggleSave: (post: FeedPost) => void;
   onReport: (post: FeedPost) => void;
   onBlock: (post: FeedPost) => void;
   onDelete: (post: FeedPost) => void;
@@ -32,9 +39,11 @@ type FeedPostMenuProps = {
 export default function FeedPostMenu({
   post,
   isMine,
+  saved,
   onClose,
   onCopyLink,
   onShare,
+  onToggleSave,
   onReport,
   onBlock,
   onDelete,
@@ -68,6 +77,21 @@ export default function FeedPostMenu({
               {timeAgo(post.created_at)} ago
             </p>
           </header>
+        )}
+
+        {/* Above Copy link, because saving is the thing people came to this sheet
+            for most often. Absent entirely when the feature is not installed. */}
+        {saved !== null && (
+          <button type="button" onClick={run(onToggleSave)} className="feed-sheet-item">
+            <Bookmark
+              size={17}
+              aria-hidden
+              /* Filled when saved — the same language the rest of the app uses for
+                 an active toggle, and the only way this row shows state at all. */
+              fill={saved ? "currentColor" : "none"}
+            />
+            {saved ? "Remove from saved" : "Save this whisper"}
+          </button>
         )}
 
         <button type="button" onClick={run(onCopyLink)} className="feed-sheet-item">
