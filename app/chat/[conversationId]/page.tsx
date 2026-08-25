@@ -25,6 +25,12 @@ import PaperPlaneFlight from "@/components/PaperPlaneFlight";
 import ExplodingInput from "@/components/ui/ExplodingInput";
 import type { VoiceRecording } from "@/lib/useVoiceRecorder";
 import { messagePreviewText } from "@/lib/messagePreview";
+import {
+  CLOUDINARY_FOLDERS,
+  CloudinaryUploadError,
+  discardCloudinaryUpload,
+  uploadToCloudinary,
+} from "@/lib/cloudinary";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
@@ -1068,16 +1074,29 @@ export default function ChatPage() {
       if (walletError) { showToast(walletError.message); return; }
       if ((wallet?.balance ?? 0) < SEND_IMAGE_COST) { showToast(`You need ${SEND_IMAGE_COST} coins to send an image.`); return; }
 
-      const file = pendingPhoto.file;
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { showToast("Please sign in again to send a photo."); return; }
 
-      const { error: uploadError } = await supabase.storage.from("view-once-photos").upload(path, file, { contentType: file.type });
-      if (uploadError) { showToast(uploadError.message); return; }
+      /* `whisper/view-once/<sender-id>/…`. The folder is the sender's id rather
+         than the conversation id so that the rollback below — and only the
+         sender — can delete it; /api/cloudinary/destroy reads ownership out of
+         that segment. The conversation is already on the message row, so nothing
+         needed it in the path. */
+      let imageUrl: string;
+      try {
+        const uploaded = await uploadToCloudinary(
+          pendingPhoto.file,
+          `${CLOUDINARY_FOLDERS.viewOnce}/${myId}`
+        );
+        imageUrl = uploaded.url;
+      } catch (error) {
+        showToast(error instanceof CloudinaryUploadError ? error.message : "Couldn't upload that photo.");
+        return;
+      }
 
       const { error: spendError } = await supabase.rpc("spend_coins_for_image", { target_conversation_id: conversationId });
       if (spendError) {
-        await supabase.storage.from("view-once-photos").remove([path]);
+        await discardCloudinaryUpload(imageUrl, session.access_token);
         showToast(spendError.message);
         return;
       }
@@ -1089,7 +1108,10 @@ export default function ChatPage() {
         sender_id: myId,
         content: caption || null,
         reply_to_id: replyId,
-        image_path: path,
+        /* A full Cloudinary URL now, not a storage key. It is never selected into
+           the browser — /api/photos/view is the only reader, and it nulls this
+           column and destroys the asset on the single view. */
+        image_path: imageUrl,
         is_view_once: true,
       });
       if (insertError) { showToast(insertError.message); return; }

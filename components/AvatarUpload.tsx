@@ -7,6 +7,11 @@ import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import { spring, tween } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+import {
+  CLOUDINARY_FOLDERS,
+  CloudinaryUploadError,
+  uploadToCloudinary,
+} from "@/lib/cloudinary";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -93,31 +98,32 @@ export default function AvatarUpload({
     setAvatarUrl(preview);
     setLoading(true);
 
-    const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(fileName, file, { cacheControl: "3600", upsert: false });
-
-    if (uploadError) {
-      setLoading(false);
-      showToast(uploadError.message, { variant: "error" });
-      return;
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from("avatars")
-      .getPublicUrl(fileName);
-
-    const url = publicUrlData.publicUrl;
-
+    /* Read before the upload rather than after it. The Cloudinary folder is
+       `whisper/avatars/<uid>`, and that owner segment is what lets this picture
+       be deleted later — so there is no upload to make without a session. */
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
     if (!session) {
       setLoading(false);
+      showToast("Please sign in again to change your picture.", { variant: "error" });
+      return;
+    }
+
+    let url: string;
+    try {
+      const uploaded = await uploadToCloudinary(
+        file,
+        `${CLOUDINARY_FOLDERS.avatars}/${session.user.id}`
+      );
+      url = uploaded.url;
+    } catch (error) {
+      setLoading(false);
+      showToast(
+        error instanceof CloudinaryUploadError ? error.message : "Image upload failed.",
+        { variant: "error" }
+      );
       return;
     }
 

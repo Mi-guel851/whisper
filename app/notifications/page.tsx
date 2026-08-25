@@ -208,6 +208,13 @@ export default function NotificationsPage() {
     }
   }
 
+  /**
+   * The storage key inside a legacy Supabase `message-images` URL.
+   *
+   * Only whispers received before the Cloudinary migration have one — newer rows
+   * hold a Cloudinary URL, which is deleted through `/api/cloudinary/destroy`
+   * instead. Returns null for those, and for anything else it cannot parse.
+   */
   function extractStoragePath(imageUrl: string): string | null {
     const marker = "/message-images/";
     const idx = imageUrl.indexOf(marker);
@@ -222,13 +229,24 @@ export default function NotificationsPage() {
     setDeleting(item.id);
 
     if (item.image_url) {
-      const path = extractStoragePath(item.image_url);
-      if (path) {
-        const { error: storageError } = await supabase.storage
-          .from("message-images")
-          .remove([path]);
-        if (storageError) {
-          console.error("Failed to remove image from storage:", storageError.message);
+      if (isCloudinaryUrl(item.image_url)) {
+        /* The photo sits in `whisper/message-images/<recipient-id>/…`, and the
+           recipient is the person reading this page — so the destroy route's
+           folder check passes for exactly the whispers they are allowed to
+           delete. Deleting needs the API secret, hence the round trip. */
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        await discardCloudinaryUpload(item.image_url, session?.access_token);
+      } else {
+        const path = extractStoragePath(item.image_url);
+        if (path) {
+          const { error: storageError } = await supabase.storage
+            .from("message-images")
+            .remove([path]);
+          if (storageError) {
+            console.error("Failed to remove image from storage:", storageError.message);
+          }
         }
       }
     }

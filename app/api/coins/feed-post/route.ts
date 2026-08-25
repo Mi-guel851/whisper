@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
+import { CLOUDINARY_FOLDERS, cloudinaryPublicId } from "@/lib/cloudinary";
+import { cloudinaryImageExists, destroyCloudinaryUrl } from "@/lib/cloudinary.server";
 
 /**
  * Creating something on the Public Feed.
@@ -195,34 +197,29 @@ export async function POST(req: NextRequest) {
     /**
      * Confirm the photo is this author's, and that it is actually there.
      *
-     * Checked before any coins move, so a bad path is a 400 rather than a charge
-     * followed by a refund. The prefix test is the security check — object keys are
-     * `<author_id>/<uuid>`, and the bucket's insert policy already refuses any
-     * other shape, so a path outside the caller's own folder either belongs to
-     * someone else or does not exist. The `list` is the correctness check: a post
-     * referencing a missing object would render as a locked plate that never opens.
+     * The client uploads straight to Cloudinary and sends the resulting URL, so
+     * this is the boundary where an arbitrary string becomes a trusted image
+     * reference. Both halves matter: the folder check is the security one, the
+     * existence check is the correctness one.
      */
     if (imagePath) {
-      const separator = imagePath.lastIndexOf("/");
-      const folder = separator > 0 ? imagePath.slice(0, separator) : "";
-      const filename = separator > 0 ? imagePath.slice(separator + 1) : imagePath;
+      /* The value is a Cloudinary delivery URL. The ownership test is the folder,
+         which is the same test the old bucket policy applied to the object key:
+         assets land in `whisper/feed-photos/<author-id>/<random>`, so the segment
+         before the filename says whose photo this is. A URL from another cloud,
+         another folder, or somebody else's id is refused without a network call. */
+      const publicId = cloudinaryPublicId(imagePath);
+      const expectedFolder = `${CLOUDINARY_FOLDERS.feedPhotos}/${user.id}/`;
 
-      if (folder !== user.id || !filename) {
+      if (!publicId || !publicId.startsWith(expectedFolder) || publicId === expectedFolder) {
         return NextResponse.json({ error: "That photo isn't yours." }, { status: 403 });
       }
 
-      const { data: objects, error: listError } = await supabaseAdmin.storage
-        .from("feed-photos")
-        .list(folder, { search: filename, limit: 1 });
-
-      if (listError) {
-        console.error("[coins/feed-post] storage list failed:", listError.message);
-        return NextResponse.json(
-          { error: "Photo whispers aren't available on this server yet." },
-          { status: 503 }
-        );
-      }
-      if (!objects?.some((object) => object.name === filename)) {
+      /* And that it actually arrived. A post referencing a missing image renders
+         as a locked plate that never opens — and the author has been charged for
+         it. Checked before any coins move, so this is a 400 rather than a charge
+         followed by a refund. */
+      if (!(await cloudinaryImageExists(imagePath))) {
         return NextResponse.json(
           { error: "That photo didn't finish uploading. Try again." },
           { status: 400 }
@@ -400,15 +397,13 @@ export async function POST(req: NextRequest) {
     if (!createdPost) {
       await refund(postFailure || "unknown insert failure");
 
-      /* The object was uploaded straight from the browser before this request, so
-         a failed insert would otherwise leave it in the bucket with no row to ever
-         expire it. */
+      /* The image was uploaded straight from the browser before this request, so
+         a failed insert would otherwise leave it in Cloudinary with no row to
+         ever expire it. */
       if (imagePath) {
-        const { error: cleanupError } = await supabaseAdmin.storage
-          .from("feed-photos")
-          .remove([imagePath]);
-        if (cleanupError) {
-          console.error("[coins/feed-post] orphan photo cleanup failed:", cleanupError.message);
+        const cleanup = await destroyCloudinaryUrl(imagePath);
+        if (!cleanup.ok) {
+          console.error("[coins/feed-post] orphan photo cleanup failed:", cleanup.reason);
         }
       }
 

@@ -23,6 +23,12 @@ import type { FeedController, FeedImageState } from "@/components/feed/types";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import {
+  CLOUDINARY_FOLDERS,
+  CloudinaryUploadError,
+  discardCloudinaryUpload,
+  uploadToCloudinary,
+} from "@/lib/cloudinary";
+import {
   buildPostTree,
   dailyQuestionFor,
   rankFeedPosts,
@@ -833,32 +839,37 @@ export default function PublicFeedPage() {
          has since rolled over — is worse than one that plainly didn't happen. */
       if (!requireOnline(showToast, "Posting")) return false;
 
-      let imagePath: string | null = null;
+      /* The Cloudinary delivery URL, not a storage key. `image_path` on
+         `public_feed_posts` now holds a full URL; /api/feed/photo fetches it
+         server-side and still never hands it to a browser. */
+      let imageUrl: string | null = null;
+      let accessToken: string | null = null;
 
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) { showToast("Login required"); return false; }
+        accessToken = session.access_token;
 
         if (draft.image) {
-          /* `<uid>/<uuid>.<ext>` — the bucket's insert policy checks the first
-             segment against auth.uid(), so the folder is the authorization. */
-          const key = `${myId}/${crypto.randomUUID()}.${draft.image.extension}`;
-          const { error: uploadError } = await supabase.storage
-            .from("feed-photos")
-            .upload(key, draft.image.upload, {
-              contentType: draft.image.contentType,
-              upsert: false,
-            });
-
-          if (uploadError) {
+          /* `whisper/feed-photos/<uid>/…` — the author id is the folder, which is
+             what /api/coins/feed-post checks before it will accept the photo and
+             what /api/cloudinary/destroy checks before it will delete it. The
+             folder is the authorization, same as the old bucket policy. */
+          try {
+            const uploaded = await uploadToCloudinary(
+              draft.image.upload,
+              `${CLOUDINARY_FOLDERS.feedPhotos}/${myId}`,
+              `photo.${draft.image.extension}`
+            );
+            imageUrl = uploaded.url;
+          } catch (error) {
             showToast(
-              /^bucket not found$/i.test(uploadError.message)
-                ? "Photo whispers aren't set up on this server yet."
-                : uploadError.message
+              error instanceof CloudinaryUploadError
+                ? error.message
+                : "Couldn't upload that photo."
             );
             return false;
           }
-          imagePath = key;
         }
 
         const res = await fetch("/api/coins/feed-post", {
@@ -870,7 +881,7 @@ export default function PublicFeedPage() {
           body: JSON.stringify({
             message: draft.body,
             topic: draft.topic,
-            imagePath,
+            imagePath: imageUrl,
             imagePreview: draft.image?.preview ?? null,
             pollOptions: draft.poll,
           }),
@@ -880,11 +891,9 @@ export default function PublicFeedPage() {
         if (!res.ok) {
           showToast(json.error || "Couldn't post that.");
           /* The route unwinds its own failures, but a rejection that never got
-             as far as charging leaves the object behind. Removing it here costs
-             one request and keeps the bucket clean. */
-          if (imagePath) {
-            await supabase.storage.from("feed-photos").remove([imagePath]);
-          }
+             as far as charging leaves the asset behind. Discarding it here costs
+             one request and keeps the Cloudinary account clean. */
+          await discardCloudinaryUpload(imageUrl, accessToken);
           return false;
         }
 
@@ -903,9 +912,7 @@ export default function PublicFeedPage() {
       } catch (error) {
         console.error(error);
         showToast("Network error");
-        if (imagePath) {
-          await supabase.storage.from("feed-photos").remove([imagePath]);
-        }
+        await discardCloudinaryUpload(imageUrl, accessToken);
         return false;
       }
     },

@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { isCloudinaryUrl } from "@/lib/cloudinary";
+import { fetchCloudinaryImage } from "@/lib/cloudinary.server";
 
 /**
  * Serves a feed photo, once per viewer.
  *
- * Why this route exists at all: the `feed-photos` bucket is private and has no
- * select policy, so there is no URL a browser can fetch. Every photo in the feed
- * comes through here, which makes this the single place that can decide whether
- * this particular person still has a look left.
+ * Why this route exists at all: the photo's real address is never given to a
+ * browser. `public_feed_page` returns `has_image`, not `image_path`, so every
+ * photo in the feed comes through here — which makes this the single place that
+ * can decide whether this particular person still has a look left.
  *
  * How "once" differs from chat's view-once. A direct message has one recipient,
- * so `/api/photos/view` can delete the storage object on first open and be done.
- * A feed post has thousands of viewers — deleting the object for the first would
- * break it for everyone else. So the receipt is per viewer: a row in
- * `public_feed_post_image_views`, keyed `(post_id, viewer_id)`, and the object
- * survives until the post expires and `cleanup_expired_public_feed_posts()`
- * sweeps it.
+ * so `/api/photos/view` can destroy the image on first open and be done. A feed
+ * post has thousands of viewers — destroying it for the first would break it for
+ * everyone else. So the receipt is per viewer: a row in
+ * `public_feed_post_image_views`, keyed `(post_id, viewer_id)`, and the image
+ * outlives every individual view.
  *
- * Ordering matters and mirrors the chat route deliberately: **download first,
+ * Storage: `image_path` holds a Cloudinary delivery URL for posts written since
+ * the migration and a `feed-photos` object key for older ones. Both are read.
+ * Note what changed in the threat model — the old bucket was private, so no URL
+ * existed at all; a Cloudinary URL is fetchable by anyone who obtains it, and
+ * what keeps it unobtainable is that it stays server-side. That is why the bytes
+ * are proxied here rather than redirected to.
+ *
+ * Ordering matters and mirrors the chat route deliberately: **read first,
  * record second.** A network failure fetching the bytes must not spend the
  * viewer's only look. And the response is only sent once the receipt is written,
  * so the reverse — a look that was never recorded — cannot happen either.
@@ -111,13 +119,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { data: file, error: downloadError } = await supabaseAdmin.storage
-      .from("feed-photos")
-      .download(post.image_path);
+    /* One shape either way: the bytes and the type the response will carry. */
+    let bytes: ArrayBuffer;
+    let contentType: string;
 
-    if (downloadError || !file) {
-      console.error("[feed/photo] download failed:", downloadError?.message);
-      return NextResponse.json({ error: "Photo unavailable" }, { status: 404 });
+    if (isCloudinaryUrl(post.image_path)) {
+      const image = await fetchCloudinaryImage(post.image_path);
+      if (!image) {
+        return NextResponse.json({ error: "Photo unavailable" }, { status: 404 });
+      }
+      bytes = image.bytes;
+      contentType = image.contentType;
+    } else {
+      /* Legacy: a `feed-photos` object key from before the migration. */
+      const { data: file, error: downloadError } = await supabaseAdmin.storage
+        .from("feed-photos")
+        .download(post.image_path);
+
+      if (downloadError || !file) {
+        console.error("[feed/photo] download failed:", downloadError?.message);
+        return NextResponse.json({ error: "Photo unavailable" }, { status: 404 });
+      }
+      bytes = await file.arrayBuffer();
+      contentType = file.type || "image/jpeg";
     }
 
     /**
@@ -148,15 +172,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    return new NextResponse(arrayBuffer, {
+    return new NextResponse(bytes, {
       status: 200,
       headers: {
-        "Content-Type": file.type || "image/jpeg",
+        "Content-Type": contentType,
         /* No caching anywhere. A cached response is a second view that never
            reaches this route. */
         "Cache-Control": "no-store, no-cache, must-revalidate",
-        "Content-Length": String(arrayBuffer.byteLength),
+        "Content-Length": String(bytes.byteLength),
       },
     });
   } catch (error) {

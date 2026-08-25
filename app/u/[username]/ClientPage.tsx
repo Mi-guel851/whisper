@@ -15,6 +15,11 @@ import { fadeUp, respectMotion, spring, tween } from "@/lib/motion";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import {
+  CLOUDINARY_FOLDERS,
+  CloudinaryUploadError,
+  uploadToCloudinary,
+} from "@/lib/cloudinary";
+import {
   captureSenderContext,
   EMPTY_SENDER_CONTEXT,
   type SenderContext,
@@ -213,26 +218,25 @@ export default function PublicProfile() {
     let imageUrl: string | null = null;
 
     if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop();
-      const filePath = `${receiverId}/${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("message-images")
-        .upload(filePath, imageFile);
-
-      if (uploadError) {
+      /* Folder is the *recipient's* id, matching the old
+         `message-images/<recipientId>/...` object key. The sender may not be
+         logged in at all, so the person who can delete this photo later is the
+         recipient — see app/api/cloudinary/destroy/route.ts. */
+      try {
+        const uploaded = await uploadToCloudinary(
+          imageFile,
+          `${CLOUDINARY_FOLDERS.messageImages}/${receiverId}`
+        );
+        imageUrl = uploaded.url;
+      } catch (error) {
         setLoading(false);
-        showToast("Image upload failed: " + uploadError.message);
+        showToast(
+          error instanceof CloudinaryUploadError
+            ? `Image upload failed: ${error.message}`
+            : "Image upload failed."
+        );
         return;
       }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("message-images")
-        .getPublicUrl(filePath);
-
-      imageUrl = publicUrlData.publicUrl;
     }
 
     const {

@@ -5,6 +5,11 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
+import {
+  CLOUDINARY_FOLDERS,
+  CloudinaryUploadError,
+  uploadToCloudinary,
+} from "@/lib/cloudinary";
 import { ImagePlus, X, User } from "lucide-react";
 
 export default function PublicProfile() {
@@ -78,24 +83,22 @@ export default function PublicProfile() {
     let imageUrl: string | null = null;
 
     if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop();
-      const filePath = `${receiverId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("message-images")
-        .upload(filePath, imageFile);
-
-      if (uploadError) {
+      /* Folder is the recipient's id — the same ownership rule as ClientPage. */
+      try {
+        const uploaded = await uploadToCloudinary(
+          imageFile,
+          `${CLOUDINARY_FOLDERS.messageImages}/${receiverId}`
+        );
+        imageUrl = uploaded.url;
+      } catch (error) {
         setLoading(false);
-        showToast("Image upload failed: " + uploadError.message);
+        showToast(
+          error instanceof CloudinaryUploadError
+            ? `Image upload failed: ${error.message}`
+            : "Image upload failed."
+        );
         return;
       }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("message-images")
-        .getPublicUrl(filePath);
-
-      imageUrl = publicUrlData.publicUrl;
     }
 
     const {
