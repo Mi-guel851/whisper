@@ -31,7 +31,8 @@
       "Read(//tmp/**)",
       "Bash(awk 'NR>=1540 && NR<=1600 && /relative/' app/chat/\\\\[conversationId\\\\]/page.tsx)",
       "Bash(grep -oE \"^\\\\.[a-z0-9-]+[ ,{]\")",
-      "Bash(grep -n \"^import\\\\|^} from\\\\|^  [A-Za-z].*,$\" app/public-feed/page.tsx)"
+      "Bash(grep -n \"^import\\\\|^} from\\\\|^  [A-Za-z].*,$\" app/public-feed/page.tsx)",
+      "Bash(echo \"EXIT:$?\")"
     ],
     "deny": [
       "Bash(git push --force *)",

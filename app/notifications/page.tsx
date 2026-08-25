@@ -8,6 +8,7 @@ import ShareMessageCard from "@/components/ShareMessageCard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import GlassPanel from "@/components/GlassPanel";
 import { HINT_UNLOCK_COST } from "@/lib/coins";
+import { discardCloudinaryUpload, isCloudinaryUrl } from "@/lib/cloudinary";
 import { useToast } from "@/components/ToastProvider";
 import { Heart, Download, Trash2, Lightbulb, LockKeyhole, Loader2, ChevronDown } from "lucide-react";
 
