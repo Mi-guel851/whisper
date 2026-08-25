@@ -49,7 +49,7 @@ export const WHISPER_GAMES: WhisperGame[] = [
     title: "Red Flag",
     emoji: "🚩",
     tagline: "The one nobody says to your face.",
-    prompt: "What's my biggest red flag? Be honest, it's anonymous.",
+    prompt: "What's my biggest red flag? Be honest, Don't lie.",
     gradient: ["#ef4444", "#ec4899"],
   },
   {
