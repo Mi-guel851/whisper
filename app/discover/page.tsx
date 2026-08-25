@@ -159,7 +159,7 @@ export default function DiscoverPage() {
           <Compass className="text-purple-400" size={24} />
           <h1 className="page-title">Discover</h1>
         </div>
-        <p className="page-subtitle mt-1">Explore Whisper and manage your connections.</p>
+        <p className="page-subtitle mt-1">Explore Whisper and manage your connections, probably something or nothing.</p>
 
         <h2 className="eyebrow mt-10 mb-5">
           Explore
