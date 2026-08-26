@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { BarChart3, Heart, MessageCircle, MoreHorizontal, Share2 } from "lucide-react";
-import { compactCount } from "@/lib/feed";
+import { compactCount, formatCount, formatFullCount } from "@/lib/feed";
 
 /**
  * The engagement row under a post, laid out the way X lays it out: icons on the
@@ -108,12 +108,13 @@ function FeedActionBarBase({
       </button>
 
       {/* Views are read-only, so this is a plain span — a button here would
-          promise an analytics screen that doesn't exist. */}
-      <span className="feed-action feed-action-view" aria-label={`${viewCount} views`}>
+          promise an analytics screen that doesn't exist. The visible number is
+          abbreviated (1.25K); the label carries the exact integer. */}
+      <span className="feed-action feed-action-view" aria-label={`${formatFullCount(viewCount)} views`}>
         <span className="feed-action-icon">
           <BarChart3 size={15} strokeWidth={2} />
         </span>
-        <span className="tabular-nums">{compactCount(viewCount)}</span>
+        <span className="tabular-nums">{formatCount(viewCount)}</span>
       </span>
 
       <div className="feed-action-tail">

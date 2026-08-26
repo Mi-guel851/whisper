@@ -109,12 +109,12 @@ export function timeAgo(value: string) {
 }
 
 export function compactCount(value: number) {
-  if (value < 1000) return String(value);
-  if (value < 1_000_000) {
-    return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0).replace(/\.0$/, "")}K`;
-  }
-  return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  return formatCount(value);
 }
+
+// Single source of truth for engagement number formatting.
+import { formatCount, formatFullCount } from "./formatCount";
+export { formatCount, formatFullCount };
 
 /**
  * Folds a flat post list into threads.

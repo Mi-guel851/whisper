@@ -38,6 +38,15 @@ export default function StatsRow() {
   const [userId, setUserId] = useState<string | null>(null);
   const reduced = useSafeReducedMotion();
 
+  /**
+   * Absolute view_count per one of the author's posts, seeded from the initial
+   * read and kept current by the realtime subscription below. The dashboard's
+   * "Post Views" total is just the sum of this map, so it reads from the exact
+   * same `view_count` column the public feed shows — the two surfaces cannot
+   * disagree, and both update live.
+   */
+  const postViewsById = useRef<Map<string, number>>(new Map());
+
   // Guards against a slow poll resolving after unmount.
   const alive = useRef(true);
   useEffect(() => {
@@ -105,8 +114,13 @@ export default function StatsRow() {
 
     /* A missing table or column resolves with `data: null` and an error rather
        than throwing, so both degrade to zero instead of blanking the tiles. */
-    const rows = (feedPosts.data ?? []) as { view_count: number | null; expires_at: string }[];
+    const rows = (feedPosts.data ?? []) as { id: string; view_count: number | null; expires_at: string }[];
     const now = Date.now();
+
+    // Seed the per-post absolute view counts for realtime updates.
+    const byId = postViewsById.current;
+    byId.clear();
+    for (const row of rows) byId.set(row.id, row.view_count ?? 0);
 
     setStats({
       totalMessages: totalMsgCount || 0,
@@ -133,6 +147,44 @@ export default function StatsRow() {
     }
     init();
   }, [load]);
+
+  /* Realtime "Post Views": subscribe to every view_count UPDATE on this
+     author's public-feed posts. The public feed already broadcasts these (the
+     posts table is in the realtime publication), so the dashboard total ticks
+     up the instant any reader views a post — no page refresh, and the slow
+     poll below stays as a reconciliation safety net for a dropped socket. */
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`stats-views-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "public_feed_posts",
+          filter: `author_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as { id?: string; view_count?: number | null };
+          if (!row.id || typeof row.view_count !== "number") return;
+          const prev = postViewsById.current.get(row.id);
+          // The server is authoritative; ignore any older value.
+          if (prev === undefined || row.view_count > prev) {
+            postViewsById.current.set(row.id, row.view_count);
+            let total = 0;
+            for (const v of postViewsById.current.values()) total += v;
+            setStats((current) => ({ ...current, postViews: total }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -201,6 +253,7 @@ export default function StatsRow() {
         icon={<BarChart3 size={13} />}
         label="Post Views"
         value={stats.postViews}
+        abbreviate
         delta={stats.livePosts}
         deltaLabel={stats.livePosts === 1 ? "post live now" : "posts live now"}
         loading={loading}
@@ -218,6 +271,7 @@ function StatTile({
   deltaLabel,
   loading,
   reduced,
+  abbreviate = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -226,6 +280,7 @@ function StatTile({
   deltaLabel: string;
   loading: boolean;
   reduced: boolean | null;
+  abbreviate?: boolean;
 }) {
   return (
     <motion.div variants={staggerItem}>
@@ -248,9 +303,9 @@ function StatTile({
           </>
         ) : (
           <>
-            <div className="stat-value mt-2 text-white">
-              <AnimatedCounter value={value} />
-            </div>
+              <div className="stat-value mt-2 text-white">
+                <AnimatedCounter value={value} abbreviate={abbreviate} />
+              </div>
             <motion.div
               // Keyed on the delta so a change re-fires the fade — the only
               // signal that the live numbers moved.

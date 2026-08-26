@@ -8,6 +8,7 @@ import {
   type AnimationPlaybackControls,
 } from "framer-motion";
 import { duration, ease } from "@/lib/motion";
+import { formatCount } from "@/lib/formatCount";
 
 type AnimatedCounterProps = {
   value: number;
@@ -18,6 +19,9 @@ type AnimatedCounterProps = {
   suffix?: string;
   /** Thousands separators. Off for small counts where they'd never appear. */
   locale?: boolean;
+  /** Abbreviate large values (1,246 → "1.2K", 1,000,000 → "1M"). When set,
+   *  `locale` thousands separators are not used, since the unit already shortens. */
+  abbreviate?: boolean;
   className?: string;
 };
 
@@ -31,6 +35,7 @@ export default function AnimatedCounter({
   prefix = "",
   suffix = "",
   locale = true,
+  abbreviate = false,
   className = "",
 }: AnimatedCounterProps) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -41,7 +46,12 @@ export default function AnimatedCounter({
 
   const format = (n: number) => {
     const rounded = Math.round(n);
-    return `${prefix}${locale ? rounded.toLocaleString() : rounded}${suffix}`;
+    const body = abbreviate
+      ? formatCount(rounded)
+      : locale
+        ? rounded.toLocaleString()
+        : rounded;
+    return `${prefix}${body}${suffix}`;
   };
 
   // The animated span's children are ALWAYS null so React never owns a text
@@ -93,7 +103,9 @@ export default function AnimatedCounter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inView, value, durationSec, prefix, suffix, locale, reduced]);
 
-  const formatted = `${prefix}${locale ? value.toLocaleString() : value}${suffix}`;
+  const formatted = `${prefix}${
+    abbreviate ? formatCount(value) : locale ? value.toLocaleString() : value
+  }${suffix}`;
 
   return (
     <>

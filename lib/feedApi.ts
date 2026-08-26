@@ -157,30 +157,48 @@ let rpcAvailable: boolean | null = null;
 let impressionsAvailable: boolean | null = null;
 
 /**
+ * The value the RPC returns for each post it touched: the post id and the
+ * authoritative, database-computed view count after recording.
+ */
+export type RecordedView = { post_id: string; view_count: number };
+
+/**
  * Records views for a batch of posts.
  *
- * Returns the ids that were **not** recorded, so the caller can put them back and
- * try again on the next flush. That return value is the point of this function
- * existing here rather than inline in the page: a transient network failure used to
- * clear the pending set and then bail, which silently threw away real views and is
- * the likeliest reason a post's counter sits at zero while people are plainly
- * reading it.
+ * The database increments atomically (a trigger does `view_count = view_count +
+ * 1` per inserted row, serialised by Postgres), then the RPC returns the new
+ * count per post. The caller applies those counts directly — the client never
+ * guesses with a read-modify-write of its own.
  *
- * An empty array means "all recorded". The permanent case — the function does not
- * exist — also returns empty, because retrying it forever would be worse than
- * losing the count.
+ * Returns the posts that were **not** recorded, so the caller can put them back
+ * and try again on the next flush, plus the counts that *were* recorded. That
+ * split is the point of this function living here rather than inline in the page:
+ * a transient network failure used to clear the pending set and then bail, which
+ * silently threw away real views and is the likeliest reason a post's counter
+ * sits at zero while people are plainly reading it.
+ *
+ * An empty `failed` array means "all recorded". The permanent case — the
+ * function does not exist — also returns `failed: []` and `counts: []`, because
+ * retrying it forever would be worse than losing the count. On that path the
+ * caller falls back to realtime, which still carries the new count when another
+ * viewer triggers it.
  */
-export async function recordImpressions(postIds: string[]): Promise<string[]> {
-  if (postIds.length === 0) return [];
-  if (impressionsAvailable === false) return [];
+export async function recordImpressions(
+  postIds: string[]
+): Promise<{ failed: string[]; counts: RecordedView[] }> {
+  if (postIds.length === 0) return { failed: [], counts: [] };
+  if (impressionsAvailable === false) return { failed: [], counts: [] };
 
-  const { error } = await supabase.rpc("record_public_feed_impressions", {
+  const { data, error } = await supabase.rpc("record_public_feed_impressions", {
     post_ids: postIds,
   });
 
   if (!error) {
     impressionsAvailable = true;
-    return [];
+    const counts = ((data || []) as { post_id: string; view_count: number }[]).map(
+      (row) => ({ post_id: row.post_id, view_count: Number(row.view_count) || 0 })
+    );
+    return { failed: [], counts };
   }
 
   if (isMissingSchema(error)) {
@@ -189,16 +207,16 @@ export async function recordImpressions(postIds: string[]): Promise<string[]> {
        guarantees we have not been here before, so this needs no second guard. */
     console.warn(
       "Feed impressions are not recorded: record_public_feed_impressions is missing. " +
-        "Apply supabase/migrations/202608030001_public_feed_metrics.sql to enable view counts."
+        "Apply supabase/migrations/202608260001_view_count_every_view.sql to enable view counts."
     );
     impressionsAvailable = false;
-    return [];
+    return { failed: [], counts: [] };
   }
 
   /* Transient — a dropped connection, a timeout, a rate limit. These are real
      views and they are worth keeping, so they go back to the caller. */
   console.warn("Impression batch failed, will retry:", error.message);
-  return postIds;
+  return { failed: postIds, counts: [] };
 }
 
 /** True when view counts are known to be unavailable on this database. */

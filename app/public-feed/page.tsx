@@ -31,6 +31,7 @@ import {
 import {
   buildPostTree,
   dailyQuestionFor,
+  formatCount,
   rankFeedPosts,
   type FeedLike,
   type FeedPost,
@@ -285,58 +286,73 @@ export default function PublicFeedPage() {
 
   /* ---------------------------------------------------------------------
      Impressions — batched so a fast scroll doesn't fire one request per card.
+
+     An array, deliberately not a Set: the very same post seen twice in one
+     flush window is two real views and must count twice. Deduplication within
+     a *single* display event (a React re-render firing the observer callback
+     again for the same card already on screen) is handled by the observer's
+     `viewed` flag below, not here — so genuine re-views are never collapsed.
      --------------------------------------------------------------------- */
-  const pendingImpressions = useRef<Set<string>>(new Set());
-  const recordedImpressions = useRef<Set<string>>(new Set());
+  const pendingImpressions = useRef<string[]>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * Applies authoritative counts from the database to the feed rows.
+   *
+   * Uses the max of the value already on screen and the one the database just
+   * confirmed, so a stale or out-of-order realtime payload can never roll a
+   * counter backwards — a view count only ever moves up, exactly as the server
+   * counts it.
+   */
+  const applyViewCounts = useCallback((counts: { post_id: string; view_count: number }[]) => {
+    if (!counts.length) return;
+    const byId = new Map(counts.map((c) => [c.post_id, c.view_count]));
+    setPosts((current) =>
+      current.map((post) => {
+        const fresh = byId.get(post.id);
+        if (fresh === undefined) return post;
+        const currentCount = post.view_count ?? 0;
+        // Keep the larger: the server is the source of truth.
+        return fresh > currentCount ? { ...post, view_count: fresh } : post;
+      })
+    );
+  }, []);
+
   const flushImpressions = useCallback(async () => {
-    const batch = Array.from(pendingImpressions.current);
-    pendingImpressions.current.clear();
+    const batch = pendingImpressions.current;
+    pendingImpressions.current = [];
     if (!batch.length) return;
 
     /* Held rather than spent while offline. These are real views — the reader is
        looking at cached posts — so putting them back means they are counted once
        on reconnect instead of thrown away by a request that cannot succeed. The
-       set is bounded by the size of the loaded feed, so it cannot grow without
+       array is bounded by the size of the loaded feed, so it cannot grow without
        limit. */
     if (!isOnline()) {
-      for (const id of batch) pendingImpressions.current.add(id);
+      pendingImpressions.current = batch;
       return;
     }
 
-    const failed = await recordImpressions(batch);
+    const { failed, counts } = await recordImpressions(batch);
 
-    /* Real views that failed on a transient error go back in the queue rather than
-       being dropped. The set is bounded by the loaded feed, so it cannot grow
-       without limit, and the ids are also cleared from `recordedImpressions` so a
-       later pass is allowed to try them again — leaving them marked as recorded
-       would guarantee they were never counted. */
-    if (failed.length) {
-      for (const id of failed) {
-        pendingImpressions.current.add(id);
-        recordedImpressions.current.delete(id);
-      }
-    }
+    if (counts.length) applyViewCounts(counts);
 
-    const recorded = batch.filter((id) => !failed.includes(id));
-    if (!recorded.length) return;
+    /* Real views that failed on a transient error go back in the queue rather
+       than being dropped. The array is bounded by the loaded feed, so it cannot
+       grow without limit. Preserving order is not important here — each id just
+       needs another chance to be counted. */
+    if (failed.length) pendingImpressions.current.push(...failed);
+  }, [applyViewCounts]);
 
-    setPosts((current) =>
-      current.map((post) =>
-        recorded.includes(post.id)
-          ? { ...post, view_count: (post.view_count ?? 0) + 1 }
-          : post
-      )
-    );
-  }, []);
-
-  const trackImpression = useCallback((postId: string, authorId: string) => {
-    if (!myIdRef.current || authorId === myIdRef.current) return;
-    if (recordedImpressions.current.has(postId)) return;
-
-    recordedImpressions.current.add(postId);
-    pendingImpressions.current.add(postId);
+  /**
+   * Called by the IntersectionObserver when a root card becomes genuinely
+   * viewed. Every call is a real view and is forwarded to the batch — the
+   * observer itself decides what "genuinely viewed" means (below), so this
+   * function only has to forward and schedule a flush.
+   */
+  const trackImpression = useCallback((postId: string) => {
+    if (!myIdRef.current) return;
+    pendingImpressions.current.push(postId);
 
     if (flushTimer.current) clearTimeout(flushTimer.current);
     flushTimer.current = setTimeout(() => { void flushImpressions(); }, 900);
@@ -378,6 +394,9 @@ export default function PublicFeedPage() {
   // A single observer for every root card, so a long feed costs one observer.
   const observer = useRef<IntersectionObserver | null>(null);
   const observedNodes = useRef<Set<HTMLElement>>(new Set());
+  // Per-card view state: tracks how much of the card is on screen and whether
+  // this pass of "on screen" has already been counted.
+  const viewState = useRef<Map<HTMLElement, { ratio: number; viewed: boolean }>>(new Map());
   const trackRef = useRef(trackImpression);
   useEffect(() => { trackRef.current = trackImpression; }, [trackImpression]);
 
@@ -387,21 +406,39 @@ export default function PublicFeedPage() {
     const instance = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
           const node = entry.target as HTMLElement;
-          const { postId, authorId } = node.dataset;
-          if (postId && authorId) {
-            trackRef.current(postId, authorId);
-            instance.unobserve(node);
-            observedNodes.current.delete(node);
+          const state = viewState.current.get(node) ?? { ratio: 0, viewed: false };
+
+          /* A React re-render can re-fire this callback for a card that is
+             already centered; the `viewed` flag means "this continuous view has
+             already been counted", so we do not double up within one glance. */
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5 && !state.viewed) {
+            const postId = node.dataset.postId;
+            if (postId) {
+              trackRef.current(postId);
+              state.viewed = true;
+            }
           }
+
+          /* Only re-arm once the card has clearly left the viewport (≤20%),
+             so scrolling a little within a post does not re-trigger, but a real
+             scroll-away-and-back (or a refresh / reopen) counts again. */
+          if (entry.intersectionRatio <= 0.2) {
+            state.viewed = false;
+          }
+
+          state.ratio = entry.intersectionRatio;
+          viewState.current.set(node, state);
         }
       },
-      { threshold: 0.5 }
+      { threshold: [0, 0.2, 0.5] }
     );
 
     observer.current = instance;
-    observedNodes.current.forEach((node) => instance.observe(node));
+    observedNodes.current.forEach((node) => {
+      viewState.current.set(node, viewState.current.get(node) ?? { ratio: 0, viewed: false });
+      instance.observe(node);
+    });
 
     return () => { instance.disconnect(); observer.current = null; };
   }, []);
@@ -409,6 +446,7 @@ export default function PublicFeedPage() {
   const impressionRef = useCallback((node: HTMLElement | null) => {
     if (!node) return;
     observedNodes.current.add(node);
+    viewState.current.set(node, viewState.current.get(node) ?? { ratio: 0, viewed: false });
     observer.current?.observe(node);
   }, []);
 
@@ -586,6 +624,22 @@ export default function PublicFeedPage() {
             setPosts((current) => current.filter((post) => post.id !== id));
             setRootOrder((current) => current.filter((rootId) => rootId !== id));
             setPendingNew((current) => current.filter((pendingId) => pendingId !== id));
+          }
+        )
+        /* A view landed somewhere — another reader, or the current one's own
+           RPC response arriving via the socket. `public_feed_posts` is already
+           in the realtime publication, so a `view_count` UPDATE reaches every
+           open feed. We apply only the count, never the whole row, so the
+           RPC-computed fields the payload does not carry are left untouched. */
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "public_feed_posts" },
+          (payload) => {
+            const updated = payload.new as { id?: string; view_count?: number };
+            const id = updated.id;
+            const count = updated.view_count;
+            if (!id || typeof count !== "number") return;
+            applyViewCounts([{ post_id: id, view_count: count }]);
           }
         )
         .on(
