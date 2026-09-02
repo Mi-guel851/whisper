@@ -1452,6 +1452,31 @@ html.viewport-locked body {
   border-color: var(--chat-bubble-out-bd);
 }
 
+/* Message text inside a bubble — WhatsApp wrapping.
+   ────────────────────────────────────────────────────────────────────────
+   `overflow-wrap: break-word` with `word-break: normal` is the pair that
+   never splits a word that would fit on a line of its own: normal text wraps
+   only at spaces, and an unbreakable run (URL, long token) is broken only
+   when it cannot fit at all. `anywhere` is deliberately NOT used here — it is
+   the one value that also collapses the element's min-content size to about a
+   single character, which is what let the bubble be sized narrower than its
+   own words and produced breaks like "Wassu / p".
+   `white-space: pre-wrap` keeps the sender's own newlines and spaces.
+   `hyphens: none` stops a UA from inserting a hyphenated break of its own. */
+.chat-text {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+
+/* Fallback for a message that is one enormous unbroken run of characters.
+   Applied per message, only when such a run is actually present, so the
+   min-content collapse `anywhere` causes can never affect ordinary text. */
+.chat-text-unbroken {
+  overflow-wrap: anywhere;
+}
+
 .chat-meta      { color: var(--chat-meta); }
 .chat-icon      { color: var(--chat-icon); }
 .chat-icon:hover:not(:disabled) { background: var(--chat-icon-hover); }

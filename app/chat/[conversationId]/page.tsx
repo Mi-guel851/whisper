@@ -203,6 +203,11 @@ const MessageBubble = memo(function MessageBubbleBase({
      fallback for a spent row whose flag has been cleared. */
   const isMediaMessage =
     isAudioMessage || ((msg.is_view_once || Boolean(msg.image_viewed_at)) && isPhotoMessage);
+  /* Only a message that actually contains an unbreakable run — a pasted link, an
+     email, a 40-character handle — opts into `overflow-wrap: anywhere`. Ordinary
+     text keeps `break-word`, whose min-content is the longest word, so the bubble
+     is always at least as wide as the word it holds and never splits one. */
+  const hasUnbreakableRun = msg.content ? /\S{24,}/.test(msg.content) : false;
 
   return (
     <div
@@ -215,7 +220,11 @@ const MessageBubble = memo(function MessageBubbleBase({
         isActionMenuOpen ? "chat-msg-focused" : ""
       }`}
     >
-      <div className="relative max-w-[80%]">
+      {/* `min-w-0` so the 80% cap always wins: without it a flex item's automatic
+          minimum size is its min-content width, and a single very long word would
+          push the bubble past the cap and give the thread a horizontal scrollbar
+          instead of wrapping inside the bubble. */}
+      <div className="relative min-w-0 max-w-[80%]">
         <motion.div
           className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2"
           style={{ opacity: replyIconOpacity, color: "var(--theme-accent-purple)" }}
@@ -318,9 +327,9 @@ const MessageBubble = memo(function MessageBubbleBase({
                   </button>
                 ) : null}
                 {msg.content && (
-                  /* `break-words` only, never `overflow-wrap: anywhere` — see the
-                     note on the text bubble below. */
-                  <p className="mt-1 whitespace-pre-wrap break-words text-sm">{msg.content}</p>
+                  <p className={`chat-text mt-1 text-sm ${hasUnbreakableRun ? "chat-text-unbroken" : ""}`}>
+                    {msg.content}
+                  </p>
                 )}
                 <div className="chat-meta mt-1 flex items-center justify-end gap-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
@@ -328,34 +337,35 @@ const MessageBubble = memo(function MessageBubbleBase({
                 </div>
               </div>
             ) : (
-              <div className="text-sm">
+              <div className={`chat-text text-sm ${hasUnbreakableRun ? "chat-text-unbroken" : ""}`}>
                 <span className="chat-meta float-right ml-2 mt-1.5 flex items-center gap-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
                   {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
                 </span>
-                {/* WHY `break-words` AND NOT `overflow-wrap: anywhere`
+                {/* WHY THE TEXT IS INLINE HERE AND NOT IN ITS OWN `<p>`
                     ────────────────────────────────────────────────────────────
-                    This said `break-words [overflow-wrap:anywhere]`, and the
-                    `anywhere` was why a short message came out as a narrow column
-                    with words split down the middle — "Wassu / p" — instead of
-                    staying on one line the way WhatsApp does.
+                    The timestamp is a right float, so it shortens the first line
+                    the text gets. When the text lived in a `<p>` — a block sibling
+                    of the float — the browser sized the bubble from the paragraph
+                    alone: the float's width was never counted, so the bubble came
+                    out exactly as wide as the text and the float then stole space
+                    the text had already been measured into. Every short message
+                    lost its last word to a second line ("More to come / 🥹"), and a
+                    single word with nowhere to go was broken mid-word instead
+                    ("Wassu / p").
 
-                    The two values look interchangeable and are not. Both break an
-                    unbreakable run of characters to stop it overflowing, but only
-                    `anywhere` contributes those break opportunities to the element's
-                    *min-content* size, which collapses min-content to roughly one
-                    character. The bubble is a shrink-to-fit flex item capped at 80%,
-                    so it takes its width from its content — and with a min-content of
-                    one character the browser was free to make it as narrow as it
-                    liked, then break mid-word to fit.
+                    Rendering the content as inline text in the same block as the
+                    float puts both in one inline formatting context, where the
+                    float's width *is* part of the intrinsic width. The bubble is
+                    now measured as text + timestamp, so "More to come 🥹" sits on
+                    one line beside its time, and wrapping only happens at spaces
+                    once the text genuinely reaches the 80% cap. Nothing moves
+                    visually: the float still sits in the top-right of the bubble
+                    and the text still flows around it.
 
-                    `break-word` leaves min-content as the longest word, so the bubble
-                    is sized by its text and only wraps when the text genuinely reaches
-                    the 80% cap. A pasted URL still breaks rather than overflowing.
-                    `whitespace-pre-wrap` is what keeps a deliberate newline — a wrap
-                    now only happens because the user asked for one or the line is
-                    actually full. */}
-                <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                    The wrapping rules themselves live in `.chat-text`
+                    (pre-wrap + break-word + word-break:normal) in globals.css. */}
+                {msg.content}
               </div>
             )}
           </div>
