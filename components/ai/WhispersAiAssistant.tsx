@@ -211,22 +211,22 @@ export default function WhispersAiAssistant() {
   const liftForNav = hasBottomNav(pathname);
 
   /*
-   * WHERE THE BUTTON STARTS, AND WHY IT IS NO LONGER THE BOTTOM-RIGHT CORNER
+   * WHERE THE BUTTON STARTS, AND WHY IT KEEPS CLEAR OF THE COMPOSE BUTTON
    *
-   * The public feed puts its compose button at `bottom: 5.75rem; right: 1.125rem`,
-   * which is the same corner this one used — two 3.5rem circles roughly half a
-   * centimetre apart, with this one on top at `z-80`. The compose button was
-   * reachable only by the few pixels the assistant did not cover, and on a screen
-   * whose entire purpose is writing posts, the assistant was eating the one control
-   * that does it.
+   * The public feed's compose button is a plus at `bottom: 5.75rem; right:
+   * 1.125rem` — the same corner this one lives in, which is the corner on X too.
+   * Two 3.5rem circles in one corner means one of them is only reachable by the
+   * few pixels the other does not cover, and on a screen whose entire purpose is
+   * writing posts, the assistant must not be the one eating the compose control.
    *
-   * Rather than pick a new fixed corner and wait to collide with whatever is added
-   * next, the default is lifted clear of the compose button and the whole thing is
-   * draggable — so the resolution is the user's, permanently, and the two controls
-   * can never be stacked by a layout change. The fraction is stored, not the
-   * pixels; see lib/useDraggableFab.ts.
+   * So the default is lifted clear of the plus and the whole thing is draggable
+   * — the resolution is the user's, permanently, and the two controls can never
+   * be stacked by a layout change. The bottom keep-out counts the nav *and* the
+   * compose button (5.75rem + 3.5rem circle + a thumb's gap), so even a fully
+   * dragged-down assistant stops above the plus rather than on it. The fraction
+   * is stored, not the pixels; see lib/useDraggableFab.ts.
    */
-  const insetBottom = liftForNav ? 100 : 24;
+  const insetBottom = liftForNav ? 168 : 24;
 
   const fab = useDraggableFab({
     storageKey: "whisper-ai-fab-anchor",
