@@ -2,12 +2,12 @@
 
 import { memo } from "react";
 import { motion } from "framer-motion";
-import { Feather } from "lucide-react";
+import { Plus } from "lucide-react";
 import { spring } from "@/lib/motion";
 import { vibrate, HAPTIC } from "@/lib/haptics";
 
 /**
- * The compose button.
+ * The compose button — a plus, bottom-right, the way X does it.
  *
  * WHY A FLOATING BUTTON RATHER THAN THE COMPOSER ITSELF
  *
@@ -18,17 +18,22 @@ import { vibrate, HAPTIC } from "@/lib/haptics";
  * A button that stays reachable the whole way down does that in one tap and costs
  * 56 pixels.
  *
+ * WHY THE RIGHT CORNER, AND WHY A PLUS
+ *
+ * X parks its compose action as a plus floating above the bottom-right corner of
+ * the timeline, and that is the corner the thumb owns — the same corner this now
+ * uses. It used to sit on the left to keep clear of the Whispers AI button, but
+ * the AI button is draggable and keeps clear of the bottom band on its own (see
+ * WhispersAiAssistant's inset), so the right corner is free and matches the
+ * gesture people already know.
+ *
+ * The glyph is a plus rather than a quill: on a page whose posts are text, photos
+ * and polls, "add" is the honest verb, and it is the same glyph X uses at this
+ * size. Whisper's gradient does the branding; the icon only has to say "make one".
+ *
  * It sits above the bottom navigation rather than inside it: the nav is where you
  * go, this is what you do, and merging the two makes a five-item bar out of a
- * four-item one. It sits on the *left*, because the right corner is the Whispers
- * AI button's — that one is mounted in the root layout, is 56px like this one, and
- * renders above it, so sharing a corner meant the assistant covered the compose
- * button on the one screen built for composing.
- *
- * A quill rather than a plus. X uses a plus at small sizes and a quill at large
- * ones for the same reason — a bare plus is the universal "add", which on a page
- * with a photo picker, a poll builder and a reply box is ambiguous. The quill says
- * "write" and nothing else.
+ * four-item one.
  */
 
 type FeedFabProps = {
@@ -57,7 +62,7 @@ function FeedFabBase({ onClick, hidden = false, reducedMotion }: FeedFabProps) {
       transition={reducedMotion ? { duration: 0.12 } : spring.snappy}
       whileTap={reducedMotion ? undefined : { scale: 0.92 }}
     >
-      <Feather size={22} strokeWidth={2.4} aria-hidden />
+      <Plus size={27} strokeWidth={2.6} aria-hidden />
     </motion.button>
   );
 }

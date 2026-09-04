@@ -3272,21 +3272,10 @@ html.viewport-locked body {
   background: color-mix(in srgb, var(--theme-accent-pink) 14%, transparent);
 }
 
-/* The write-a-reply control that appears once the reply icon has been taken
-   over by the thread count. Text rather than an icon, because the row already
-   has four glyphs and a fifth would need a metaphor nobody would read
-   correctly. Padding matches .feed-action-icon's 2rem box so the row's optical
-   baseline doesn't shift when this appears. */
-.feed-action-write {
-  padding: 0 0.5rem;
-  height: 2rem;
-  border-radius: var(--radius-full);
-}
-
-.feed-action-write.is-active {
-  color: var(--theme-info);
-  background: color-mix(in srgb, var(--theme-info) 14%, transparent);
-}
+/* The write-a-reply control that appeared once the reply icon had been taken
+   over by the thread count is gone: the reply icon now opens the thread and
+   the composer in one gesture (see FeedPostCard), so a second labelled control
+   was two buttons for one action. */
 
 /* Views are not a control, so they get no hover state at all — the absence is
    the signal that there's nothing to press. */
@@ -3324,6 +3313,23 @@ html.viewport-locked body {
 .feed-reply-input { color: var(--theme-text); }
 .feed-reply-input::placeholder { color: var(--theme-text-muted); }
 .feed-reply-cost { color: var(--theme-text-muted); }
+
+/* The composer's put-it-away control, X's Cancel. The reply icon opens this
+   box as part of opening the thread, so without a close affordance a box
+   opened by accident could only ever fill and send. */
+.feed-reply-cancel {
+  border: 0;
+  background: none;
+  color: var(--theme-text-muted);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-reply-cancel:active {
+  background: var(--fill-1);
+  color: var(--theme-text);
+}
 
 .feed-reply-send {
   background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
@@ -4192,25 +4198,25 @@ html.viewport-locked body {
 /* --- Compose button ------------------------------------------------------ */
 
 /*
-   The quill, above the bottom nav. See components/feed/FeedFab.tsx for why it is
-   a quill rather than a plus and why it sits outside the nav bar.
+   The plus, above the bottom nav's right corner — X's seat for the compose
+   action. See components/feed/FeedFab.tsx for why it is a plus rather than a
+   quill and why it sits outside the nav bar.
 
-   LEFT, NOT RIGHT
+   RIGHT, LIKE X — AND CLEAR OF THE ASSISTANT
 
-   The right corner belongs to the Whispers AI button, which is mounted in the root
-   layout and therefore present on this screen too. Both are 3.5rem circles; the
-   assistant sits at `z-80` against this one's `z-40`, so with both on the right the
-   assistant simply covered the compose button on the one screen whose entire
-   purpose is writing posts. The assistant is now draggable (lib/useDraggableFab.ts)
-   and this one is parked on the opposite side, so the two read as two distinct
-   controls and neither can be buried by the other.
+   The Whispers AI button is mounted in the root layout and lives in this corner
+   too. It is draggable and its bottom keep-out now counts this button
+   (WhispersAiAssistant's insetBottom), so the assistant parks above the plus
+   and cannot be dropped onto it. Two circles in one corner only works when the
+   stacking is decided — here it is: plus at the thumb's corner, assistant
+   above it, draggable away.
 
    `position: fixed` on a `transform`ed ancestor would resolve against that
    ancestor, so this is mounted as a sibling of `.feed-shell`, not inside it.
 */
 .feed-fab {
   position: fixed;
-  left: max(1.125rem, env(safe-area-inset-left, 0px));
+  right: max(1.125rem, env(safe-area-inset-right, 0px));
   /* Clears the 5rem bottom nav plus its inset, with a thumb's gap. */
   bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
   z-index: 40;
@@ -4264,7 +4270,9 @@ html.viewport-locked body {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  margin-left: auto;
+  /* No `margin-left: auto` — the far edge belongs to the overflow "···", and
+     two auto margins would split the leftover space between them, floating the
+     tag to mid-row. The tag reads inline, right after the time, as on X. */
   padding: 0.125rem 0.4375rem;
   border-radius: var(--radius-full);
   border: 1px solid var(--hairline);
@@ -4276,21 +4284,58 @@ html.viewport-locked body {
 
 /* --- Action row layout --------------------------------------------------- */
 
-/* The negative inline start pulls the first icon's hover pad back so the glyph
-   optically lines up with the body text above it rather than the pad's edge. */
+/*
+   X's distribution: the controls are equal units — icon, then count — spaced
+   evenly across the full width of the post, with nothing gathered at the far
+   edge. `space-between` rather than a fixed gap is what keeps four slots
+   reading as one row on every phone width, and the negative inline margins
+   pull the outer hover pads back so the first glyph and the last line up with
+   the body text above them rather than with their pads' edges.
+*/
 .feed-action-row {
   display: flex;
   align-items: center;
-  gap: 0.125rem;
-  margin-top: 0.1875rem;
-  margin-left: -0.5rem;
+  justify-content: space-between;
+  gap: 0.25rem;
+  max-width: 30rem;
+  margin-top: 0.25rem;
+  margin-inline: -0.5rem;
 }
 
-.feed-action-tail {
-  display: flex;
-  align-items: center;
-  gap: 0.125rem;
+/*
+   The overflow control, in X's slot: the far end of the header line, not the
+   end of the action row. There it had to compete with engagement counts for
+   space; here it owns the corner the thumb already visits for "what can I do
+   with this post".
+*/
+.feed-head-more {
+  display: grid;
+  place-items: center;
+  height: 1.75rem;
+  width: 1.75rem;
   margin-left: auto;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--theme-text-muted);
+  transition:
+    background-color var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint);
+}
+
+.feed-head-more:active {
+  background: var(--fill-1);
+  color: var(--theme-text);
+}
+
+/* X's marker between a post and its comments — the thread now opens as one
+   gesture, so the first reply needs a labelled seam or it reads as a second
+   paragraph of the post above it. */
+.feed-replies-divider {
+  padding: 0.6875rem 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--theme-text-muted);
 }
 
 .feed-thread-loading {
@@ -4493,47 +4538,72 @@ html.viewport-locked body {
   color: var(--theme-text-muted);
 }
 
-/* --- Photo whisper: the locked plate ------------------------------------ */
+/* --- Photo whisper: the locked chip ------------------------------------- */
 
+/*
+   A chip, not a casement. The plate gave an unopened photo full-media height —
+   a promise of scale the viewer only gets to cash once, and dead height for
+   everyone who never taps. The chip says the same thing at the height of a
+   line of text: thumbnail, title, and the one-look rule as a subtitle, laid
+   out inline after the body the way X lays a link card or a quote.
+*/
 .feed-photo-frame { position: relative; }
 
-.feed-photo-plate {
-  position: relative;
-  display: block;
-  width: 100%;
-  padding: 0;
-  overflow: hidden;
-  border-radius: var(--radius-2xl);
+.feed-photo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  /* Fit-content, capped: short titles make a stub; long ones stay inside the
+     post's column. */
+  max-width: 100%;
+  padding: 0.3125rem 0.875rem 0.3125rem 0.3125rem;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--hairline);
   background: var(--fill-1);
+  box-shadow: var(--elev-1);
+  text-align: left;
   transition: transform var(--dur-fast) var(--ease-out-quint);
 }
 
-.feed-photo-plate:active { transform: scale(0.99); }
-.feed-photo-plate.is-spent { cursor: default; }
-.feed-photo-plate.is-spent:active { transform: none; }
+.feed-photo-chip:active { transform: scale(0.98); }
+.feed-photo-chip.is-spent { cursor: default; }
+.feed-photo-chip.is-spent:active { transform: none; }
 
-/* The scale hides the transparent fringe a blur leaves at the element's edge.
-   The blur itself is cosmetic — what is loaded here is a ~32px image, so there
-   is nothing under it to reveal. See the note in FeedImageWhisper. */
-.feed-photo-preview {
+/* The thumbnail: the ~32px preview, blurred only to hide its interpolation
+   edges — what is loaded here carries no recoverable detail. See the note in
+   FeedImageWhisper for why this is the security model and not decoration. */
+.feed-photo-chip-thumb {
+  position: relative;
+  display: block;
+  height: 2.75rem;
+  width: 2.75rem;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--fill-2);
+}
+
+.feed-photo-chip-img {
   display: block;
   width: 100%;
-  height: auto;
-  max-height: 22rem;
+  height: 100%;
   object-fit: cover;
-  filter: blur(18px) saturate(1.1);
-  transform: scale(1.12);
+  /* A gentler blur than the old plate needed: at 44px the interpolation grid
+     is already invisible, and only the softening is left to do. */
+  filter: blur(5px) saturate(1.1);
+  transform: scale(1.18);
 }
 
-.feed-photo-plate.is-spent .feed-photo-preview {
-  filter: blur(20px) saturate(0.35) brightness(0.62);
+.feed-photo-chip.is-spent .feed-photo-chip-img {
+  filter: blur(6px) saturate(0.3) brightness(0.6);
 }
 
-.feed-photo-fallback {
+/* No preview encoded — an older post, or a browser whose canvas refused. The
+   gradient carries the thumbnail on its own. */
+.feed-photo-chip-fallback {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  height: 100%;
   background:
     radial-gradient(80% 80% at 30% 25%,
       color-mix(in srgb, var(--theme-accent-purple) 45%, transparent), transparent 70%),
@@ -4542,50 +4612,47 @@ html.viewport-locked body {
     var(--fill-2);
 }
 
-.feed-photo-veil {
+/* The state glyph sits on the thumbnail's corner, half over the photo and half
+   over the chip — the seat X gives a media badge — so locked / opening / spent
+   is readable from the icon alone. */
+.feed-photo-chip-ring {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.5) 100%);
-}
-
-.feed-photo-badge {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  pointer-events: none;
-}
-
-.feed-photo-ring {
+  right: -0.3125rem;
+  bottom: -0.3125rem;
   display: grid;
   place-items: center;
-  height: 2.875rem;
-  width: 2.875rem;
+  height: 1.375rem;
+  width: 1.375rem;
   border-radius: var(--radius-full);
   border: 1px solid rgba(255, 255, 255, 0.32);
-  background: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(10, 8, 20, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   color: #fff;
-  box-shadow: var(--elev-2);
 }
 
-/* Fixed white, not a token: this sits over a photograph in both themes. */
-.feed-photo-label {
-  font-size: 0.75rem;
+.feed-photo-chip-text {
+  display: grid;
+  gap: 0.0625rem;
+  min-width: 0;
+}
+
+.feed-photo-chip-title {
+  font-size: 0.8125rem;
   font-weight: 800;
-  color: #fff;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+  line-height: 1.2;
+  color: var(--theme-text);
 }
 
-.feed-photo-note {
-  margin-top: 0.4375rem;
+.feed-photo-chip-sub {
   font-size: 0.6875rem;
   font-weight: 600;
+  line-height: 1.3;
+  color: var(--theme-text-muted);
+}
+
+.feed-photo-chip.is-spent .feed-photo-chip-title,
+.feed-photo-chip.is-spent .feed-photo-chip-sub {
   color: var(--theme-text-muted);
 }
 
@@ -5323,18 +5390,15 @@ html.viewport-locked body {
     background: color-mix(in srgb, var(--theme-accent-purple) 14%, transparent);
   }
 
-  .feed-action-delete:hover { color: var(--theme-error); }
-  .feed-action-delete:hover .feed-action-icon {
-    background: color-mix(in srgb, var(--theme-error) 14%, transparent);
+  .feed-head-more:hover {
+    color: var(--theme-text);
+    background: var(--fill-2);
   }
 
-  .feed-action-write:hover {
-    color: var(--theme-info);
-    background: color-mix(in srgb, var(--theme-info) 14%, transparent);
+  .feed-reply-cancel:hover {
+    background: var(--fill-2);
+    color: var(--theme-text);
   }
-
-  .feed-action-more:hover { color: var(--theme-text); }
-  .feed-action-more:hover .feed-action-icon { background: var(--fill-2); }
 
   .feed-composer-tool:hover,
   .feed-composer-topic:hover,

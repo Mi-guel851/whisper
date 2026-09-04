@@ -22,10 +22,22 @@ export default function FeedSkeleton({ rows = 3 }: FeedSkeletonProps) {
         <div key={row} className="feed-post flex gap-3">
           <div className="skeleton h-[42px] w-[42px] shrink-0 rounded-full" />
           <div className="min-w-0 flex-1 space-y-2 pt-1">
-            <div className="skeleton h-3 w-32 rounded-full" />
+            {/* Head: name, a time dot, and the trailing overflow slot. */}
+            <div className="flex items-center gap-2">
+              <div className="skeleton h-3 w-28 rounded-full" />
+              <div className="skeleton h-3 w-2 rounded-full" />
+              <div className="skeleton ml-auto h-5 w-5 rounded-full" />
+            </div>
             <div className="skeleton h-3 w-full rounded-full" />
             <div className="skeleton h-3 w-4/5 rounded-full" />
-            <div className="skeleton mt-3 h-8 w-full rounded-2xl" />
+            {/* The action row: four pads spread across the width, so the
+                shimmer claims the same horizontal rhythm the real row has. */}
+            <div className="mt-3 flex items-center justify-between px-1">
+              <div className="skeleton h-5 w-10 rounded-full" />
+              <div className="skeleton h-5 w-10 rounded-full" />
+              <div className="skeleton h-5 w-10 rounded-full" />
+              <div className="skeleton h-5 w-6 rounded-full" />
+            </div>
           </div>
         </div>
       ))}

@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, MoreHorizontal } from "lucide-react";
 import { useAnonNames } from "@/lib/anonNames";
 import {
   compactCount,
@@ -19,7 +19,15 @@ import FeedPoll from "./FeedPoll";
 import type { FeedController } from "./types";
 
 /**
- * A post and its thread, laid out the way X lays out a conversation.
+ * A post and its thread, laid out the way X lays out a post.
+ *
+ * ANATOMY, TOP TO BOTTOM
+ *
+ * The header is X's header: who, when, and — at the far right, inside the
+ * header rather than at the end of the action row — the overflow "···". On X
+ * that button is where delete/report/save live, and moving it up out of the
+ * engagement row is what frees that row to be four evenly spaced counts. Under
+ * it, the body, then media, then the action row spread across the full width.
  *
  * The structural idea worth naming: the avatar column is a *rail*, not just a
  * slot. When a post has visible replies, a vertical line runs down that column
@@ -32,11 +40,20 @@ import type { FeedController } from "./types";
  * below reuses the same rail and is distinguished by the "replying to" line
  * instead. Threads stay legible however deep they run.
  *
+ * THE COMMENT SECTION, X'S ARRANGEMENT
+ *
+ * One tap on the reply icon is one gesture with one meaning — take me to the
+ * conversation — and on X that always means both halves: the replies *and* a
+ * composer waiting under the post. Splitting those between two controls (the
+ * count opening the thread, a second text button opening the box) is the
+ * arrangement this used to have; it matched nothing people know. Here the tap
+ * opens the thread when there is one, and the composer comes up with it — with
+ * a cancel control to put it away, the way X's composer has one.
+ *
  * Threads start closed. The reply count beside the reply icon is the
- * affordance, and tapping it opens the whole conversation — every reply and
- * everything under them — rather than a two-line preview with a second
- * "show more" control behind it. A feed of root posts is scannable; a feed
- * where every post has already unpacked its replies is not.
+ * affordance. Once open, X's "Showing replies" marker separates the post from
+ * its comments, and "Hide N replies" closes the group from the bottom, so a
+ * long thread doesn't have to be scrolled back to its head to be folded away.
  *
  * WHERE THE REPLY COUNT COMES FROM
  *
@@ -97,7 +114,8 @@ function FeedPostCardBase({
   const liked = controller.liked[node.id] ?? node.viewer_liked ?? false;
 
   const children = node.children;
-  const replyCount = children.length > 0 ? countDescendants(node) : node.reply_count ?? 0;
+  const replyCount =
+    children.length > 0 ? countDescendants(node) : node.reply_count ?? 0;
   const isReplyOpen = Boolean(controller.replyOpen[node.id]);
   const isExpanded = threadOpen || Boolean(controller.expanded[node.id]);
   const isThreadLoading = Boolean(controller.threadLoading[node.id]);
@@ -117,6 +135,21 @@ function FeedPostCardBase({
      precedes them. */
   const hasRail = visibleChildren.length > 0 || isReplyOpen || isThreadLoading;
 
+  /* Gated on the count rather than on loaded children: on the RPC path a post
+     with replies has none of them in hand yet, and gating on `children.length`
+     would make its thread unopenable. Never offered on a post whose thread was
+     opened from above — collapsing a branch inside an open conversation would
+     strand the rail. */
+  const canToggleThread = replyCount > 0 && !threadOpen;
+
+  /* X's reply gesture: open the thread when there is one, and bring the
+     composer up with it. Idempotent on both halves, so a tap on an already-open
+     post is a no-op rather than a surprise collapse. */
+  const openConversation = () => {
+    if (canToggleThread && !isExpanded) controller.onToggleThread(node.id);
+    if (!isReplyOpen) controller.onToggleReplyBox(node.id);
+  };
+
   return (
     <article
       ref={isRoot ? impressionRef : undefined}
@@ -134,10 +167,10 @@ function FeedPostCardBase({
 
         <div className="min-w-0 flex-1 pb-0.5">
           <div className="feed-post-head">
-            <span className="feed-author truncate font-black">
-              {nameOf(node.author_id)}
+            <span className="feed-author truncate font-black">{nameOf(node.author_id)}</span>
+            <span className="feed-dot shrink-0" aria-hidden>
+              ·
             </span>
-            <span className="feed-dot shrink-0" aria-hidden>·</span>
             <time
               dateTime={node.created_at}
               title={new Date(node.created_at).toLocaleString()}
@@ -151,6 +184,20 @@ function FeedPostCardBase({
                 {topic.label}
               </span>
             )}
+
+            {/* X's overflow slot: in the header, at the far edge, where the
+                thumb already goes for "what can I do with this post". It ends
+                the header line instead of the action row, which is what lets
+                that row be four evenly spaced counts. */}
+            <button
+              type="button"
+              onClick={() => controller.onOpenMenu(node)}
+              aria-label="More options"
+              aria-haspopup="dialog"
+              className="feed-head-more shrink-0"
+            >
+              <MoreHorizontal size={17} strokeWidth={2.4} />
+            </button>
           </div>
 
           {/* X's orientation line for a reply that's been lifted out of its
@@ -206,23 +253,10 @@ function FeedPostCardBase({
             likeCount={likeCount}
             viewCount={node.view_count ?? 0}
             liked={liked}
-            replyOpen={isReplyOpen}
-            threadOpen={isExpanded}
-            onReply={() => controller.onToggleReplyBox(node.id)}
-            onToggleThread={
-              /* Gated on the count rather than on loaded children: on the RPC
-                 path a post with replies has none of them in hand yet, and
-                 gating on `children.length` would make its thread unopenable.
-                 Never offered on a post whose thread was opened from above —
-                 collapsing a branch inside an open conversation would strand
-                 the rail. */
-              replyCount > 0 && !threadOpen
-                ? () => controller.onToggleThread(node.id)
-                : undefined
-            }
+            active={isExpanded || isReplyOpen}
+            onReply={openConversation}
             onLike={() => controller.onToggleLike(node.id)}
             onShare={() => controller.onShare(node)}
-            onMore={() => controller.onOpenMenu(node)}
           />
 
           {isReplyOpen && (
@@ -233,6 +267,7 @@ function FeedPostCardBase({
               replyCost={controller.replyCost}
               onChange={controller.onReplyTextChange}
               onSend={controller.onRequestSend}
+              onCancel={() => controller.onToggleReplyBox(node.id)}
             />
           )}
         </div>
@@ -250,6 +285,12 @@ function FeedPostCardBase({
       {visibleChildren.length > 0 && (
         /* Indent once, then never again — see the note at the top of the file. */
         <div className={depth === 0 ? "feed-thread-children" : undefined}>
+          {/* X's marker between a post and its comments. The thread opens from
+              the reply icon now, so something has to say where the post ends
+              and the conversation begins — without it the first reply reads as
+              a second paragraph of the post above it. */}
+          {depth === 0 && <p className="feed-replies-divider">Showing replies</p>}
+
           {visibleChildren.map((child) => (
             <FeedPostCard
               key={child.id}
@@ -270,8 +311,7 @@ function FeedPostCardBase({
               onClick={() => controller.onToggleThread(node.id)}
               className="feed-show-more"
             >
-              Hide {compactCount(replyCount)}{" "}
-              {replyCount === 1 ? "reply" : "replies"}
+              Hide {compactCount(replyCount)} {replyCount === 1 ? "reply" : "replies"}
             </button>
           )}
         </div>
