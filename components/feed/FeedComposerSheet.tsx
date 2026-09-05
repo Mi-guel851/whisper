@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import Modal from "@/components/Modal";
 import FeedComposer, { type ComposerDraft } from "./FeedComposer";
 
@@ -12,6 +13,15 @@ import FeedComposer, { type ComposerDraft } from "./FeedComposer";
  * twice, drifting apart at the first change to either. So the sheet supplies only
  * what a sheet supplies — the surface, the scrim, the drag-down dismiss, the scroll
  * lock and the focus trap, all of which `Modal` already does.
+ *
+ * The one thing it supplies beyond the surface is the focus hand-off. Left to
+ * itself, `Modal` lands its open-time focus on the first focusable element in
+ * DOM order — the close button, which precedes the content — so a composer
+ * opened from the FAB, the drawer or the Daily Question would come up with
+ * focus on its close control: the keyboard a prefill briefly raised is
+ * dismissed again the frame after, and typing means tapping the field first.
+ * The field is pointed out to the Modal instead, so every open goes straight
+ * into it, caret waiting and keyboard up.
  *
  * It closes itself on a successful post, because `onSubmit` resolves to whether the
  * post landed: a sheet left open over a feed that now contains the whisper reads as
@@ -44,6 +54,8 @@ export default function FeedComposerSheet({
   prefillPoll,
   onSubmit,
 }: FeedComposerSheetProps) {
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+
   return (
     <Modal
       open={open}
@@ -51,6 +63,7 @@ export default function FeedComposerSheet({
       variant="sheet"
       title="New whisper"
       showClose
+      initialFocus={fieldRef}
       /* Backdrop dismiss stays on, but the draft survives it — the sheet only
          unmounts the composer when the page drops `open`, and reopening restores
          nothing, so an accidental tap outside costs the text. Keeping it means
@@ -65,6 +78,7 @@ export default function FeedComposerSheet({
           authorId={authorId}
           ownLink={ownLink}
           postCost={postCost}
+          fieldRef={fieldRef}
           prefillNonce={prefillNonce}
           prefillBody={prefillBody}
           prefillTopic={prefillTopic}

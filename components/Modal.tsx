@@ -19,6 +19,20 @@ type ModalProps = {
   /** Set false for destructive flows that must be answered explicitly. */
   dismissOnBackdrop?: boolean;
   className?: string;
+  /**
+   * The element focus should land on when the dialog opens, ahead of the
+   * first focusable child.
+   *
+   * Without this, the open-time focus goes to the first focusable element in
+   * DOM order — which, in any panel with a close button, is the close button,
+   * because it precedes the content. For dialogs whose whole purpose is text
+   * entry that is one tap wrong: the field the person opened the dialog to use
+   * is left a second tap away, and a keyboard that a child's focus() effect
+   * did raise gets dismissed again the frame after, when this dialog's own
+   * focus lands elsewhere. The composer sheet passes its textarea here so
+   * every open goes straight into the field.
+   */
+  initialFocus?: React.RefObject<HTMLElement | null>;
 };
 
 const sizeClasses = {
@@ -48,6 +62,7 @@ export default function Modal({
   showClose = true,
   dismissOnBackdrop = true,
   className = "",
+  initialFocus,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -100,10 +115,15 @@ export default function Modal({
 
     document.addEventListener("keydown", handleKeyDown, true);
 
-    // Focus the panel on the next frame, after the entrance has mounted.
+    // Focus the panel on the next frame, after the entrance has mounted. A
+    // caller-nominated element wins; it is in place by then because the
+    // content mounts in the same commit as this effect.
     const raf = requestAnimationFrame(() => {
-      const focusable = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
-      (focusable ?? panelRef.current)?.focus();
+      const target =
+        initialFocus?.current ??
+        panelRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
+        panelRef.current;
+      target?.focus();
     });
 
     return () => {
@@ -113,7 +133,7 @@ export default function Modal({
       document.body.style.paddingRight = paddingRight;
       restoreFocusRef.current?.focus?.();
     };
-  }, [open, handleKeyDown]);
+  }, [open, handleKeyDown, initialFocus]);
 
   if (typeof document === "undefined") return null;
 
