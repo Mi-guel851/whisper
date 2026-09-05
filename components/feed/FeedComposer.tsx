@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
 import { Image as ImageIcon, ListOrdered, Loader2, Plus, Send, Sparkles, X } from "lucide-react";
 import GlassPanel from "@/components/GlassPanel";
@@ -89,6 +89,14 @@ type FeedComposerProps = {
    * the blur compounds, the borders double, and text over the pair loses contrast.
    */
   variant?: "panel" | "bare";
+  /**
+   * Receives the main text field's element, so an owner surfacing this in a
+   * dialog can aim the dialog's open-time focus at it (see Modal's
+   * `initialFocus`) — a composer that opens anywhere other than its field is
+   * a second tap waiting to happen. Optional because the composer also keeps
+   * its own ref for the prefill focus.
+   */
+  fieldRef?: RefObject<HTMLTextAreaElement | null>;
   onSubmit: (draft: ComposerDraft) => Promise<boolean>;
 };
 
@@ -101,11 +109,22 @@ export default function FeedComposer({
   prefillTopic,
   prefillPoll = false,
   variant = "panel",
+  fieldRef,
   onSubmit,
 }: FeedComposerProps) {
   const { showToast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /* One element, two owners: this component focuses the field when a prefill
+     lands, and the sheet points Modal's open-time focus at it. */
+  const setFieldRef = useCallback(
+    (element: HTMLTextAreaElement | null) => {
+      textareaRef.current = element;
+      if (fieldRef) fieldRef.current = element;
+    },
+    [fieldRef],
+  );
 
   const [body, setBody] = useState("");
   const [topic, setTopic] = useState<FeedTopic | null>(null);
@@ -245,7 +264,7 @@ export default function FeedComposer({
           </div>
 
           <textarea
-            ref={textareaRef}
+            ref={setFieldRef}
             {...PROSE_INPUT_PROPS}
             value={body}
             onChange={(event) => setBody(event.target.value)}
