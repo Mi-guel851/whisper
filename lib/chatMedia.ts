@@ -90,6 +90,16 @@ export const STICKER_PACKS: StickerPack[] = [
     ["fire", "On fire"],
     ["letter", "Love letter"],
   ]),
+  pack("moods2", "Whisp Feelings", [
+    ["cheer", "Cheering"],
+    ["laugh", "LOL"],
+    ["wink", "Wink"],
+    ["loveyou", "Sending love"],
+    ["embarrassed", "Embarrassed"],
+    ["shocked", "Shocked"],
+    ["yay", "Yay!"],
+    ["smug", "Smug"],
+  ]),
 ];
 
 /** Bundled stickers are square 512s; senders record this on the row. */
@@ -132,35 +142,8 @@ export const pushRecentEmoji = (emoji: string) => pushRecent(RECENT_EMOJI_KEY, e
 export const readRecentStickers = () => readRecents(RECENT_STICKER_KEY, 24);
 export const pushRecentSticker = (url: string) => pushRecent(RECENT_STICKER_KEY, url, 24);
 
-/* ── GIF search (client side of /api/gifs) ────────────────────────────── */
-
-export type GifResult = {
-  id: string;
-  title: string;
-  /** Tiny rendition for the picker grid. */
-  previewUrl: string;
-  /** The rendition that actually gets sent. Small on purpose. */
-  url: string;
-  width: number;
-  height: number;
-};
-
-export type GifPage = {
-  results: GifResult[];
-  /** Opaque cursor for the next page, or null when exhausted. */
-  next: string | null;
-};
-
-/** Canned searches that front the GIF tab, WhatsApp-style. */
-export const GIF_CATEGORIES = [
-  "😂 Funny",
-  "❤️ Love",
-  "👋 Hey",
-  "😭 Crying",
-  "💃 Dance",
-  "🔥 Hype",
-  "🥳 Party",
-  "😴 Sleepy",
-  "🙄 Eye roll",
-  "🎂 Birthday",
-] as const;
+/* ── GIF (send-only removed) ────────────────────────────────────────────
+   The GIF tab was removed from the picker because this deployment has no
+   Tenor / Giphy API key. Existing GIF messages still render (the rows carry
+   `media_kind: "gif"` and `isAllowedChatMediaUrl` still admits the provider
+   hosts for playback); only *searching and sending new* GIFs is gone. */

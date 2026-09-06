@@ -35,7 +35,6 @@ export default function PickerTest() {
         onTabChange={setTab}
         userId="00000000-0000-0000-0000-000000000000"
         onPickEmoji={(e) => setPicked((p) => [...p, `emoji:${e}`])}
-        onPickGif={(g) => setPicked((p) => [...p, `gif:${g.id}`])}
         onPickSticker={(s) => setPicked((p) => [...p, `sticker:${s.id}`])}
         sendingMedia={null}
         showToast={(m) => setPicked((p) => [...p, `toast:${m}`])}
