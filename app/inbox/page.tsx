@@ -40,6 +40,10 @@ type MessagePreview = {
   image_viewed_at: string | null;
   audio_path: string | null;
   audio_viewed_at: string | null;
+  /* Sticker/GIF messages: `messagePreviewText` turns these into the
+     "💟 Sticker" / "🎞️ GIF" row labels. */
+  media_url: string | null;
+  media_kind: string | null;
   created_at: string;
   delivered_at: string | null;
   read_at: string | null;
@@ -139,7 +143,7 @@ export default function InboxPage() {
         // first row seen for a conversation is its latest message.
         const { data: recent, error: recentError } = await supabase
           .from("direct_messages")
-          .select("conversation_id, content, sender_id, is_view_once, image_path, image_viewed_at, audio_path, audio_viewed_at, created_at, delivered_at, read_at")
+          .select("conversation_id, content, sender_id, is_view_once, image_path, image_viewed_at, audio_path, audio_viewed_at, media_url, media_kind, created_at, delivered_at, read_at")
           .in("conversation_id", ids)
           .order("created_at", { ascending: false })
           .limit(600);

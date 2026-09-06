@@ -28,12 +28,16 @@ export type PreviewableMessage = {
   audio_path?: string | null;
   audio_viewed_at?: string | null;
   is_view_once?: boolean | null;
+  media_url?: string | null;
+  media_kind?: string | null;
 };
 
 export const VOICE_NOTE_LABEL = "🎙️ Voice note";
 export const PHOTO_LABEL = "📷 Photo";
 /** Past tense on purpose: it states what happened, not what is available. */
 export const PHOTO_VIEWED_LABEL = "📷 Photo viewed";
+export const STICKER_LABEL = "💟 Sticker";
+export const GIF_LABEL = "🎞️ GIF";
 
 export function isVoiceNote(message: PreviewableMessage | null | undefined) {
   if (!message) return false;
@@ -61,6 +65,11 @@ export function messagePreviewText(
 
   const caption = (message.content || "").trim();
   if (caption && !options.mediaOnly) return caption;
+
+  /* Stickers and GIFs before the older media kinds: a media message can never
+     carry both, but the check is cheap and the label is unambiguous. */
+  if (message.media_kind === "sticker") return STICKER_LABEL;
+  if (message.media_kind === "gif") return GIF_LABEL;
 
   if (isVoiceNote(message)) return VOICE_NOTE_LABEL;
   /* `image_path` first: while the file is still there the photo can still be

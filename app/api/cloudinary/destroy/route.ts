@@ -31,6 +31,8 @@ const DELETABLE = new Set<string>([
   CLOUDINARY_FOLDERS.messageImages,
   CLOUDINARY_FOLDERS.feedPhotos,
   CLOUDINARY_FOLDERS.viewOnce,
+  CLOUDINARY_FOLDERS.stickers,
+  CLOUDINARY_FOLDERS.chatGifs,
 ]);
 
 /** Splits `whisper/<kind>/<owner>/<name>` into its folder and owner. */
