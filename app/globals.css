@@ -3420,6 +3420,10 @@ html.viewport-locked body {
      line.
   */
   --feed-gutter: 1rem;
+  /* The phone column stays comfortably readable by default. Larger viewports
+     replace this with a fluid desktop width below instead of inheriting the
+     mobile column's 36rem ceiling. */
+  --feed-column-max: 36rem;
   /*
      3rem, down from 3.375rem. The bar holds a 2rem avatar and a 1.625rem mark, so
      3.375rem was 22px of pure padding around a 32px object. 3rem still clears both
@@ -3451,7 +3455,7 @@ html.viewport-locked body {
 
 .feed-shell {
   width: 100%;
-  max-width: 36rem;
+  max-width: var(--feed-column-max, 36rem);
   margin-inline: auto;
   /* A hairline down both sides on wide screens, so the column reads as a column
      rather than as text floating in space. Absent on phones, where the viewport
@@ -3461,6 +3465,21 @@ html.viewport-locked body {
 
 @media (min-width: 40rem) {
   .feed-shell { border-inline-color: var(--theme-border); }
+}
+
+/*
+   The original 36rem shell is deliberately phone-sized, but it was also the
+   only shell size at every breakpoint. That left a laptop with a narrow mobile
+   timeline floating in a large empty canvas. Keep the short column on tablets,
+   then let the feed grow fluidly on a laptop while retaining a readable maximum
+   on very wide monitors. The chrome uses the same variable below, so its account,
+   logo, search button and tab labels stay aligned with the widened timeline.
+*/
+@media (min-width: 64rem) {
+  .feed-page {
+    --feed-gutter: clamp(1rem, 2vw, 2rem);
+    --feed-column-max: clamp(56rem, 70vw, 64rem);
+  }
 }
 
 /*
@@ -3549,7 +3568,13 @@ html.viewport-locked body {
   width: 100%;
   min-width: 0;
   height: var(--feed-topbar-h, 3.375rem);
-  padding: 0 var(--feed-gutter, 1rem);
+  /* The chrome remains full-bleed, but its controls follow the centered feed
+     column. `max()` keeps the phone gutter when the viewport is narrower than
+     the column and adds the column's outside margin on larger screens. */
+  padding-inline: max(
+    var(--feed-gutter, 1rem),
+    calc((100vw - var(--feed-column-max, 36rem)) / 2 + var(--feed-gutter, 1rem))
+  );
 }
 
 /*
@@ -3913,7 +3938,9 @@ html.viewport-locked body {
   content: "";
   position: absolute;
   top: 0;
-  right: 0;
+  /* The fade belongs to the feed column, not the empty canvas beside it on a
+     laptop. */
+  right: max(0px, calc((100vw - var(--feed-column-max, 36rem)) / 2));
   bottom: 0;
   width: 1.75rem;
   pointer-events: none;
@@ -3934,7 +3961,8 @@ html.viewport-locked body {
   gap: 0;
   width: 100%;
   min-width: 0;
-  max-width: 100%;
+  max-width: var(--feed-column-max, 36rem);
+  margin-inline: auto;
   /*
      The difference between the column gutter and a tab's own inline padding, so
      the first label still lands exactly above the post text below it.
@@ -4386,6 +4414,13 @@ html.viewport-locked body {
   max-width: 30rem;
   margin-top: 0.25rem;
   margin-inline: -0.5rem;
+}
+
+/* Once the timeline grows for a laptop, let engagement controls use the same
+   content width instead of leaving an unexplained mobile-sized island under the
+   post body. */
+@media (min-width: 64rem) {
+  .feed-action-row { max-width: none; }
 }
 
 /*
