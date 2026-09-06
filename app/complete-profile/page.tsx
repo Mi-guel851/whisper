@@ -111,8 +111,8 @@ export default function CompleteProfilePage() {
       return;
     }
 
-    if (password.length < 6) {
-      showToast("Password must be at least 6 characters.");
+    if (password.length < 8) {
+      showToast("Password must be at least 8 characters.");
       return;
     }
 
@@ -177,8 +177,8 @@ export default function CompleteProfilePage() {
   }
 
   async function handleSaveRecoveryPhrase() {
-    if (recoveryPhrase.trim().length < 6) {
-      showToast("Recovery phrase must be at least 6 characters.");
+    if (recoveryPhrase.trim().length < 8) {
+      showToast("Recovery phrase must be at least 8 characters.");
       return;
     }
 
@@ -189,10 +189,21 @@ export default function CompleteProfilePage() {
 
     setSavingPhrase(true);
 
+    /* The route derives the target account from the Bearer token — not from any
+       id in the body — so the fetch must carry the session. Without this it 401s
+       with "Not authenticated" and the phrase never gets saved. */
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+
     const res = await fetch("/api/set-recovery-phrase", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, phrase: recoveryPhrase.trim() }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify({ phrase: recoveryPhrase.trim() }),
     });
 
     const data = await res.json();

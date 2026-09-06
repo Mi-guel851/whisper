@@ -65,8 +65,43 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+/* ------------------------------------------------------------------------- *
+ * Caller gate: database-only.
+ *
+ * Supabase's verify_jwt on a deployed function accepts ANY valid JWT — an
+ * ordinary signed-in user's token is one. These functions trust the `record`
+ * in the request body to decide WHO gets notified, so an ungated endpoint
+ * lets any user forge pushes (attacker-chosen title/body to any recipient,
+ * at any rate) and burn the FCM quota. The only legitimate caller is the
+ * pg_net trigger / database webhook, which authenticates with the service
+ * role key — so require exactly that, compared on SHA-256 digests to keep
+ * the check constant-time.
+ * ------------------------------------------------------------------------- */
+async function requireServiceRole(req: Request): Promise<boolean> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(token)),
+    crypto.subtle.digest("SHA-256", enc.encode(SUPABASE_SERVICE_ROLE_KEY)),
+  ]);
+  const ua = new Uint8Array(a), ub = new Uint8Array(b);
+  if (ua.length !== ub.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
+  return diff === 0;
+}
+
+function unauthorized() {
+  return new Response(JSON.stringify({ error: "unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 Deno.serve(async (req) => {
   try {
+    if (!(await requireServiceRole(req))) return unauthorized();
     const payload = await req.json();
     const message = payload.record;
 

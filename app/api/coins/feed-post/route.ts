@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
 import { CLOUDINARY_FOLDERS, cloudinaryPublicId } from "@/lib/cloudinary";
 import { cloudinaryImageExists, destroyCloudinaryUrl } from "@/lib/cloudinary.server";
+import { consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
  * Creating something on the Public Feed.
@@ -190,6 +191,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
+    /* Per-user posting budget. Coin cost prices a post but does not pace one:
+       a scripted client that already has coins can otherwise publish as fast as
+       it can fire requests, and every post fans out to the notification triggers.
+       Bucketed by user id so rotating IPs does not reset it. */
+    const postGuard = consume("feed-post", `u:${user.id}`, 6, 60_000);
+    if (postGuard) return rateLimitedResponse(postGuard);
+
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -232,61 +240,51 @@ export async function POST(req: NextRequest) {
     /* Balance is only read, debited and rolled back when there is something to
        charge. A free reply touches the wallet not at all — no read, no write, no
        zero-amount ledger row to explain later. */
-    let balanceBefore = 0;
     let balanceAfter = 0;
 
+    /* A client bound to the caller's JWT, so `debit_whisper_coins` runs under
+       auth.uid() and can only touch this user's wallet. */
+    const asUser = createClient(supabaseUrl, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    });
+
     if (cost > 0) {
-      const { data: wallet, error: walletError } = await supabaseAdmin
-        .from("coins")
-        .select("balance")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      /* Atomic: one guarded `update ... where balance >= cost` inside the DB,
+         ledger row included, in a single statement pair. The previous shape —
+         select balance, subtract in JS, write the result back — lost updates
+         when two posts raced: both read 10, both wrote 8. */
+      const { data: debited, error: debitError } = await asUser.rpc("debit_whisper_coins", {
+        p_amount: cost,
+        p_description: "Public feed post",
+      });
 
-      if (walletError) {
-        console.error("[coins/feed-post] wallet read error:", walletError.message);
-        return NextResponse.json({ error: "Failed to read wallet" }, { status: 500 });
-      }
-
-      balanceBefore = Number((wallet as { balance?: number } | null)?.balance ?? 0);
-
-      if (balanceBefore < cost) {
-        return NextResponse.json(
-          {
-            error: `Posting costs ${cost} coins and you have ${balanceBefore}. Top up in the Coin Store.`,
-          },
-          { status: 402 }
-        );
-      }
-
-      balanceAfter = balanceBefore - cost;
-
-      const { error: updateError } = await supabaseAdmin
-        .from("coins")
-        .update({ balance: balanceAfter })
-        .eq("user_id", user.id);
-
-      if (updateError) {
-        console.error("[coins/feed-post] balance update error:", updateError.message);
+      if (debitError) {
+        if (/insufficient/i.test(debitError.message)) {
+          /* No balance to report honestly without a second query; the message
+             says what to do, which is what the user needs. */
+          return NextResponse.json(
+            {
+              error: `Posting costs ${cost} coins and that's more than you have. Top up in the Coin Store.`,
+            },
+            { status: 402 }
+          );
+        }
+        console.error("[coins/feed-post] debit error:", debitError.message);
+        const missing =
+          debitError.code === "42883" ||
+          debitError.code === "P0001" ||
+          /does not exist/i.test(debitError.message ?? "");
+        if (missing) {
+          return NextResponse.json(
+            { error: "The coin wallet update is not available on this server yet." },
+            { status: 503 }
+          );
+        }
         return NextResponse.json({ error: "Failed to update balance" }, { status: 500 });
       }
 
-      const { error: ledgerError } = await supabaseAdmin.from("coin_transactions").insert([
-        {
-          user_id: user.id,
-          amount: -cost,
-          description: "Public feed post",
-          transaction_type: "spend",
-        },
-      ]);
-
-      if (ledgerError) {
-        console.error("[coins/feed-post] transaction insert error:", ledgerError.message);
-        await supabaseAdmin
-          .from("coins")
-          .update({ balance: balanceBefore })
-          .eq("user_id", user.id);
-        return NextResponse.json({ error: "Failed to record transaction" }, { status: 500 });
-      }
+      balanceAfter = Number(debited ?? 0);
     }
 
     /**
@@ -298,15 +296,13 @@ export async function POST(req: NextRequest) {
      */
     async function refund(reason: string) {
       if (cost <= 0) return;
-      await supabaseAdmin.from("coins").update({ balance: balanceBefore }).eq("user_id", user!.id);
-      await supabaseAdmin.from("coin_transactions").insert([
-        {
-          user_id: user!.id,
-          amount: cost,
-          description: "Refund: public feed post failed",
-          transaction_type: "refund",
-        },
-      ]);
+      const { error: refundError } = await asUser.rpc("refund_whisper_coins", {
+        p_amount: cost,
+        p_description: "Refund: public feed post failed",
+      });
+      if (refundError) {
+        console.error("[coins/feed-post] refund RPC failed:", refundError.message);
+      }
       console.error("[coins/feed-post] refunded:", reason);
     }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,57 +33,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
+    /* Same budget as the primary feed route — this one is legacy, but it is
+       reachable and it spends coins and writes to the feed. */
+    const postGuard = consume("feed-post", `u:${user.id}`, 6, 60_000);
+    if (postGuard) return rateLimitedResponse(postGuard);
+
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Read current balance
-    const { data: wallet, error: walletError } = await supabaseAdmin
-      .from("coins")
-      .select("balance")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (walletError) {
-      console.error("Wallet read error:", walletError.message);
-      return NextResponse.json({ error: "Failed to read wallet" }, { status: 500 });
-    }
-
-    const balance = (wallet && (wallet as any).balance) ?? 0;
+    /* The legacy reply route, kept so a stale client keeps working through a
+       deploy. Its debit used to be a select/JS-subtract/write-back triple, which
+       loses one of two concurrent spends; it now rides the same guarded, atomic
+       `debit_whisper_coins` as the primary feed route, called under the caller's
+       own JWT so the wallet it can touch is this user's and only this user's. */
     const COST = 2;
-    if (balance < COST) {
-      return NextResponse.json({ error: "Insufficient coins" }, { status: 402 });
-    }
 
-    // Deduct and record transaction
-    const newBalance = balance - COST;
+    const asUser = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      }
+    );
 
-    const { error: updateError } = await supabaseAdmin
-      .from("coins")
-      .update({ balance: newBalance })
-      .eq("user_id", user.id);
+    const { data: debited, error: debitError } = await asUser.rpc("debit_whisper_coins", {
+      p_amount: COST,
+      p_description: "Public reply",
+    });
 
-    if (updateError) {
-      console.error("Balance update error:", updateError.message);
+    if (debitError) {
+      if (/insufficient/i.test(debitError.message)) {
+        return NextResponse.json({ error: "Insufficient coins" }, { status: 402 });
+      }
+      console.error("[coins/reply] debit error:", debitError.message);
       return NextResponse.json({ error: "Failed to update balance" }, { status: 500 });
     }
 
-    const { error: insertError } = await supabaseAdmin.from("coin_transactions").insert([
-      {
-        user_id: user.id,
-        amount: -COST,
-        description: "Public reply",
-        transaction_type: "spend",
-      },
-    ]);
-
-    if (insertError) {
-      console.error("Transaction insert error:", insertError.message);
-      // best-effort: try to roll back balance (ignore failure)
-      await supabaseAdmin.from("coins").update({ balance }).eq("user_id", user.id);
-      return NextResponse.json({ error: "Failed to record transaction" }, { status: 500 });
-    }
+    const newBalance = Number(debited ?? 0);
 
     /**
      * Create the public feed post.
@@ -93,15 +83,13 @@ export async function POST(req: NextRequest) {
      * balance and the transaction are rolled back before reporting the error.
      */
     async function refund(reason: string) {
-      await supabaseAdmin.from("coins").update({ balance }).eq("user_id", user!.id);
-      await supabaseAdmin.from("coin_transactions").insert([
-        {
-          user_id: user!.id,
-          amount: COST,
-          description: "Refund: public reply failed",
-          transaction_type: "refund",
-        },
-      ]);
+      const { error: refundError } = await asUser.rpc("refund_whisper_coins", {
+        p_amount: COST,
+        p_description: "Refund: public reply failed",
+      });
+      if (refundError) {
+        console.error("[coins/reply] refund RPC failed:", refundError.message);
+      }
       console.error("Reply refunded:", reason);
     }
 

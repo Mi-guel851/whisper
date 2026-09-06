@@ -112,7 +112,10 @@ async function loadChats(uid: string) {
     .select(
       "user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id"
     )
-    .or(`user_a.eq.${uid},user_b.eq.${uid}`);
+    .or(`user_a.eq.${uid},user_b.eq.${uid}`)
+    /* Same ceiling as the inbox list: the badge is a number, and computing it
+       over every conversation ever made is the worst possible trade. */
+    .limit(300);
 
   if (uid !== userId) return;
 

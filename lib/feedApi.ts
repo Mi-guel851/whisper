@@ -240,14 +240,23 @@ function rpcArgs(query: FeedQuery, limit: number, offset: number) {
   };
 }
 
-/** The original table select, kept intact. */
+/* Cap for the fallback (no-RPC) path. The client keeps this window in memory
+   and pages it with local slices, so the only cost of a bigger number is a
+   bigger one-shot payload AND an every-refresh re-download of it. The RPC
+   path clamps deep offsets at 2000 (migration 202609070001 §8); 500 is the
+   equivalent guard for a database that hasn't got the RPC. Anyone genuinely
+   browsing past 500 live posts is on the RPC path. */
+const FEED_FALLBACK_MAX = 500;
+
+/** The original table select, capped at the most recent FEED_FALLBACK_WINDOW. */
 async function fetchWholeWindow(): Promise<{ rows: FeedPost[]; threaded: boolean }> {
   const select = (columns: string) =>
     supabase
       .from("public_feed_posts")
       .select(columns)
       .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(FEED_FALLBACK_MAX);
 
   const all = [BASE_COLUMNS, ...OPTIONAL_COLUMNS].join(",");
   const first = await select(all);

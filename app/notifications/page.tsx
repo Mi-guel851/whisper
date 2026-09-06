@@ -18,12 +18,25 @@ type Notification = {
   image_url: string | null;
   created_at: string;
   is_read: boolean;
-  sender_username: string | null;
-  sender_email_name: string | null;
+};
+
+/**
+ * The paid Hint, fetched only for messages this user has actually unlocked.
+ *
+ * The first fetch no longer selects the sender_* columns at all: the hint used
+ * to be paid only at render time — every row's location/device shipped to the
+ * browser up front and the unlock flag merely decided whether to draw it, so a
+ * devtools peek (or a direct PostgREST call) got it for free. It is now read
+ * through `whisper_hints_for`, a definer RPC that refuses any message without a
+ * matching row in `anonymous_sender_reveals`.
+ */
+type WhisperHint = {
+  message_id: string;
   sender_country: string | null;
   sender_state: string | null;
   sender_city: string | null;
   sender_device: string | null;
+  sent_at: string | null;
 };
 
 type HintUnlock = { message_id: string };
@@ -37,6 +50,7 @@ export default function NotificationsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Notification | null>(null);
   const [hintUnlocks, setHintUnlocks] = useState<HintUnlock[]>([]);
+  const [hints, setHints] = useState<WhisperHint[]>([]);
   const [expandedHintId, setExpandedHintId] = useState<string | null>(null);
   const [unlockingHintId, setUnlockingHintId] = useState<string | null>(null);
 
@@ -55,7 +69,7 @@ export default function NotificationsPage() {
 
       const { data, error } = await supabase
         .from("messages")
-        .select("id,message,image_url,created_at,is_read,sender_username,sender_email_name,sender_country,sender_state,sender_city,sender_device")
+        .select("id,message,image_url,created_at,is_read")
         .eq("recipient_id", session.user.id)
         .order("created_at", { ascending: false });
 
@@ -70,6 +84,19 @@ export default function NotificationsPage() {
         .select("message_id")
         .eq("user_id", session.user.id);
       setHintUnlocks(unlocks || []);
+
+      /* The hints for messages already paid for, fetched lazily by id: the
+         columns are unreadable from the browser now (202609070001 revokes them
+         on `messages`), and this RPC answers only rows with an unlock receipt. */
+      const unlockedIds = (unlocks || []).map((u) => u.message_id);
+      if (unlockedIds.length > 0) {
+        const { data: hintRows } = await supabase.rpc("whisper_hints_for", {
+          p_message_ids: unlockedIds,
+        });
+        setHints(
+          (hintRows as WhisperHint[] | null) || []
+        );
+      }
 
       setLoading(false);
 
@@ -104,8 +131,33 @@ export default function NotificationsPage() {
     return hintUnlocks.some((unlock) => unlock.message_id === messageId);
   }
 
+  /**
+   * The reveal is shown only when the (paid) hint data is actually in hand.
+   *
+   * An unlock flag without a matching hint row means the data was revoked at
+   * the column layer but not fetched through the new RPC — a mid-deploy or a
+   * legacy row — and re-reading it is free (no second charge), so the unlock
+   * path above repopulates it. If it is still missing we fall through to the
+   * unlock button, which short-circuits on `hintUnlocked` and just re-reads.
+   */
+  function hintFor(messageId: string): WhisperHint | undefined {
+    return hints.find((hint) => hint.message_id === messageId);
+  }
+
   async function unlockHint(messageId: string) {
-    if (hintUnlocked(messageId)) return;
+    if (hintUnlocked(messageId)) {
+      /* Already paid but the data is not in hand (page loaded before the hint
+         fetch, or a legacy unlock). Re-read is free — no second charge — so
+         fetch and render instead of silently doing nothing. */
+      const { data: retryRows } = await supabase.rpc("whisper_hints_for", {
+        p_message_ids: [messageId],
+      });
+      const rows = (retryRows as WhisperHint[] | null) || [];
+      if (rows.length > 0) {
+        setHints((prev) => [...prev.filter((h) => h.message_id !== messageId), ...rows]);
+      }
+      return;
+    }
 
     setUnlockingHintId(messageId);
     const { data, error } = await supabase.rpc("unlock_hint_with_coins", { target_message_id: messageId });
@@ -119,15 +171,28 @@ export default function NotificationsPage() {
           : [...prev, { message_id: messageId }]
       );
       showToast(`Hint unlocked. Balance: ${data ?? 0} coins`);
+
+      /* The paid reveal itself: the columns only come back from the definer
+         RPC once the receipt exists server-side, which it does now — this is a
+         read, not another charge. */
+      const { data: hintRows } = await supabase.rpc("whisper_hints_for", {
+        p_message_ids: [messageId],
+      });
+      const rows = (hintRows as WhisperHint[] | null) || [];
+      if (rows.length > 0) {
+        setHints((prev) => [...prev.filter((h) => h.message_id !== messageId), ...rows]);
+      }
     }
 
     setUnlockingHintId(null);
   }
 
-  function hintContent(item: Notification) {
-    const timeStr = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const location = [item.sender_city, item.sender_state, item.sender_country].filter(Boolean).join(", ");
-    const senderParts = (item.sender_device || "Unknown Device • Unknown Browser")
+  function hintContent(item: Notification, hint: WhisperHint) {
+    /* Prefer the message's own timestamp (always present, matches the row the
+       reader is looking at); sent_at is a cross-check the RPC also carries. */
+    const timeStr = new Date(hint.sent_at || item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const location = [hint.sender_city, hint.sender_state, hint.sender_country].filter(Boolean).join(", ");
+    const senderParts = (hint.sender_device || "Unknown Device • Unknown Browser")
       .split("•")
       .map((part) => part.trim())
       .filter(Boolean);
@@ -370,13 +435,19 @@ export default function NotificationsPage() {
                     >
                       <div className="overflow-hidden">
                         <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-4">
-                          {hintUnlocked(item.id) ? (
-                            hintContent(item)
+                          {hintFor(item.id) ? (
+                            hintContent(item, hintFor(item.id)!)
                           ) : (
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <div>
-                                <p className="text-sm font-black text-white">Unlock hint for {HINT_UNLOCK_COST} coins</p>
-                                <p className="mt-1 text-xs text-gray-400">Reveals sender metadata like approximate location and time of whisper.</p>
+                                <p className="text-sm font-black text-white">
+                                  {hintUnlocked(item.id)
+                                    ? "Load unlocked hint"
+                                    : `Unlock hint for ${HINT_UNLOCK_COST} coins`}
+                                </p>
+                                <p className="mt-1 text-xs text-gray-400">
+                                  Reveals sender metadata like approximate location and time of whisper.
+                                </p>
                               </div>
                               <button
                                 onClick={() => unlockHint(item.id)}
@@ -384,7 +455,11 @@ export default function NotificationsPage() {
                                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-400 to-pink-300 px-4 py-2 text-sm font-black text-black transition active:scale-95 disabled:opacity-60"
                               >
                                 {unlockingHintId === item.id ? <Loader2 size={16} className="animate-spin" /> : <LockKeyhole size={16} />}
-                                {unlockingHintId === item.id ? "Unlocking..." : "Unlock"}
+                                {unlockingHintId === item.id
+                                  ? "Loading..."
+                                  : hintUnlocked(item.id)
+                                    ? "Load"
+                                    : "Unlock"}
                               </button>
                             </div>
                           )}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { COIN_PACKAGES } from "@/lib/coins";
 import { getLiveRatesPerUsd } from "@/lib/currency";
+import { consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 const MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
@@ -59,6 +60,14 @@ export async function POST(req: NextRequest) {
     if (userError || !user) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
+
+    /* A verification check costs a Paystack API call and, on success, a credit.
+       Pace it per user so a stuck client (or an attacker probing references)
+       can't hammer Paystack or re-run verify in a loop. A legitimate double-tap
+       of the callback is well inside this; the DB-side reference guard in
+       credit_verified_payment is what actually stops a double credit. */
+    const verifyGuard = consume("paystack-verify", `u:${user.id}`, 10, 60_000);
+    if (verifyGuard) return rateLimitedResponse(verifyGuard);
 
     const paystackRes = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
