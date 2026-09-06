@@ -21,8 +21,8 @@ export default function ForgotPasswordPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (newPassword.length < 6) {
-      showToast("Password must be at least 6 characters.");
+    if (newPassword.length < 8) {
+      showToast("Password must be at least 8 characters.");
       return;
     }
 

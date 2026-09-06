@@ -474,6 +474,15 @@ const MessageBubble = memo(function MessageBubbleBase({
   );
 });
 
+/**
+ * One page of thread history. 400 covers any active conversation's visible
+ * scrollback many times over while keeping the initial payload and the
+ * windowing arithmetic (unread marks, reactions chunks) well inside what a
+ * GET query string can carry. "Load older" pages in MESSAGES_PAGE_SIZE rows
+ * at a time from the top of the list.
+ */
+const MESSAGES_PAGE_SIZE = 400;
+
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
@@ -481,6 +490,7 @@ export default function ChatPage() {
   const conversationId = params.conversationId as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
   const [pinDurationFor, setPinDurationFor] = useState<Message | null>(null);
@@ -564,7 +574,15 @@ export default function ChatPage() {
 
   const markMessagesRead = useCallback(async (msgs: Message[], currentUserId: string) => {
     if (document.visibilityState !== "visible") return;
-    const unreadIds = msgs.filter((m) => m.sender_id !== currentUserId && !m.read_at).map((m) => m.id);
+    /* Capped deliberately. `update ... .in("id", ids)` rides the query string;
+       a thread with thousands of unread messages would build a URL PostgREST
+       rejects outright and nothing would be marked read at all. 200 covers
+       every unread message on any realistic phone screen many times over, and
+       the rest are marked by the follow-up call when the reader scrolls down. */
+    const unreadIds = msgs
+      .filter((m) => m.sender_id !== currentUserId && !m.read_at)
+      .slice(0, 200)
+      .map((m) => m.id);
     if (unreadIds.length === 0) return;
     const readNow = new Date().toISOString();
     const { error } = await supabase.from("direct_messages").update({ read_at: readNow }).in("id", unreadIds);
@@ -572,6 +590,78 @@ export default function ChatPage() {
       setMessages((prev) => prev.map((m) => (unreadIds.includes(m.id) ? { ...m, read_at: readNow } : m)));
     }
   }, []);
+
+  /* --------------------------------------------------------------------------
+     Paging older history in from the top.
+     ------------------------------------------------------------------------ */
+
+  const loadingOlderRef = useRef(false);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current) return;
+    const oldest = messagesRef.current[0];
+    if (!oldest) return;
+
+    loadingOlderRef.current = true;
+    const container = messagesContainerRef.current;
+    const heightBefore = container?.scrollHeight ?? 0;
+    const topBefore = container?.scrollTop ?? 0;
+
+    try {
+      const { data } = await supabase
+        .from("direct_messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .lt("created_at", oldest.created_at)
+        .order("created_at", { ascending: false })
+        .limit(MESSAGES_PAGE_SIZE);
+
+      const older = (data || []).slice().reverse();
+      if (older.length > 0) {
+        setMessages((prev) => {
+          const seen = new Set(prev.map((m) => m.id));
+          return [...older.filter((m: Message) => !seen.has(m.id)), ...prev];
+        });
+
+        /* Reactions for the newly revealed stretch, chunked like the initial
+           fetch. Merged by id — the map is flat and re-renders of a bubble with
+           its reactions are just the other bubbles keeping their identity. */
+        const ids = older.map((m: Message) => m.id);
+        const chunks: string[][] = [];
+        for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+        void Promise.all(
+          chunks.map((chunk) =>
+            supabase
+              .from("message_reactions")
+              .select("message_id, user_id, emoji")
+              .in("message_id", chunk)
+          )
+        ).then((results) => {
+          const extra = results.flatMap((r) => r.data || []) as Reaction[];
+          if (extra.length > 0) {
+            setReactions((prev) => [
+              ...prev,
+              ...extra.filter((e) => !prev.some((p) => p.message_id === e.message_id && p.user_id === e.user_id)),
+            ]);
+          }
+        });
+      }
+
+      setHasOlderMessages((data || []).length === MESSAGES_PAGE_SIZE);
+
+      /* Keep the reader anchored: prepending rows grows the content above the
+         viewport, and without this the visible messages would jump down by
+         exactly what was added. Measured after React has committed — a
+         rAF is the cheap way to land one frame later; ResizeObserver-level
+         precision is not worth it for a scroll correction. */
+      requestAnimationFrame(() => {
+        const c = messagesContainerRef.current;
+        if (c) c.scrollTop = c.scrollHeight - heightBefore + topBefore;
+      });
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }, [conversationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -611,12 +701,21 @@ export default function ChatPage() {
       const sessionPromise = getCachedSession();
       /* Issued before the session resolves on purpose: this is the query the
          user is actually waiting for, and `conversationId` comes from the route,
-         so it needs nothing from auth. RLS still decides what comes back. */
+         so it needs nothing from auth. RLS still decides what comes back.
+
+         CAPPED at the newest `MESSAGES_PAGE_SIZE` messages. The uncapped
+         `select("*")` of the whole conversation was the single most expensive
+         read in the app: a year-old thread of tens of thousands of messages
+         shipped every row, every waveform JSON and every column to every open,
+         and the list rendered them all. Older history now pages in as the
+         reader reaches the top (`loadOlderMessages`). Newest-first + limit +
+         reverse so the window is the *tail* of the thread. */
       const messagesPromise = supabase
         .from("direct_messages")
         .select("*")
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .limit(MESSAGES_PAGE_SIZE);
 
       const session = await sessionPromise;
       if (!session) { router.push("/login"); return; }
@@ -670,7 +769,11 @@ export default function ChatPage() {
       setIsFriendConversation(Boolean(otherFriendship.data));
       setChatUnlocked(Boolean(unlockResult.data));
 
-      const fetchedMsgs = msgsResult.data || [];
+      /* Newest-first + limit was the fetch shape; the thread renders old→new,
+         so reverse into place and remember whether anything is left above. */
+      const rawFetched = msgsResult.data || [];
+      setHasOlderMessages(rawFetched.length === MESSAGES_PAGE_SIZE);
+      const fetchedMsgs = rawFetched.slice().reverse();
       setMessages(fetchedMsgs);
       messagesRef.current = fetchedMsgs;
       setLoading(false);
@@ -683,18 +786,31 @@ export default function ChatPage() {
         if (!cancelled) setPinnedMessageIds(new Set((pins || []).map((p) => p.message_id)));
       })();
 
+      /* Chunked `.in()` list: PostgREST GETs carry the filter in the query
+         string, and a page of 400 uuids is ~15KB of URL — past what gateways
+         accept. 100 ids ≈ 3.7KB, comfortably inside, and a 400-message page is
+         at most four parallel requests, all off the paint path. */
       if (fetchedMsgs.length > 0) {
-        void supabase
-          .from("message_reactions")
-          .select("message_id, user_id, emoji")
-          .in("message_id", fetchedMsgs.map((m) => m.id))
-          .then(({ data: reacts }) => {
-            if (!cancelled) setReactions(reacts || []);
-          });
+        const ids = fetchedMsgs.map((m) => m.id);
+        const chunks: string[][] = [];
+        for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+        void Promise.all(
+          chunks.map((chunk) =>
+            supabase
+              .from("message_reactions")
+              .select("message_id, user_id, emoji")
+              .in("message_id", chunk)
+          )
+        ).then((results) => {
+          if (!cancelled) setReactions(results.flatMap((r) => r.data || []));
+        });
       }
 
       const now = new Date().toISOString();
-      const undeliveredIds = fetchedMsgs.filter((m) => m.sender_id !== session.user.id && !m.delivered_at).map((m) => m.id);
+      const undeliveredIds = fetchedMsgs
+        .filter((m) => m.sender_id !== session.user.id && !m.delivered_at)
+        .slice(0, 100)
+        .map((m) => m.id);
       if (undeliveredIds.length > 0) {
         const { error: deliverError } = await supabase.from("direct_messages").update({ delivered_at: now }).in("id", undeliveredIds);
         if (!deliverError) {
@@ -857,11 +973,14 @@ export default function ChatPage() {
       atBottomRef.current = near;
       setAtBottom(near);
       if (near) setUnseenCount(0);
+      /* Reaching the top pages older history in; loadOlderMessages guards
+         itself against re-entry and stops asking once a page comes back short. */
+      if (container.scrollTop < 80 && hasOlderMessages) void loadOlderMessages();
     }
     handleScroll();
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [loading]);
+  }, [loading, hasOlderMessages, loadOlderMessages]);
 
   const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
   const previousLastId = useRef<string | null>(null);

@@ -46,6 +46,64 @@ const nextConfig: NextConfig = {
      bundle so big" answer, and this app ships inside a Capacitor shell where the
      extra download is on the user. */
   productionBrowserSourceMaps: false,
+
+  /* ------------------------------------------------------------------------- *
+   * SECURITY HEADERS (production audit 2026-09). The app previously shipped no
+   * response headers at all — clickjacking, MIME sniffing, referrer leakage and
+   * permissions were all default-open on every page.
+   *
+   * Deliberately CONSERVATIVE: no script/style CSP, because the app loads
+   * third-party code that is not statically enumerable (Paystack inline.js
+   * injects its own checkout frame, Next injects dev/runtime scripts, the
+   * service worker has its own fetch surface) and a half-measure CSP that
+   * operators have to disable at the first incident is worse than none. What IS
+   * here can be switched on with a clear conscience and later tightened toward
+   * a full CSP once the inline-script surface is measured on staging.
+   * ------------------------------------------------------------------------- */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          // Never render as a frame anywhere — blocks clickjacking of the
+          // unlock-payment and settings surfaces. The app is not framed by
+          // anything legitimate (Paystack embeds ITS page, not ours).
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" },
+          // Stop the browser from re-typing mislabeled responses (classic
+          // upload-response XSS vector).
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // Send only the origin on cross-site referrals — the app's URLs
+          // carry usernames (/u/<handle>) that should not leak to ad networks.
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // HSTS: the app is https-only on Vercel; two years + subdomains +
+          // preload makes an on-path downgrade to http impossible.
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          /* Feature carve-outs, kept as tight as the features allow:
+             microphone stays for the voice-note recorder's getUserMedia;
+             camera/geolocation/payment/usb/serial are not used by the web app
+             at all (image picking goes through the OS file picker, which this
+             does not affect), so they are hard-disabled for every origin. */
+          {
+            key: "Permissions-Policy",
+            value: "microphone=(self), camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(), document-domain=()",
+          },
+          /* COOP keeps other origins from holding a window reference into our
+             pages; `same-origin-allow-popups` because sign-in and Paystack
+             flows may open popups that legitimately keep opener handles. */
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+        ],
+      },
+      /* /og/u/* is an <img> src consumed by Twitter/WhatsApp scrapers and any
+         other site — CORP same-origin there would block the very clients the
+         route exists for, so that one header is relaxed for that path. */
+      {
+        source: "/og/u/:path*",
+        headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

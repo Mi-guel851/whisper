@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "crypto";
+import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
  * The only path to a coin grant.
@@ -31,6 +32,12 @@ function pinMatches(supplied: string, expected: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
+    /* Same reasoning as /api/admin/verify-pin: a correct-PIN guess against an
+       internet-reachable endpoint must not be free. Tighter here because this one
+       actually moves balances. */
+    const limited = consume("admin-grant-coins", clientIp(req.headers), 6, 10 * 60_000);
+    if (limited) return rateLimitedResponse(limited);
+
     const { pin, username, amount, note } = await req.json();
 
     /* Checked before the PIN comparison. Without it an unset variable makes

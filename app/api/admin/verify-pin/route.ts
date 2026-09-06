@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "crypto";
+import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
  * Unlocks the grant form's UI. It does not authorize a grant — /api/admin/grant-coins
@@ -23,6 +24,13 @@ function pinMatches(supplied: string, expected: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
+    /* PIN attempts are bucketed before anything else: a numeric or short PIN is
+       otherwise brute-forceable at network speed, spread across every warm
+       serverless instance. This per-instance floor slows one client dramatically;
+       Vercel Firewall rules are the distributed ceiling (see audit report). */
+    const limited = consume("admin-verify-pin", clientIp(req.headers), 6, 10 * 60_000);
+    if (limited) return rateLimitedResponse(limited);
+
     const { pin } = await req.json();
 
     /* Checked before comparing. An unset variable makes `pin !== undefined` true

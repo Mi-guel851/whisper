@@ -155,18 +155,33 @@ export default function InboxPage() {
           if (!latest[message.conversation_id]) latest[message.conversation_id] = message as MessagePreview;
         }
 
-        const { data: unread, error: unreadError } = await supabase
-          .from("direct_messages")
-          .select("conversation_id")
-          .in("conversation_id", ids)
-          .neq("sender_id", userId)
-          .is("read_at", null);
-
-        if (unreadError) console.error("Inbox unread fetch error:", unreadError);
+        /* Unread counts come from a single GROUP BY on the database. The old
+           shape — `select conversation_id` for every unread row and count in
+           JS — fetched one row per unread message, so a 10k-unread backlog
+           pulled 10k rows on every inbox paint and on every coalesced
+           read-receipt refresh. `unread_message_counts` returns one row per
+           conversation (202609070001); the fallback keeps an unmigrated
+           database working with the old query. */
+        const { data: unread, error: unreadError } = await supabase.rpc("unread_message_counts", {
+          conversation_ids: ids,
+        });
 
         const counts: Record<string, number> = {};
-        for (const message of unread || []) {
-          counts[message.conversation_id] = (counts[message.conversation_id] || 0) + 1;
+        if (!unreadError && unread) {
+          for (const row of unread as { conversation_id: string; unread: number }[]) {
+            counts[row.conversation_id] = Number(row.unread) || 0;
+          }
+        } else if (unreadError) {
+          console.warn("Inbox unread RPC unavailable, using the row fetch:", unreadError.message);
+          const { data: rows } = await supabase
+            .from("direct_messages")
+            .select("conversation_id")
+            .in("conversation_id", ids)
+            .neq("sender_id", userId)
+            .is("read_at", null);
+          for (const message of rows || []) {
+            counts[message.conversation_id] = (counts[message.conversation_id] || 0) + 1;
+          }
         }
 
         if (cancelled) return;
@@ -175,7 +190,13 @@ export default function InboxPage() {
       }
 
       function subscribeToTyping(rows: ConversationRow[]) {
-        rows.forEach((row) => {
+        /* One broadcast channel per conversation is realtime-socket state and
+           it is open for the whole visit to this page. The list is capped at
+           the 100 most recent conversations — typing dots are only visible for
+           the threads near the top anyway, and an uncapped loop over a user
+           with hundreds of conversations is exactly the runaway-subscription
+           shape realtime servers do not forgive. */
+        rows.slice(0, 100).forEach((row) => {
           if (typingUnsubscribers.has(row.id)) return;
           const unsubscribe = typingManager.subscribe(row.id, userId, (typing) => {
             if (typing) {
@@ -197,11 +218,15 @@ export default function InboxPage() {
         });
       }
 
+      /* Capped at 300 conversations, newest activity first. An unbounded list
+         turns the preview/unread work beneath it into a function of the whole
+         social graph, and no inbox is honestly browsed past a few hundred. */
       const { data, error } = await supabase
         .from("conversations")
         .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
         .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-        .order("last_message_at", { ascending: false });
+        .order("last_message_at", { ascending: false })
+        .limit(300);
 
       if (!cancelled) {
         if (error) console.error("Inbox fetch error:", error);
@@ -243,7 +268,8 @@ export default function InboxPage() {
             .from("conversations")
             .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
             .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-            .order("last_message_at", { ascending: false });
+            .order("last_message_at", { ascending: false })
+            .limit(300);
 
           if (refreshError) {
             console.error("Inbox refresh error:", refreshError);

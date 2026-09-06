@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
  * GIF search/trending proxy.
@@ -139,6 +140,12 @@ export async function GET(req: NextRequest) {
     /* 501, and the client shows a setup message rather than a failure one. */
     return bad(501, "GIF search isn't configured on this server yet.");
   }
+
+  /* This route proxies a keyed third-party API, so an unthrottled caller spends
+     OUR quota, not theirs. Cap per IP; trending results are also cached for two
+     minutes so ordinary browsing barely touches the upstream. */
+  const limited = consume("gifs", clientIp(req.headers), 60, 60_000);
+  if (limited) return rateLimitedResponse(limited);
 
   const q = req.nextUrl.searchParams.get("q")?.trim().slice(0, 80) || null;
   const pos = req.nextUrl.searchParams.get("pos")?.slice(0, 40) || null;

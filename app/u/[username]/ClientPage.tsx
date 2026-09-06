@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import { supabase } from "@/lib/supabase/client";
-import { sanitizeGmailName } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
 import AmbientFloaters from "@/components/AmbientFloaters";
 import PaperPlaneFlight from "@/components/PaperPlaneFlight";
@@ -239,20 +238,6 @@ export default function PublicProfile() {
       }
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    let senderUsername: string | null = null;
-    if (session?.user.id) {
-      const { data: senderProfile } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("id", session.user.id)
-        .maybeSingle();
-      senderUsername = senderProfile?.username || null;
-    }
-
     /* Resolved, not re-fetched: this is the promise started on mount, so on a
        normal send it is already settled and this line costs nothing. The fallback
        is for the case where the ref has somehow not been populated — a send that
@@ -265,21 +250,18 @@ export default function PublicProfile() {
       sender_device: context.device,
     };
 
+    /* The sender's username, email-fragment and user id are deliberately NOT
+       written any more. They were stored on every logged-in send, never
+       rendered by any UI, and readable by the recipient for free — in an
+       "anonymous" product `sender_email_name` (a Gmail local part with the
+       digits stripped) is frequently enough to identify the sender outright,
+       and `sender_user_id` in particular is a client-supplied identity claim
+       any sender could set to somebody else's id. The paid Hint reads only the
+       four coarse context columns below, so no feature is lost. */
     const { error } = await supabase.from("messages").insert({
       recipient_id: receiverId,
       message: message.trim() ? message : null,
       image_url: imageUrl,
-      sender_user_id: session?.user.id || null,
-      sender_username: senderUsername,
-      sender_email_name: sanitizeGmailName(session?.user.email),
-      /* The four columns the recipient's paid Hint reads. Every one is nullable
-         and the capture never throws, so a visitor behind a proxy that strips the
-         geo headers still sends successfully — their hint just says "Unknown" for
-         the location, which is honest. Before this, *every* hint said that.
-
-         Spread rather than assigned field-by-field so the row and
-         `SenderContext` cannot drift: adding a fact to the hint is a change in
-         two files, not three. */
       ...senderColumns,
     });
 

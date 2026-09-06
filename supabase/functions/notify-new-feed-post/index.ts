@@ -23,8 +23,29 @@ async function accessToken() {
   return (await response.json()).access_token as string;
 }
 
+/* Caller gate — see the other notify-* functions. Only the database webhook
+   (authenticated with the service role key) may drive this one; any valid
+   user JWT otherwise lets a caller forge a fan-out push to every profile. */
+async function requireServiceRole(req: Request): Promise<boolean> {
+  const expected = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(token)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
+  ]);
+  const ua = new Uint8Array(a), ub = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
+  return diff === 0;
+}
+
 Deno.serve(async (request) => {
   try {
+    if (!(await requireServiceRole(request))) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+    }
     const post = (await request.json()).record;
     if (!post?.id) return new Response(JSON.stringify({ skipped: true }), { status: 200 });
 

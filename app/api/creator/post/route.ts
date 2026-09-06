@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { CLOUDINARY_FOLDERS, cloudinaryPublicId } from "@/lib/cloudinary";
 import { cloudinaryImageExists, destroyCloudinaryUrl } from "@/lib/cloudinary.server";
+import { consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
  * Publishing an official Whisper creator post.
@@ -95,6 +96,11 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       );
     }
+
+    /* Official posts bypass the coin charge, so this rate limit is the only
+       thing pacing them. Same budget as a normal author's posts. */
+    const postGuard = consume("creator-post", `u:${user.id}`, 6, 60_000);
+    if (postGuard) return rateLimitedResponse(postGuard);
 
     /* ------------------------------------------------------------------
        Body. Only these three fields are ever read.
