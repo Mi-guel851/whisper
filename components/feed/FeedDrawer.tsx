@@ -10,6 +10,7 @@ import {
   Compass,
   Crown,
   Gamepad2,
+  Megaphone,
   Settings,
   User,
   Users,
@@ -17,6 +18,8 @@ import {
 } from "lucide-react";
 import FeedAvatar from "./FeedAvatar";
 import FeedDiscovery from "./FeedDiscovery";
+import OfficialBadge from "./OfficialBadge";
+import { CREATOR_ROUTE } from "@/lib/creator";
 import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import { supabase } from "@/lib/supabase/client";
 import type { FeedPost } from "@/lib/feed";
@@ -96,6 +99,12 @@ type FeedDrawerProps = {
   onSurprise: () => void;
   onStartPoll: () => void;
   reducedMotion: boolean;
+  /**
+   * Shows the "Create official post" row and the official identity. Comes from
+   * `useCreatorAccess()`, which asks the database — and hiding the row is only a
+   * courtesy: the dashboard and the API both re-check server-side.
+   */
+  isCreator?: boolean;
 };
 
 export default function FeedDrawer({
@@ -112,6 +121,7 @@ export default function FeedDrawer({
   onSurprise,
   onStartPoll,
   reducedMotion,
+  isCreator = false,
 }: FeedDrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -261,7 +271,14 @@ export default function FeedDrawer({
                 >
                   <FeedAvatar authorId={authorId} size={48} />
                   <span className="feed-drawer-names">
-                    <span className="feed-drawer-name">{displayName}</span>
+                    <span className="feed-drawer-name">
+                      {displayName}
+                      {isCreator && (
+                        <span className="ml-1.5 inline-flex align-middle">
+                          <OfficialBadge label="Creator" />
+                        </span>
+                      )}
+                    </span>
                     {handle && <span className="feed-drawer-handle">@{handle}</span>}
                   </span>
                 </Link>
@@ -319,6 +336,20 @@ export default function FeedDrawer({
                   <small>Ask the feed to pick a side</small>
                 </span>
               </button>
+
+              {isCreator && (
+                <Link
+                  href={CREATOR_ROUTE}
+                  onClick={closeOnNavigate}
+                  className="feed-drawer-poll feed-drawer-official"
+                >
+                  <Megaphone size={16} aria-hidden />
+                  <span>
+                    Create official post
+                    <small>Publish an announcement as Whisper</small>
+                  </span>
+                </Link>
+              )}
 
               <nav className="feed-drawer-nav" aria-label="Go to">
                 {PRIMARY_ROWS.map(({ href, label, icon: Icon }) => (

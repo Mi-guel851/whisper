@@ -39,6 +39,14 @@ export type FeedPost = {
   viewer_image_viewed?: boolean | null;
   viewer_vote?: number | null;
   rank_score?: number | null;
+
+  /**
+   * `'user'` or `'whisper_creator'`. Set by the database only — a trigger and
+   * RLS refuse the creator value for anyone not on the server-side allowlist,
+   * so a row carrying it is genuinely official. Absent on databases without
+   * 202609060001_whisper_creator_posts.sql, and treated as `'user'`.
+   */
+  author_role?: string | null;
 };
 
 export type FeedLike = { post_id: string; user_id: string };

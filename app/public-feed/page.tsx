@@ -14,6 +14,7 @@ import FeedFab from "@/components/feed/FeedFab";
 import FeedSearchBar from "@/components/feed/FeedSearchBar";
 import FeedComposerSheet from "@/components/feed/FeedComposerSheet";
 import { type ComposerDraft } from "@/components/feed/FeedComposer";
+import { useCreatorAccess } from "@/lib/useCreatorAccess";
 import FeedSkeleton from "@/components/feed/FeedSkeleton";
 import FeedPhotoViewer from "@/components/feed/FeedPhotoViewer";
 import FeedPostMenu from "@/components/feed/FeedPostMenu";
@@ -138,6 +139,9 @@ export default function PublicFeedPage() {
      hook does — disagrees with the server HTML and throws the whole tree away for
      exactly the users who asked for less work. See lib/useSafeReducedMotion.ts. */
   const reducedMotion = useSafeReducedMotion();
+  /* Display-only: decides whether the drawer offers the official-post entry.
+     Answered by the database per session; never cached in storage. */
+  const { isCreator } = useCreatorAccess();
 
   const [myId, setMyId] = useState("");
   const [username, setUsername] = useState("");
@@ -1658,6 +1662,7 @@ export default function PublicFeedPage() {
         onSurprise={() => void surprise()}
         onStartPoll={startPoll}
         reducedMotion={reducedMotion}
+        isCreator={isCreator === true}
       />
 
       <FeedComposerSheet
