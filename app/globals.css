@@ -6041,3 +6041,285 @@ html.viewport-locked body {
   transform-style: preserve-3d;
   backface-visibility: visible;
 }
+
+/* ==========================================================================
+   Official Whisper creator posts
+   --------------------------------------------------------------------------
+   A subtle, premium treatment: the row gets a faint brand wash and a hairline
+   accent down its left edge; the avatar becomes the Whisper mark; the name is
+   followed by a verified pill. Nothing changes size, so official posts sit in
+   the same rhythm as everything else and read as announcements rather than as
+   a different product. `feed-post-official` is applied only when the database
+   says `author_role = 'whisper_creator'` — see lib/creator.ts.
+   ========================================================================== */
+
+.feed-post-official {
+  position: relative;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--theme-accent-purple) 9%, transparent),
+      color-mix(in srgb, var(--theme-accent-from) 4%, transparent) 55%,
+      transparent
+    );
+}
+
+.feed-post-official::before {
+  content: "";
+  position: absolute;
+  inset-block: 0.625rem;
+  left: 0;
+  width: 3px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, var(--theme-accent-from), var(--theme-accent-to));
+  opacity: 0.9;
+}
+
+/* Replies inside an official thread inherit the wash from the root; they must
+   not stack a second one or the tint compounds down the thread. */
+.feed-post-official .feed-post-reply.feed-post-official {
+  background: transparent;
+}
+.feed-post-official .feed-post-reply.feed-post-official::before { display: none; }
+
+.feed-avatar-official {
+  background: linear-gradient(140deg, var(--theme-accent-from), var(--theme-accent-to));
+  box-shadow:
+    var(--elev-1),
+    0 0 0 1px color-mix(in srgb, var(--theme-accent-purple) 35%, transparent),
+    0 0 14px color-mix(in srgb, var(--theme-accent-from) 35%, transparent);
+}
+
+.feed-avatar-official-img {
+  padding: 15%;
+  background: var(--theme-card);
+}
+
+.official-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.45rem 0.1rem 0.35rem;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--theme-accent-purple) 35%, transparent);
+  white-space: nowrap;
+}
+
+.official-badge.is-md {
+  padding: 0.2rem 0.65rem 0.2rem 0.5rem;
+  font-size: 0.6875rem;
+  gap: 0.3rem;
+}
+
+/* --- Creator dashboard ---------------------------------------------------- */
+
+.creator-shell {
+  width: 100%;
+  max-width: 36rem;
+  margin-inline: auto;
+  padding-inline: var(--feed-gutter, 1rem);
+}
+
+.creator-head {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  padding-bottom: 0.75rem;
+}
+
+.creator-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-top: 0.75rem;
+}
+
+.creator-identity-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-2xl);
+  letter-spacing: var(--tracking-2xl);
+  font-weight: 800;
+  color: var(--theme-text);
+}
+
+.creator-identity-sub {
+  margin-top: 0.125rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--theme-text-muted);
+}
+
+.creator-panel {
+  margin-top: 1rem;
+  padding: 1rem 1.0625rem 1.0625rem;
+  border-radius: var(--radius-2xl);
+}
+
+.creator-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted);
+}
+
+.creator-textarea {
+  width: 100%;
+  min-height: 9rem;
+  resize: vertical;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  color: var(--theme-text);
+  font-size: 1rem;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.creator-textarea:focus {
+  border-color: color-mix(in srgb, var(--theme-accent-purple) 60%, transparent);
+}
+
+.creator-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.625rem;
+  font-size: 0.75rem;
+  color: var(--theme-text-muted);
+}
+
+.creator-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--theme-text);
+  transition: background-color var(--dur-fast) var(--ease-out-quint), transform var(--dur-fast) var(--ease-out-quint);
+}
+
+.creator-tool:active { transform: scale(0.97); background: var(--fill-2); }
+.creator-tool:disabled { opacity: 0.5; }
+.creator-tool > svg { color: var(--theme-accent-purple); }
+
+.creator-image {
+  position: relative;
+  margin-top: 0.75rem;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+}
+
+.creator-image > img {
+  display: block;
+  width: 100%;
+  max-height: 20rem;
+  object-fit: cover;
+}
+
+.creator-image-remove {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: grid;
+  place-items: center;
+  height: 2rem;
+  width: 2rem;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  backdrop-filter: blur(6px);
+}
+
+.creator-actions {
+  display: flex;
+  gap: 0.625rem;
+  margin-top: 1rem;
+}
+
+.creator-actions > * { flex: 1; }
+
+.creator-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.875rem;
+  padding: 0 1rem;
+  border-radius: var(--radius-full);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  transition: transform var(--dur-fast) var(--ease-out-quint), opacity var(--dur-fast) var(--ease-out-quint);
+}
+
+.creator-btn:active { transform: scale(0.98); }
+.creator-btn:disabled { opacity: 0.55; transform: none; }
+
+.creator-btn-primary {
+  background: linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to));
+  color: var(--theme-accent-contrast);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--theme-accent-purple) 35%, transparent);
+}
+
+.creator-btn-secondary {
+  border: 1px solid var(--hairline);
+  background: var(--fill-1);
+  color: var(--theme-text);
+}
+
+.creator-preview-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+/* The preview reuses the real post card, so what the creator sees is what the
+   feed will draw. The card's own gutter is zeroed because the panel supplies it. */
+.creator-preview .feed-post {
+  padding-inline: 0.75rem;
+  border-bottom: 0;
+  border-radius: var(--radius-xl);
+}
+
+.creator-preview-image {
+  margin-top: 0.625rem;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline);
+}
+.creator-preview-image > img { display: block; width: 100%; max-height: 16rem; object-fit: cover; }
+
+.creator-recent { margin-top: 1.25rem; }
+.creator-recent .feed-post { padding-inline: 0; }
+
+.creator-denied {
+  display: grid;
+  min-height: 60vh;
+  place-items: center;
+  padding: 2rem 1rem;
+}
+
+/* The drawer's entry point. Same shape as "Start a poll" so the two stack
+   cleanly; the gradient icon is the only tell that this one is special. */
+.feed-drawer-official > svg { color: var(--theme-accent-from); }

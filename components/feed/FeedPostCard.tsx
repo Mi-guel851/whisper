@@ -11,7 +11,9 @@ import {
   topicMeta,
   type FeedPostNode,
 } from "@/lib/feed";
+import { isCreatorPost, OFFICIAL_IDENTITY } from "@/lib/creator";
 import FeedAvatar from "./FeedAvatar";
+import OfficialBadge from "./OfficialBadge";
 import FeedActionBar from "./FeedActionBar";
 import FeedReplyComposer from "./FeedReplyComposer";
 import FeedImageWhisper from "./FeedImageWhisper";
@@ -76,6 +78,8 @@ type FeedPostCardProps = {
   depth: number;
   /** Author of the post being answered — renders X's "Replying to" line. */
   parentAuthorId?: string;
+  /** Whether that parent is an official post, so the line says "Whisper". */
+  parentOfficial?: boolean;
   /** Ref callback that registers a root card for impression counting. */
   impressionRef?: (node: HTMLElement | null) => void;
   /**
@@ -99,6 +103,7 @@ function FeedPostCardBase({
   controller,
   depth,
   parentAuthorId,
+  parentOfficial = false,
   impressionRef,
   threadOpen = false,
   highlightId = null,
@@ -106,6 +111,10 @@ function FeedPostCardBase({
   const isRoot = depth === 0;
   const highlighted = highlightId === node.id;
   const isMine = node.author_id === controller.myId;
+  /* Decided from `author_role` as returned by the database, which refuses to
+     store the creator value for anyone not on the server-side allowlist. Nothing
+     the client holds can turn this on. */
+  const official = isCreatorPost(node);
   /* Two ids per card, but requests inside the same commit coalesce into one
      query — so a whole thread costs one round trip, not one per post. */
   const nameOf = useAnonNames([node.author_id, parentAuthorId]);
@@ -157,17 +166,24 @@ function FeedPostCardBase({
       data-author-id={node.author_id}
       className={`${isRoot ? "feed-post" : "feed-post feed-post-reply"}${
         highlighted ? " is-highlighted" : ""
-      }`}
+      }${official ? " feed-post-official" : ""}`}
     >
       <div className="flex gap-3">
         <div className="relative flex shrink-0 flex-col items-center">
-          <FeedAvatar authorId={node.author_id} size={isRoot ? AVATAR_ROOT : AVATAR_REPLY} />
+          <FeedAvatar
+            authorId={node.author_id}
+            size={isRoot ? AVATAR_ROOT : AVATAR_REPLY}
+            official={official}
+          />
           {hasRail && <span aria-hidden className="feed-thread-rail" />}
         </div>
 
         <div className="min-w-0 flex-1 pb-0.5">
           <div className="feed-post-head">
-            <span className="feed-author truncate font-black">{nameOf(node.author_id)}</span>
+            <span className="feed-author truncate font-black">
+              {official ? OFFICIAL_IDENTITY.name : nameOf(node.author_id)}
+            </span>
+            {official && <OfficialBadge />}
             <span className="feed-dot shrink-0" aria-hidden>
               ·
             </span>
@@ -207,7 +223,7 @@ function FeedPostCardBase({
             <p className="feed-replying-to mt-0.5 truncate text-[13px]">
               Replying to{" "}
               <span className="feed-replying-to-name font-bold">
-                {nameOf(parentAuthorId)}
+                {parentOfficial ? OFFICIAL_IDENTITY.name : nameOf(parentAuthorId)}
               </span>
             </p>
           )}
@@ -242,7 +258,7 @@ function FeedPostCardBase({
 
           {/* Only root posts carry the author's Whisper link. Repeating it on
               every reply would turn a thread into a wall of identical CTAs. */}
-          {isRoot && node.whisper_link && (
+          {isRoot && !official && node.whisper_link && (
             <Link href={node.whisper_link} className="feed-cta mt-2.5 block truncate">
               Send me an anonymous Whisper
             </Link>
@@ -298,6 +314,7 @@ function FeedPostCardBase({
               controller={controller}
               depth={depth + 1}
               parentAuthorId={node.author_id}
+              parentOfficial={official}
               highlightId={highlightId}
               threadOpen
             />

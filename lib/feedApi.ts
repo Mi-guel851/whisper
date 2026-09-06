@@ -42,7 +42,7 @@ export const FEED_PAGE_SIZE = 10;
  * an unrelated missing column.
  */
 const BASE_COLUMNS = "id,author_id,body,whisper_link,created_at,expires_at";
-const OPTIONAL_COLUMNS = ["parent_post_id", "view_count"] as const;
+const OPTIONAL_COLUMNS = ["parent_post_id", "view_count", "author_role"] as const;
 
 /**
  * `image_path` is deliberately absent from every select in this file.
