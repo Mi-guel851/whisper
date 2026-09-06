@@ -1543,34 +1543,37 @@ export default function PublicFeedPage() {
           the edge. Zero height, and therefore free, without an inset. */}
       <div className="feed-statusbar" aria-hidden />
 
+      {/* The bar and the tabs pin as one object and retract as one object.
+          Mounted as a sibling of `.feed-shell`, not inside it: the shell's
+          max-width is the timeline column, and a sticky header trapped in that
+          column is what made the chrome look cut short on anything wider than
+          a phone. Two separately sticky elements used to mean two stacked
+          blurs and a tab row whose sticky `top` had to be animated to keep up. */}
+      <div className="feed-chrome">
+        <FeedTopBar
+          authorId={myId}
+          onOpenDrawer={() => setDrawerOpen(true)}
+          onOpenSearch={() => {
+            /* Closing clears the term for the same reason the topic filter does —
+               a filter nobody can see reads as an empty feed. */
+            if (searchOpen && search) setSearch("");
+            setSearchOpen((open) => !open);
+          }}
+          searchOpen={searchOpen}
+          hasDiscovery={Boolean(spotlight) || !answeredToday}
+        />
+
+        <FeedTabs
+          sort={sort}
+          topic={topic}
+          onSortChange={setSort}
+          onTopicChange={setTopic}
+          reducedMotion={reducedMotion}
+          showTopics={mode !== "fallback"}
+        />
+      </div>
+
       <div className="feed-shell">
-        {/* The bar and the tabs pin as one object and retract as one object —
-            two separately sticky elements meant two stacked blurs and a tab row
-            whose sticky `top` had to be animated to keep up. */}
-        <div className="feed-chrome">
-          <FeedTopBar
-            authorId={myId}
-            onOpenDrawer={() => setDrawerOpen(true)}
-            onOpenSearch={() => {
-              /* Closing clears the term for the same reason the topic filter does —
-                 a filter nobody can see reads as an empty feed. */
-              if (searchOpen && search) setSearch("");
-              setSearchOpen((open) => !open);
-            }}
-            searchOpen={searchOpen}
-            hasDiscovery={Boolean(spotlight) || !answeredToday}
-          />
-
-          <FeedTabs
-            sort={sort}
-            topic={topic}
-            onSortChange={setSort}
-            onTopicChange={setTopic}
-            reducedMotion={reducedMotion}
-            showTopics={mode !== "fallback"}
-          />
-        </div>
-
         <AnimatePresence initial={false}>
           {(searchOpen || Boolean(search)) && (
             <motion.div

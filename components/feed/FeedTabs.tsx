@@ -62,13 +62,31 @@ function FeedTabsBase({
 
   /* Keep the selection on screen. Selecting "Discussed" and then a topic tab
      leaves the active item off the right edge otherwise, which reads as having
-     lost the selection entirely. `nearest` rather than `center` so an already
-     visible tab does not make the row jump for no reason. */
+     lost the selection entirely.
+
+     Scroll the tab scroller itself rather than `scrollIntoView`: that API
+     walks every scrollable ancestor, and on Android it was shifting the whole
+     page sideways — the exact "header cut short on the right" failure. `nearest`
+     rather than centering, so an already visible tab does not make the row jump. */
   useEffect(() => {
-    activeRef.current?.scrollIntoView({
+    const scroller = scrollerRef.current;
+    const active = activeRef.current;
+    if (!scroller || !active) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const tabRect = active.getBoundingClientRect();
+    const pad = 16;
+    let delta = 0;
+    if (tabRect.left < scrollerRect.left + pad) {
+      delta = tabRect.left - scrollerRect.left - pad;
+    } else if (tabRect.right > scrollerRect.right - pad) {
+      delta = tabRect.right - scrollerRect.right + pad;
+    }
+    if (delta === 0) return;
+
+    scroller.scrollTo({
+      left: scroller.scrollLeft + delta,
       behavior: reducedMotion ? "auto" : "smooth",
-      block: "nearest",
-      inline: "nearest",
     });
   }, [sort, topic, reducedMotion]);
 
