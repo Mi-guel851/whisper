@@ -134,20 +134,18 @@
 
      `--theme-glass` and `--theme-glass-strong` are for panels and sheets: things
      you look at, laid over a background that is not moving, where the film needs
-     enough body to keep its own text crisp. At 72–82% opacity the blur behind them
-     is almost academic — and that is fine, because there is nothing behind them
-     worth seeing.
+     enough body to keep its own text crisp.
 
-     A sticky top bar is the opposite. Real posts pass beneath it, and if the film
-     is dense enough to hide them the surface reads as a solid band that happens to
-     be a slightly different colour — no depth, no material, no sense that the
-     timeline continues underneath. Thinning it to ~60% is what lets the blur
-     actually show: text below smears into soft colour, which is the whole effect.
-     Legibility of the bar's *own* text survives because a 24px blur destroys the
-     detail of whatever it samples; it is contrast against mush, not against words. */
+     A sticky top bar has to do both: it must still read as glass (the blur is
+     the material) *and* it must actually obscure the posts sliding underneath
+     it. At ~60% the blur was academic — usernames, avatars and body copy stayed
+     readable through the tabs, which is the opposite of a layered header. ~86%
+     plus the blur is the X/Twitter balance: enough translucency that motion
+     behind the bar still registers as depth, not enough that any of it remains
+     legible. */ 
   --theme-glass-chrome:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03)),
-    rgba(11, 11, 16, 0.60);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    rgba(8, 8, 12, 0.86);
 
   /* Opaque counterpart to --theme-glass-strong, for surfaces that must not show
      anything through them: floating chrome, and popovers that open on top of a
@@ -266,13 +264,12 @@
   --theme-glass-border: rgba(22, 23, 44, 0.11);
   --theme-glass-sheen:  rgba(255, 255, 255, 0.95);
 
-  /* The chrome film, light theme. Same reasoning as the dark one — thin enough
-     that posts scrolling under the bar genuinely blur rather than disappear behind
-     an opaque band. Kept a touch denser than dark because dark text on a light
-     blur has less contrast headroom than the reverse. */
+  /* The chrome film, light theme. Same job as the dark one — posts must smear
+     into unreadable colour, not remain as readable text. Kept a touch denser
+     than dark because dark text on a light blur has less contrast headroom. */
   --theme-glass-chrome:
-    linear-gradient(155deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.62)),
-    rgba(248, 249, 253, 0.66);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 249, 253, 0.82)),
+    rgba(248, 249, 253, 0.88);
 
   /* Pure white rather than the tinted canvas — an opaque popover in the light
      theme should read as paper lifted off the page. */
@@ -346,7 +343,14 @@ html, body {
   overscroll-behavior: none;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: pan-y;
+  /* `manipulation`, not `pan-y`. The two used to be split — this rule locked
+     the page to vertical pans, and a later `html { touch-action: manipulation }`
+     never undid `body`'s `pan-y`. Pointer Events intersects every ancestor, so
+     a horizontal scroller (the public-feed tab row, the composer topic chips)
+     could not accept a swipe on Android even with `overflow-x: auto`. The page
+     stays vertically locked by not overflowing horizontally; the rails that
+     *should* pan sideways declare `touch-action: pan-x pan-y` themselves. */
+  touch-action: manipulation;
 }
 
 input, textarea, [contenteditable] {
@@ -3387,6 +3391,13 @@ html.viewport-locked body {
 */
 .feed-page {
   /*
+     `--feed-gutter` lives on the page, not the column. The sticky chrome is a
+     sibling of `.feed-shell` so it can span the viewport; both still share one
+     inset so the avatar, the first tab and the post text stay on one vertical
+     line.
+  */
+  --feed-gutter: 1rem;
+  /*
      3rem, down from 3.375rem. The bar holds a 2rem avatar and a 1.625rem mark, so
      3.375rem was 22px of pure padding around a 32px object. 3rem still clears both
      comfortably and the account button keeps a 44px hit area via its own padding.
@@ -3403,12 +3414,19 @@ html.viewport-locked body {
   /* How much chrome is actually pinned below the safe area. The retracted state
      overrides this rather than each dependent element knowing about it. */
   --feed-chrome-h: calc(var(--feed-topbar-h) + var(--feed-tabs-h));
+  width: 100%;
+  max-width: 100%;
+  /* `clip` rather than `hidden`: hidden on one axis used to compute the other
+     to `auto` and would make this element the sticky containing block. Clip
+     does not create a scrollport; pairing it with an explicit `visible` on Y
+     keeps the spec from collapsing the pair into a scrollport. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .feed-page.is-chrome-hidden { --feed-chrome-h: var(--feed-tabs-h); }
 
 .feed-shell {
-  --feed-gutter: 1rem;
   width: 100%;
   max-width: 36rem;
   margin-inline: auto;
@@ -3442,13 +3460,19 @@ html.viewport-locked body {
 .feed-chrome {
   position: sticky;
   top: env(safe-area-inset-top, 0px);
-  z-index: 6;
-  /* The thinner chrome film, not `--theme-glass-strong` — see the token. The
-     stronger film is 82% opaque, which made this a solid band and wasted the
-     blur entirely. */
+  z-index: 20;
+  /* Full viewport, never the shell's 36rem column. `max-width: none` is the
+     whole point of mounting this outside `.feed-shell`. */
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  isolation: isolate;
+  /* Landscape notches: keep labels off the sensor housing without shrinking
+     the blurred bar itself. Zero on portrait phones. */
+  padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
   background: var(--theme-glass-chrome);
-  backdrop-filter: blur(24px) saturate(190%);
-  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   /* The glass gets the same top-edge highlight every other glass surface in the
      app carries, so the chrome reads as the same material as the panels and
      sheets rather than as a plain translucent band. */
@@ -3487,8 +3511,8 @@ html.viewport-locked body {
   left: 0;
   right: 0;
   height: env(safe-area-inset-top, 0px);
-  /* Above the chrome (6) so the retracting bar passes behind it. */
-  z-index: 7;
+  /* Above the chrome (20) so the retracting bar passes behind it. */
+  z-index: 21;
   pointer-events: none;
   background: var(--theme-glass-chrome);
   backdrop-filter: blur(24px) saturate(190%);
@@ -3499,6 +3523,8 @@ html.viewport-locked body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
   height: var(--feed-topbar-h, 3.375rem);
   padding: 0 var(--feed-gutter, 1rem);
 }
@@ -3850,29 +3876,66 @@ html.viewport-locked body {
 */
 .feed-tabs-wrap {
   position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  /* Clip the fade and stop the inner flex min-content from widening the page. */
+  overflow: hidden;
   border-bottom: 1px solid var(--theme-border);
+}
+
+/* Softens the right edge so a mid-scroll tab reads as "more this way" rather
+   than as a hard clip. Pointer-events stay off so the fade never steals a swipe. */
+.feed-tabs-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1.75rem;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--theme-bg) 55%, transparent) 55%,
+    color-mix(in srgb, var(--theme-bg) 82%, transparent)
+  );
 }
 
 .feed-tabs {
   position: relative;
   display: flex;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   /*
      The difference between the column gutter and a tab's own inline padding, so
      the first label still lands exactly above the post text below it.
 
      This was `0` while a tab paid the full 1rem gutter itself. Now that a tab pays
      0.8125rem, the scroller makes up the remainder — the alignment is preserved
-     without giving the tabs back the horizontal bulk that was removed. The trailing
-     copy also stops the last tab butting against the edge mid-scroll.
+     without giving the tabs back the horizontal bulk that was removed. Extra
+     trailing padding clears the fade so the last tab can be scrolled fully on
+     screen instead of sitting under it.
   */
-  padding-inline: calc(var(--feed-gutter, 1rem) - 0.8125rem);
+  padding-inline-start: calc(var(--feed-gutter, 1rem) - 0.8125rem);
+  padding-inline-end: 1.75rem;
   overflow-x: auto;
-  /* Stops a horizontal flick from becoming a browser back-navigation. */
+  overflow-y: hidden;
+  /* Stops a horizontal flick from becoming a browser back-navigation, and from
+     chaining into a page-level sideways scroll. */
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Re-enable sideways pans inside this rail. Body is `manipulation`, which
+     already allows them; this makes the intent local and survives any future
+     ancestor that tightens touch-action again. */
+  touch-action: pan-x pan-y;
 }
 
 .feed-tabs::-webkit-scrollbar { display: none; }
@@ -4386,6 +4449,7 @@ html.viewport-locked body {
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  touch-action: pan-x pan-y;
 }
 
 .feed-composer-topics::-webkit-scrollbar { display: none; }
@@ -5522,6 +5586,15 @@ html.viewport-locked body {
  * drop the blur and stay translucent — text would cross text. It goes opaque
  * instead, which is what `--theme-surface-solid` exists for.
  */
+/* Older Android WebView without backdrop-filter: go fully opaque rather than
+   leaving posts readable through a 14% film. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .feed-chrome,
+  .feed-statusbar {
+    background: var(--theme-surface-solid);
+  }
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .feed-chrome,
   .feed-statusbar {
