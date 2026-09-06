@@ -5,7 +5,8 @@ import Script from "next/script";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Coins, Gem, Sparkles, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Coins, Gem, Sparkles, Loader2, ShieldCheck, Gift, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { COIN_PACKAGES, CoinPackage } from "@/lib/coins";
 import { CountryInfo, convertForDisplay, formatLocalAmount, getCountryInfo } from "@/lib/currency";
@@ -48,6 +49,15 @@ declare global {
 
 const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
+/* Accounts allowed to grant coins. The grant form itself still checks the
+   admin PIN server-side — this list only decides whether the "Grant Coins"
+   shortcut is even visible on the wallet page, so it is not a security
+   boundary, just a convenience + access control for the UI. */
+const ADMIN_EMAILS = new Set([
+  "mfonisobassey851@gmail.com",
+  "basseyaniekeme43@gmail.com",
+]);
+
 const TX_COLUMNS = "id,amount,description,transaction_type,created_at,reference";
 /* Rows fetched per round trip. Larger than the 4 shown initially so the first
    "Show more" is instant — the second page is already in memory. */
@@ -69,6 +79,7 @@ export default function PremiumPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [userId, setUserId] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [balance, setBalance] = useState(0);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
@@ -143,6 +154,9 @@ export default function PremiumPage() {
         return;
       }
       setUserId(session.user.id);
+
+      // Admin grant shortcut is only surfaced to the two allowed accounts.
+      setIsAdmin(Boolean(session.user.email && ADMIN_EMAILS.has(session.user.email.toLowerCase())));
 
       // Pricing is based on the country the user already gave us at signup
       // (profiles.country_code) — no IP guessing, no picker.
@@ -498,6 +512,34 @@ export default function PremiumPage() {
             onTransfer={() => setTransferOpen(true)}
           />
         </motion.section>
+
+        {/* Admin-only shortcut to grant coins. Hidden from everyone else. */}
+        {isAdmin && (
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="mt-6"
+          >
+            <Link href="/admin/grant-coins" className="block">
+              <GlassPanel strong interactive className="flex items-center gap-4 overflow-hidden rounded-3xl p-5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-black shadow-lg shadow-amber-500/20">
+                  <Gift size={22} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 text-sm font-black text-white">
+                    Grant Coins
+                    <ShieldCheck size={14} className="text-amber-300" />
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Admin only — credit Whisper Coins to any user by username.
+                  </p>
+                </div>
+                <ChevronRight size={20} className="shrink-0 text-gray-500" />
+              </GlassPanel>
+            </Link>
+          </motion.section>
+        )}
 
         <section className="mt-8">
           <h2 className="section-title mb-4 flex items-center gap-2"><Gem className="text-cyan-400" /> Buy Coins</h2>

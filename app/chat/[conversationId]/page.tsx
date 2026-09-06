@@ -29,7 +29,6 @@ import {
   pushRecentEmoji,
   pushRecentSticker,
   BUNDLED_STICKER_SIZE,
-  type GifResult,
   type StickerDef,
 } from "@/lib/chatMedia";
 import PaperPlaneFlight from "@/components/PaperPlaneFlight";
@@ -1238,10 +1237,6 @@ export default function ChatPage() {
     }
   );
 
-  const handlePickGif = useEventCallback((gif: GifResult) => {
-    void sendMediaMessage("gif", gif.url, gif.width, gif.height);
-  });
-
   const handlePickSticker = useEventCallback((sticker: StickerDef) => {
     void sendMediaMessage("sticker", sticker.url, BUNDLED_STICKER_SIZE, BUNDLED_STICKER_SIZE);
   });
@@ -1877,7 +1872,6 @@ export default function ChatPage() {
             onTabChange={setPickerTab}
             userId={myId}
             onPickEmoji={insertEmoji}
-            onPickGif={handlePickGif}
             onPickSticker={handlePickSticker}
             sendingMedia={mediaSending}
             showToast={showToast}

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The picker shell: Emoji · GIF · Stickers · Created, in one panel that sits
+ * The picker shell: Emoji · Stickers · Created, in one panel that sits
  * between the thread and the composer.
  *
  * WHY IT IS IN-FLOW RATHER THAN AN OVERLAY
@@ -18,25 +18,28 @@
  * where the frame is tall and the picker hangs from the composer like a
  * popover. Animated with a spring on max-height opacity via Framer Motion,
  * which is already in the bundle.
+ *
+ * NOTE: there is no GIF tab anymore. It was removed because the bundled
+ * GIF provider requires an API key (Tenor / Giphy) that this deployment has
+ * not configured. Existing GIF messages still render fine via MediaMessage;
+ * only the ability to *search and send new* GIFs is gone.
  */
 
 import { motion, AnimatePresence } from "framer-motion";
 import { lazy, Suspense } from "react";
-import { Smile, Clapperboard, Sticker as StickerIcon, Sparkles } from "lucide-react";
-import type { GifResult, StickerDef } from "@/lib/chatMedia";
+import { Smile, Sticker as StickerIcon, Sparkles } from "lucide-react";
+import type { StickerDef } from "@/lib/chatMedia";
 
-/* Each tab is its own chunk: the emoji JSON, the GIF grid and the sticker
+/* Each tab is its own chunk: the emoji JSON, the sticker grid and the sticker
    maker only download when their tab first renders. */
 const EmojiPanel = lazy(() => import("./EmojiPanel"));
-const GifPanel = lazy(() => import("./GifPanel"));
 const StickerPanel = lazy(() => import("./StickerPanel"));
 const MyStickersPanel = lazy(() => import("./MyStickersPanel"));
 
-export type MediaTab = "emoji" | "gif" | "stickers" | "created";
+export type MediaTab = "emoji" | "stickers" | "created";
 
 const TABS: { id: MediaTab; label: string; icon: typeof Smile }[] = [
   { id: "emoji", label: "Emoji", icon: Smile },
-  { id: "gif", label: "GIFs", icon: Clapperboard },
   { id: "stickers", label: "Stickers", icon: StickerIcon },
   { id: "created", label: "Created", icon: Sparkles },
 ];
@@ -47,7 +50,6 @@ export default function MediaPicker({
   onTabChange,
   userId,
   onPickEmoji,
-  onPickGif,
   onPickSticker,
   sendingMedia,
   showToast,
@@ -58,7 +60,6 @@ export default function MediaPicker({
   onTabChange: (tab: MediaTab) => void;
   userId: string;
   onPickEmoji: (emoji: string) => void;
-  onPickGif: (gif: GifResult) => void;
   onPickSticker: (sticker: StickerDef) => void;
   /** URL currently being sent, so grids can show a spinner on that item. */
   sendingMedia: string | null;
@@ -145,7 +146,6 @@ export default function MediaPicker({
                 }
               >
                 {tab === "emoji" && <EmojiPanel onPick={onPickEmoji} />}
-                {tab === "gif" && <GifPanel onPick={onPickGif} sending={sendingMedia} />}
                 {tab === "stickers" && (
                   <StickerPanel onPick={onPickSticker} sending={sendingMedia} />
                 )}
