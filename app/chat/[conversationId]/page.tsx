@@ -21,6 +21,17 @@ import useViewportFrame from "@/lib/useViewportFrame";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoicePlayer from "@/components/chat/VoicePlayer";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import MediaPicker, { type MediaTab } from "@/components/chat/MediaPicker";
+import MediaMessage from "@/components/chat/MediaMessage";
+import ChatPrivacyNotice from "@/components/chat/ChatPrivacyNotice";
+import { useMediaQuery } from "@/lib/useMediaQuery";
+import {
+  pushRecentEmoji,
+  pushRecentSticker,
+  BUNDLED_STICKER_SIZE,
+  type GifResult,
+  type StickerDef,
+} from "@/lib/chatMedia";
 import PaperPlaneFlight from "@/components/PaperPlaneFlight";
 import ExplodingInput from "@/components/ui/ExplodingInput";
 import type { VoiceRecording } from "@/lib/useVoiceRecorder";
@@ -30,6 +41,7 @@ import {
   CloudinaryUploadError,
   discardCloudinaryUpload,
   uploadToCloudinary,
+  uploadRemoteToCloudinary,
 } from "@/lib/cloudinary";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
@@ -60,6 +72,10 @@ type Message = {
   audio_viewed_at: string | null;
   delivered_at: string | null;
   read_at: string | null;
+  media_url: string | null;
+  media_kind: "gif" | "sticker" | null;
+  media_width: number | null;
+  media_height: number | null;
 };
 
 type Reaction = {
@@ -81,18 +97,6 @@ const PIN_DURATIONS: { label: string; hours: number | null }[] = [
   { label: "7 days", hours: 24 * 7 },
   { label: "30 days", hours: 24 * 30 },
   { label: "until I remove it", hours: null },
-];
-
-const EMOJI_PICKER = [
-  "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊",
-  "😍","🥰","😘","😗","😙","😚","😋","😛","😜","🤪","🤨","🧐",
-  "🤓","😎","🥳","😏","😒","😞","😔","😟","😕","🙁","😣","😖",
-  "😫","😩","🥺","😢","😭","😤","😠","😡","🤬","🤯","😳","🥵",
-  "😨","😰","😥","😓","🤗","🤔","🤭","🤫","🤥","😶","😐","😑",
-  "😬","🙄","😯","😦","😧","😮","😲","🥱","😴","🤤","😪","😵",
-  "👍","👎","👌","✌️","🤞","🤟","🤘","👊","✊","👏","🙌","🙏",
-  "💪","🔥","✨","🎉","💯","❤️","🧡","💛","💚","💙","💜","🖤",
-  "💔","💕","👻","💀","👀","🫶","🤝","💤","🌙","⭐","☀️","🌈",
 ];
 
 /* Push for a new message is sent by the database, not from here.
@@ -198,6 +202,11 @@ const MessageBubble = memo(function MessageBubbleBase({
      photo arm simply never got the same treatment. */
   const isPhotoMessage = Boolean(msg.image_path) || Boolean(msg.image_viewed_at);
   const isAudioMessage = Boolean(msg.audio_path) || Boolean(msg.audio_viewed_at);
+  /* GIFs and stickers ride on `media_url`/`media_kind` — ordinary rows with a
+     different renderer. A sticker drops the bubble entirely (the transparent
+     artwork is the message); a GIF keeps a clipped frame inside the bubble. */
+  const isStickerMessage = Boolean(msg.media_url) && msg.media_kind === "sticker";
+  const isGifMessage = Boolean(msg.media_url) && msg.media_kind === "gif";
   /* `is_view_once` is still required so a plain photo attachment can never be
      mislabelled as one-time; `image_viewed_at` is accepted alongside it purely as a
      fallback for a spent row whose flag has been cleared. */
@@ -252,15 +261,49 @@ const MessageBubble = memo(function MessageBubbleBase({
           onTouchStart={() => !isPhotoMessage && startPress(msg.id)}
           onTouchEnd={cancelPress}
         >
+          {isStickerMessage ? (
+            /* No bubble: transparency is the point. The timestamp gets its own
+               floating chip so it stays legible over the wallpaper. */
+            <div
+              className={`flex flex-col select-none ${isMe ? "items-end" : "items-start"} ${
+                isHighlighted ? "chat-bubble-flash rounded-2xl" : ""
+              }`}
+            >
+              {repliedMsg && (
+                <button
+                  type="button"
+                  onClick={() => onJumpToQuote(repliedMsg.id)}
+                  className="chat-quote mb-1 block max-w-[200px] truncate rounded-sm py-1 pl-2 pr-2 text-left text-xs"
+                >
+                  {messagePreviewText(repliedMsg)}
+                </button>
+              )}
+              <MediaMessage
+                url={msg.media_url!}
+                kind="sticker"
+                width={msg.media_width}
+                height={msg.media_height}
+              />
+              {msg.content && (
+                <div className={`chat-bubble ${isMe ? "chat-bubble-out" : ""} mt-1 rounded-2xl px-3 py-1.5`}>
+                  <p className="chat-text text-sm">{msg.content}</p>
+                </div>
+              )}
+              <div className="chat-day-chip mt-1 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] leading-none">
+                {bubbleTime(msg.created_at)}
+                {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+              </div>
+            </div>
+          ) : (
           <div
             className={`chat-bubble ${isMe ? "chat-bubble-out" : ""} ${
               isHighlighted ? "chat-bubble-flash" : ""
-            } rounded-2xl px-3 py-2 select-none ${tailCorner} ${
+            } rounded-2xl select-none ${isGifMessage ? "overflow-hidden p-1" : "px-3 py-2"} ${tailCorner} ${
               isPinned ? "ring-1 ring-yellow-400/50" : ""
             } ${isActiveHit ? "ring-2 ring-cyan-300" : isSearchHit ? "ring-1 ring-cyan-400/40" : ""}`}
           >
             {isPinned && (
-              <div className="mb-1 flex items-center gap-1 text-[10px]" style={{ color: "var(--theme-warning)" }}>
+              <div className={`mb-1 flex items-center gap-1 text-[10px] ${isGifMessage ? "px-2 pt-1" : ""}`} style={{ color: "var(--theme-warning)" }}>
                 <Pin size={10} /> Pinned
               </div>
             )}
@@ -274,7 +317,23 @@ const MessageBubble = memo(function MessageBubbleBase({
               </button>
             )}
 
-            {isMediaMessage ? (
+            {isGifMessage ? (
+              <div>
+                <MediaMessage
+                  url={msg.media_url!}
+                  kind="gif"
+                  width={msg.media_width}
+                  height={msg.media_height}
+                />
+                {msg.content && (
+                  <p className="chat-text px-2 pt-1 text-sm">{msg.content}</p>
+                )}
+                <div className="chat-meta flex items-center justify-end gap-1 px-2 py-1 text-[10px] leading-none">
+                  {bubbleTime(msg.created_at)}
+                  {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+                </div>
+              </div>
+            ) : isMediaMessage ? (
               <div>
                 {isAudioMessage ? (
                   <VoicePlayer
@@ -369,6 +428,7 @@ const MessageBubble = memo(function MessageBubbleBase({
               </div>
             )}
           </div>
+          )}
         </motion.div>
 
         {Object.keys(msgReactions).length > 0 && (
@@ -448,8 +508,16 @@ export default function ChatPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeHit, setActiveHit] = useState(0);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  /* One state pair drives the whole media picker: open/closed plus which tab.
+     Tapping the composer's smile button toggles it; tapping the input closes
+     it (the keyboard takes its place); tapping the active button again closes
+     it. `mediaSending` holds the URL of the sticker/GIF mid-flight so the grid
+     can pin a spinner on exactly that item. */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTab, setPickerTab] = useState<MediaTab>("emoji");
+  const [mediaSending, setMediaSending] = useState<string | null>(null);
   const [showAttachSheet, setShowAttachSheet] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   const [atBottom, setAtBottom] = useState(true);
   const [unseenCount, setUnseenCount] = useState(0);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -939,17 +1007,131 @@ export default function ChatPage() {
     setActiveHit(0);
   }
 
-  function insertEmoji(emoji: string) {
+  const insertEmoji = useCallback((emoji: string) => {
     setInput((current) => current + emoji);
-    textareaRef.current?.focus();
-  }
+    pushRecentEmoji(emoji);
+    /* Desktop keeps the caret live so typing continues seamlessly. On touch,
+       focusing would summon the OS keyboard and shove the picker away — the
+       WhatsApp behaviour is picker-stays-open, so no focus there. */
+    if (window.matchMedia("(pointer: fine)").matches) textareaRef.current?.focus();
+  }, []);
+
+  /* Same button while the picker is open on that tab → close. Anything else →
+     open on (or switch to) that tab. An event callback so it can read both
+     states without being re-created per render. */
+  const togglePicker = useEventCallback((tab: MediaTab) => {
+    if (loading) return;
+    if (!chatUnlocked) {
+      showToast(isFriendConversation
+        ? "You need 40 coins to unlock this conversation."
+        : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+      return;
+    }
+    setShowAttachSheet(false);
+    if (pickerOpen && pickerTab === tab) {
+      setPickerOpen(false);
+      return;
+    }
+    setPickerTab(tab);
+    setPickerOpen(true);
+    /* Opening the picker while the keyboard is up: blur so the keyboard
+       leaves and the picker takes its space instead of stacking above it. */
+    if (!isDesktop) textareaRef.current?.blur();
+  });
+
+  const closePicker = useCallback(() => setPickerOpen(false), []);
+
+  /* Opening or closing the picker resizes the thread the same way the
+     keyboard does; keep the newest message pinned through it. The picker's
+     spring runs ~300ms, so re-pin a few times across it. */
+  useEffect(() => {
+    if (!atBottomRef.current) return;
+    const timers = [0, 90, 200, 340].map((ms) => setTimeout(pinToBottom, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [pickerOpen, pinToBottom]);
+
+  /**
+   * Sends a sticker or GIF as an ordinary direct message with `media_url` +
+   * `media_kind` set. GIFs are re-hosted into Cloudinary first, so the stored
+   * URL is ours (small rendition + `q_auto:low` delivery keeps them tens of
+   * KB); if the re-host fails the provider URL is sent as a fallback — the
+   * DB constraint allows exactly those hosts. Bundled stickers send their
+   * same-origin path; created stickers are already Cloudinary URLs.
+   */
+  const sendMediaMessage = useEventCallback(
+    async (kind: "gif" | "sticker", url: string, width: number | null, height: number | null) => {
+      if (!myId) return;
+      if (!chatUnlocked) {
+        showToast(isFriendConversation
+          ? "You need 40 coins to unlock this conversation."
+          : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
+        return;
+      }
+      if (!requireOnline(showToast, "Sending")) return;
+      if (mediaSending) return;
+
+      setMediaSending(url);
+      try {
+        let finalUrl = url;
+        if (kind === "gif") {
+          try {
+            const hosted = await uploadRemoteToCloudinary(
+              url,
+              `${CLOUDINARY_FOLDERS.chatGifs}/${myId}`
+            );
+            finalUrl = hosted.url;
+            if (hosted.width && hosted.height) {
+              width = hosted.width;
+              height = hosted.height;
+            }
+          } catch {
+            /* Provider URL is on the DB allowlist; a failed re-host should
+               not eat the send. */
+          }
+        }
+
+        const replyId = replyingTo?.id || null;
+        const { error } = await supabase.from("direct_messages").insert({
+          conversation_id: conversationId,
+          sender_id: myId,
+          content: null,
+          reply_to_id: replyId,
+          media_url: finalUrl,
+          media_kind: kind,
+          media_width: width,
+          media_height: height,
+        });
+        if (error) {
+          showToast(error.message);
+          return;
+        }
+
+        if (kind === "sticker") pushRecentSticker(url);
+        setReplyingTo(null);
+
+        await supabase.from("conversations").update({
+          last_message_at: new Date().toISOString(),
+          last_message_sender_id: myId,
+        }).eq("id", conversationId);
+      } finally {
+        setMediaSending(null);
+      }
+    }
+  );
+
+  const handlePickGif = useEventCallback((gif: GifResult) => {
+    void sendMediaMessage("gif", gif.url, gif.width, gif.height);
+  });
+
+  const handlePickSticker = useEventCallback((sticker: StickerDef) => {
+    void sendMediaMessage("sticker", sticker.url, BUNDLED_STICKER_SIZE, BUNDLED_STICKER_SIZE);
+  });
 
   useEffect(() => {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
   }, [pendingPhoto]);
 
   async function sendMessage() {
-    setShowEmojiPicker(false);
     setShowAttachSheet(false);
     if (pendingPhoto) { await sendPendingPhoto(); return; }
     const hasMessage = input.trim().length > 0;
@@ -1446,6 +1628,9 @@ export default function ChatPage() {
         <div ref={messagesContainerRef} className="frame-scroll relative flex-1">
           <div ref={messagesContentRef} className="relative min-h-full px-3 py-4 md:px-6">
             <ChatDoodleBackground />
+            {/* The WhatsApp-style trust chip, worded for what Whisper actually
+                does (TLS + RLS, not E2EE) — see the component for the audit. */}
+            {!loading && <ChatPrivacyNotice />}
             {composerLocked && (
               <div className="chat-bubble rounded-3xl p-6 text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "color-mix(in srgb, var(--theme-accent-purple) 16%, transparent)", color: "var(--theme-accent-purple)" }}>
@@ -1563,22 +1748,22 @@ export default function ChatPage() {
           </div>
         )}
 
-        {showEmojiPicker && (
-          <div className="chat-chrome flex-shrink-0 border-t px-3 py-2">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="chat-meta text-[11px] font-semibold uppercase tracking-wide">Emoji</span>
-              <button type="button" onClick={() => setShowEmojiPicker(false)} className="chat-icon flex h-7 w-7 items-center justify-center rounded-full" aria-label="Close emoji picker">
-                <X size={14} />
-              </button>
-            </div>
-            <div className="grid max-h-40 grid-cols-9 gap-1 overflow-y-auto">
-              {EMOJI_PICKER.map((emoji, index) => (
-                <button key={`${emoji}-${index}`} type="button" onClick={() => insertEmoji(emoji)} className="chat-icon flex h-9 items-center justify-center rounded-lg text-xl transition">
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* The media picker sits in the flex column between the thread and the
+            composer, so opening it shrinks the thread exactly as the keyboard
+            does — the composer never moves and nothing overlaps. */}
+        {myId && chatUnlocked && (
+          <MediaPicker
+            open={pickerOpen}
+            tab={pickerTab}
+            onTabChange={setPickerTab}
+            userId={myId}
+            onPickEmoji={insertEmoji}
+            onPickGif={handlePickGif}
+            onPickSticker={handlePickSticker}
+            sendingMedia={mediaSending}
+            showToast={showToast}
+            isDesktop={isDesktop}
+          />
         )}
 
         {showAttachSheet && (
@@ -1608,8 +1793,15 @@ export default function ChatPage() {
           <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected} />
           <div className="relative flex items-end gap-2">
             <div className="chat-field flex min-w-0 flex-1 items-end gap-0.5 rounded-[26px] p-1">
-              <button type="button" onClick={() => { setShowEmojiPicker((open) => !open); setShowAttachSheet(false); }} className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition" aria-label="Emoji" aria-expanded={showEmojiPicker}>
-                <Smile size={21} />
+              <button
+                type="button"
+                onClick={() => togglePicker(pickerOpen ? pickerTab : "emoji")}
+                className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition"
+                aria-label={pickerOpen ? "Close emoji and sticker picker" : "Open emoji and sticker picker"}
+                aria-expanded={pickerOpen}
+                style={pickerOpen ? { color: "var(--theme-accent-purple)" } : undefined}
+              >
+                {pickerOpen ? <X size={21} /> : <Smile size={21} />}
               </button>
               {/* The wrapper takes over the flex sizing so the composer still
                   grows exactly as it did; the textarea just fills it. The cubes
@@ -1622,16 +1814,22 @@ export default function ChatPage() {
                   {...PROSE_INPUT_PROPS}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  /* Tapping the input hands the space back to the OS keyboard:
+                     the picker row unmounts as the keyboard arrives, so the
+                     two never stack. Desktop pointers skip this — there is no
+                     keyboard to make room for, and WhatsApp Web keeps its
+                     panel open while you type. */
+                  onFocus={() => { if (!isDesktop) closePicker(); }}
                   placeholder={pendingPhoto ? "Add a caption (optional)..." : composerLocked ? "Unlock chat to send messages" : "Message"}
                   disabled={loading || !chatUnlocked}
                   rows={1}
                   className="max-h-32 w-full min-w-0 resize-none overflow-y-auto bg-transparent px-1 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </ExplodingInput>
-              <button type="button" onClick={() => { setShowAttachSheet((open) => !open); setShowEmojiPicker(false); }} disabled={uploadingPhoto} title={`Attach an image (${SEND_IMAGE_COST} coins)`} aria-label="Attach" className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60" aria-expanded={showAttachSheet}>
+              <button type="button" onClick={() => { setShowAttachSheet((open) => !open); closePicker(); }} disabled={uploadingPhoto} title={`Attach an image (${SEND_IMAGE_COST} coins)`} aria-label="Attach" className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60" aria-expanded={showAttachSheet}>
                 <Paperclip size={20} />
               </button>
-              <button type="button" onClick={() => { setShowEmojiPicker(false); setShowAttachSheet(false); triggerCameraPicker(); }} disabled={uploadingPhoto} title={`Take a photo (${SEND_IMAGE_COST} coins)`} aria-label="Camera" className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60">
+              <button type="button" onClick={() => { closePicker(); setShowAttachSheet(false); triggerCameraPicker(); }} disabled={uploadingPhoto} title={`Take a photo (${SEND_IMAGE_COST} coins)`} aria-label="Camera" className="chat-icon mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-60">
                 <Camera size={20} />
               </button>
             </div>

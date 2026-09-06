@@ -31,6 +31,10 @@ export const CLOUDINARY_FOLDERS = {
   messageImages: "whisper/message-images",
   feedPhotos: "whisper/feed-photos",
   viewOnce: "whisper/view-once",
+  /** User-created stickers. Owner id is the last folder segment, as always. */
+  stickers: "whisper/stickers",
+  /** GIFs re-hosted from the GIF provider at send time. */
+  chatGifs: "whisper/chat-gifs",
 } as const;
 
 export type CloudinaryFolderKind =
@@ -106,6 +110,69 @@ export async function uploadToCloudinary(
     height: Number(payload.height ?? 0),
     bytes: Number(payload.bytes ?? 0),
   };
+}
+
+/**
+ * Re-hosts a remote image (in practice: a GIF picked from the GIF provider)
+ * into our cloud.
+ *
+ * Cloudinary's upload endpoint accepts an https URL as the `file` value and
+ * fetches it server-side, so the bytes go provider → Cloudinary directly; the
+ * phone uploads a form field, not a file. This is what keeps chat GIFs on our
+ * own storage (one host to allowlist, one place to delete from) instead of
+ * hot-linking a third-party CDN forever.
+ *
+ * The caller passes the provider's *small* rendition (Tenor "tinygif" /
+ * GIPHY "fixed_height_small"), so what lands in Cloudinary is already low-KB;
+ * `chatGifDisplayUrl` below squeezes it further at delivery time.
+ */
+export async function uploadRemoteToCloudinary(
+  remoteUrl: string,
+  folder: string
+): Promise<CloudinaryUpload> {
+  const form = new FormData();
+  form.append("file", remoteUrl);
+  form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  if (folder) form.append("folder", folder);
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+      { method: "POST", body: form }
+    );
+  } catch {
+    throw new CloudinaryUploadError("Couldn't reach the image server. Check your connection.");
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.secure_url) {
+    const detail =
+      typeof payload?.error?.message === "string" ? payload.error.message : null;
+    throw new CloudinaryUploadError(detail || "Couldn't save that GIF. Please try again.");
+  }
+
+  return {
+    url: payload.secure_url as string,
+    publicId: payload.public_id as string,
+    format: String(payload.format ?? ""),
+    width: Number(payload.width ?? 0),
+    height: Number(payload.height ?? 0),
+    bytes: Number(payload.bytes ?? 0),
+  };
+}
+
+/**
+ * Delivery URL for a chat GIF, with the transformations that keep it cheap:
+ * `f_auto` lets Cloudinary serve animated WebP/AVIF to browsers that take it
+ * (a fraction of GIF's size for the same frames), `q_auto:low` because chat
+ * GIFs are reaction media viewed at bubble size, and a width cap so a large
+ * original can never ship megabytes into a thread. No-op for non-Cloudinary
+ * URLs, so provider-hosted fallbacks render untouched.
+ */
+export function chatGifDisplayUrl(value: string): string {
+  if (!isCloudinaryUrl(value)) return value;
+  return value.replace("/image/upload/", "/image/upload/f_auto,q_auto:low,w_480,c_limit/");
 }
 
 /**
