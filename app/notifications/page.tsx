@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
+import { refreshUnreadWhispers } from "@/lib/nav/navBadges";
 import ShareMessageCard from "@/components/ShareMessageCard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import GlassPanel from "@/components/GlassPanel";
@@ -255,7 +256,12 @@ export default function NotificationsPage() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === item.id ? { ...n, is_read: false } : n))
       );
+      return;
     }
+
+    /* Keep the bottom-nav unread dot in step with what the user has actually
+       seen: the dot is a count of unread rows, and this page just read one. */
+    void refreshUnreadWhispers();
   }
 
   async function downloadImage(url: string, id: string) {
@@ -319,6 +325,8 @@ export default function NotificationsPage() {
 
     if (!failed) {
       setNotifications((prev) => prev.filter((n) => n.id !== item.id));
+      /* A deleted unread whisper is no longer something to be read. */
+      void refreshUnreadWhispers();
     }
   }
 

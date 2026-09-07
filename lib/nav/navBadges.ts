@@ -87,13 +87,35 @@ function patch(next: Partial<NavBadges>) {
 // ---------------------------------------------------------------------------
 
 async function loadWhispers(uid: string) {
-  const { count } = await supabase
+  /* Explicit `id` rather than `*`: 202609070001 revokes the sender_* hint
+     columns from browser roles. Reads on a table with column-level privileges
+     must name the columns they are allowed to see — a bare `SELECT *` is
+     rejected outright (or, when PostgREST prunes it, depends on whatever the
+     grant set happens to be). When this errored, the old code patched the
+     badge to 0 and wiped an unread dot the user hadn't seen yet. */
+  const { count, error } = await supabase
     .from("messages")
-    .select("*", { count: "exact", head: true })
+    .select("id", { count: "exact", head: true })
     .eq("recipient_id", uid)
     .eq("is_read", false);
 
+  /* A failed recount leaves the current badge alone. Zeroing it on a network
+     error (or a revoked-column reject) clears a dot that is still correct. */
+  if (error) return;
   if (uid === userId) patch({ whispers: count || 0 });
+}
+
+/**
+ * Recount the unread-whispers badge after the user reads or deletes whispers.
+ *
+ * The realtime INSERT handler makes the dot appear; nothing told the store when
+ * messages were actually consumed, so a read badge lingered until the next
+ * app foreground. Screens that mark whispers read call this instead of mutating
+ * a count they cannot see — the database is the source of truth.
+ */
+export async function refreshUnreadWhispers() {
+  if (!userId) return;
+  await loadWhispers(userId);
 }
 
 async function loadFeed(uid: string) {
@@ -188,8 +210,13 @@ async function arm(uid: string) {
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "messages", filter: `recipient_id=eq.${uid}` },
       () => {
-        patch({ whispers: state.whispers + 1 });
         playNotificationSound();
+        /* Recount rather than blind `+1`: a blind increment double-counts when
+           the row also lands in the initial read (count and subscribe race),
+           and misses one when the count resolves after the insert. The recount
+           is one indexed head-count against a single user's rows — the same
+           shape the chats and feed badges already use. */
+        void loadWhispers(uid);
       }
     )
     .on(
@@ -202,7 +229,12 @@ async function arm(uid: string) {
       },
       () => void loadFeed(uid)
     )
-    .subscribe();
+    .subscribe((status) => {
+      /* Realtime isn't replayed: an INSERT that lands between the initial count
+         and the channel actually joining is otherwise lost forever. Recount
+         once the subscription is live to close that gap. */
+      if (status === "SUBSCRIBED") void loadWhispers(uid);
+    });
 
   /* Two filtered handlers, not one unfiltered subscription.
    *

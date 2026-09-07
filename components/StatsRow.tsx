@@ -63,28 +63,33 @@ export default function StatsRow() {
     todayStart.setHours(0, 0, 0, 0);
 
     const [
-      { count: totalMsgCount },
-      { count: weekMsgCount },
-      { count: totalViewCount },
-      { count: todayViewCount },
+      totalMsg,
+      weekMsg,
+      totalView,
+      todayView,
       feedPosts,
     ] = await Promise.all([
+      /* Counts select a single granted column, not `*`: 202609070001 revokes
+         the sender_* hint columns on messages from browser roles, and reads on
+         a column-privileged table must name their columns — a bare `SELECT *`
+         is rejected outright (or, when PostgREST prunes it, silently depends on
+         the grant set). This count only needs `id`. */
       supabase
         .from("messages")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("recipient_id", uid),
       supabase
         .from("messages")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("recipient_id", uid)
         .gte("created_at", weekAgo.toISOString()),
       supabase
         .from("profile_views")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("profile_id", uid),
       supabase
         .from("profile_views")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("profile_id", uid)
         .gte("created_at", todayStart.toISOString()),
       /*
@@ -113,23 +118,36 @@ export default function StatsRow() {
     if (!alive.current) return;
 
     /* A missing table or column resolves with `data: null` and an error rather
-       than throwing, so both degrade to zero instead of blanking the tiles. */
-    const rows = (feedPosts.data ?? []) as { id: string; view_count: number | null; expires_at: string }[];
-    const now = Date.now();
+       than throwing, so both degrade gracefully. Rather than blanking tiles on
+       a transient failure (which makes a working number read as zero), each
+       figure is only overwritten when its own query answered; the previous
+       value stands in until the next poll. */
+    const feedRows = (feedPosts.data ?? []) as {
+      id: string;
+      view_count: number | null;
+      expires_at: string;
+    }[];
 
     // Seed the per-post absolute view counts for realtime updates.
     const byId = postViewsById.current;
     byId.clear();
-    for (const row of rows) byId.set(row.id, row.view_count ?? 0);
+    for (const row of feedRows) byId.set(row.id, row.view_count ?? 0);
 
-    setStats({
-      totalMessages: totalMsgCount || 0,
-      messagesThisWeek: weekMsgCount || 0,
-      totalViews: totalViewCount || 0,
-      viewsToday: todayViewCount || 0,
-      postViews: rows.reduce((sum, row) => sum + (row.view_count ?? 0), 0),
-      livePosts: rows.filter((row) => new Date(row.expires_at).getTime() > now).length,
-    });
+    const feedTotal = feedPosts.error
+      ? null
+      : feedRows.reduce((sum, row) => sum + (row.view_count ?? 0), 0);
+    const now = Date.now();
+
+    setStats((current) => ({
+      totalMessages: totalMsg.error ? current.totalMessages : totalMsg.count || 0,
+      messagesThisWeek: weekMsg.error ? current.messagesThisWeek : weekMsg.count || 0,
+      totalViews: totalView.error ? current.totalViews : totalView.count || 0,
+      viewsToday: todayView.error ? current.viewsToday : todayView.count || 0,
+      postViews: feedTotal ?? current.postViews,
+      livePosts: feedPosts.error
+        ? current.livePosts
+        : feedRows.filter((row) => new Date(row.expires_at).getTime() > now).length,
+    }));
     setLoading(false);
   }, []);
 
@@ -185,6 +203,34 @@ export default function StatsRow() {
       void supabase.removeChannel(channel);
     };
   }, [userId]);
+
+  /* Realtime whispers: the instant a new anonymous message lands, the lifetime
+     and this-week totals must move — waiting up to the next 4s poll makes a
+     received whisper read as "not counted yet". Reusing `load` keeps the tile
+     in sync with the row that just appeared. */
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`stats-whispers-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `recipient_id=eq.${userId}`,
+        },
+        () => {
+          void load(userId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId, load]);
 
   useEffect(() => {
     if (!userId) return;

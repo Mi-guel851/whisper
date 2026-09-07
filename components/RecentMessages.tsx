@@ -33,37 +33,52 @@ export default function RecentMessages() {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let cancelled = false;
 
+    async function fetchLatest(uid: string) {
+      /* Explicit columns, not `*`: 202609070001 revokes the sender_* hint
+         columns from browser roles, and reads on a column-privileged table must
+         name their columns — a bare `SELECT *` is rejected outright (or, when
+         PostgREST prunes it, depends on whatever the grant set happens to be).
+         `*` used to leave this card silently empty ("No whispers yet") for
+         accounts with real messages. */
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id, message, image_url, created_at, is_read")
+        .eq("recipient_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      if (cancelled) return;
+      if (error) {
+        console.warn("Failed to load recent whispers:", error.message);
+        return;
+      }
+
+      setMessages(data || []);
+      setLoading(false);
+    }
+
     async function load() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session) {
+      if (!session || cancelled) {
         setLoading(false);
         return;
       }
 
-      const { data } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("recipient_id", session.user.id)
-        .order("created_at", { ascending: false })
-        .limit(3);
-
-      if (!cancelled) {
-        setMessages(data || []);
-        setLoading(false);
-      }
+      const uid = session.user.id;
+      await fetchLatest(uid);
 
       channel = supabase
-        .channel(`recent-messages-${session.user.id}-${Date.now()}`)
+        .channel(`recent-messages-${uid}-${Date.now()}`)
         .on(
           "postgres_changes",
           {
             event: "INSERT",
             schema: "public",
             table: "messages",
-            filter: `recipient_id=eq.${session.user.id}`,
+            filter: `recipient_id=eq.${uid}`,
           },
           (payload) => {
             const incoming = payload.new as RecentMessage;
@@ -75,10 +90,16 @@ export default function RecentMessages() {
             });
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          /* Realtime isn't replayed: a whisper that lands between the initial
+             read above and the channel actually joining is otherwise invisible
+             to this card until the user leaves and comes back. Refetch once
+             the subscription is live to close that gap. */
+          if (status === "SUBSCRIBED") void fetchLatest(uid);
+        });
     }
 
-    load();
+    void load();
 
     return () => {
       cancelled = true;

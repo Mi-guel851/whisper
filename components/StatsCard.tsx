@@ -39,20 +39,20 @@ export default function StatsRow() {
       ] = await Promise.all([
         supabase
           .from("messages")
-          .select("*", { count: "exact", head: true })
+          .select("id", { count: "exact", head: true })
           .eq("recipient_id", uid),
         supabase
           .from("messages")
-          .select("*", { count: "exact", head: true })
+          .select("id", { count: "exact", head: true })
           .eq("recipient_id", uid)
           .gte("created_at", weekAgo.toISOString()),
         supabase
           .from("profile_views")
-          .select("*", { count: "exact", head: true })
+          .select("id", { count: "exact", head: true })
           .eq("profile_id", uid),
         supabase
           .from("profile_views")
-          .select("*", { count: "exact", head: true })
+          .select("id", { count: "exact", head: true })
           .eq("profile_id", uid)
           .gte("created_at", todayStart.toISOString()),
       ]);

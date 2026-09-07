@@ -23,7 +23,7 @@ export default function AnalyticsCard() {
 
       const { count } = await supabase
         .from("messages")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("recipient_id", session.user.id);
 
       setStats({ messages: count || 0 });
