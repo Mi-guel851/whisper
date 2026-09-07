@@ -2158,6 +2158,38 @@ html.viewport-locked body {
   border-color: var(--theme-surface);
 }
 
+/* Long-press menu on a chat row (Pin / Mark as read). The held row stays
+   selected while its menu is open, mirroring WhatsApp's darker row state. The
+   active/hover variants live here rather than as Tailwind classes for the same
+   theme-bridge reason as `.chat-row:active` above. */
+.chat-row-selected {
+  background: var(--fill-2);
+}
+
+/* The dot on a conversation deliberately marked unread with no unread-message
+   count behind it (WhatsApp's "mark as unread" state): a solid circle rather
+   than a numbered pill. */
+.chat-row-dot-unread {
+  width: 10px;
+  min-width: 10px;
+  height: 10px;
+  padding: 0;
+}
+
+.chat-menu-item {
+  color: var(--theme-text-primary, #fff);
+  transition: background-color var(--dur-instant) var(--ease-out-quint);
+  -webkit-tap-highlight-color: transparent;
+}
+.chat-menu-item:active {
+  background: var(--fill-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .chat-menu-item:hover {
+    background: var(--fill-1);
+  }
+}
+
 @keyframes blobDrift {
   0%, 100% { translate: 0 0;        scale: 1;    }
   33%      { translate: 3% -4%;     scale: 1.06; }

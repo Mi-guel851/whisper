@@ -1481,9 +1481,39 @@ export default function ChatPage() {
 
   async function deleteMessage(msg: Message) {
     setDeleteConfirm(null);
-    const { error } = await supabase.from("direct_messages").delete().eq("id", msg.id).eq("sender_id", myId);
-    if (error) showToast("Couldn't delete message.");
-    else setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+
+    /* Server-side delete: the route purges any unopened view-once photo
+       (Cloudinary) and any unplayed voice note (storage) AND removes the row in
+       one authorized call. A client-only row delete used to leave the media
+       orphaned in Cloudinary / the voice bucket forever. */
+    const { data: { session } } = await supabase.auth.getSession();
+    const optimistic = () => setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    optimistic();
+
+    if (!session) {
+      showToast("Couldn't delete message.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/chat/delete-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ messageId: msg.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Couldn't delete message.");
+        /* The realtime delete event would have removed the row too; on failure
+           best effort is leaving local state as the server still has it, but
+           the row is already gone locally for responsiveness. */
+      }
+    } catch {
+      showToast("Couldn't delete message.");
+    }
   }
 
   const togglePin = useEventCallback(async (msg: Message) => {

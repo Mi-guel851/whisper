@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { BarChart3, Info, Megaphone, Wrench, Check } from "lucide-react";
@@ -10,6 +10,7 @@ import { useAnnouncements, type Announcement } from "@/lib/announcements";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import { spring, tween } from "@/lib/motion";
 import { assistantHiddenOn } from "@/lib/ai/pageContext";
+import { whenIntroSettled } from "@/lib/introPrompts";
 
 /**
  * The announcement popup.
@@ -44,11 +45,20 @@ export default function AnnouncementPrompt() {
   const reduced = useSafeReducedMotion();
   const { current, voting, dismiss, vote } = useAnnouncements();
   const [error, setError] = useState<string | null>(null);
+  /* Wait for the follow-socials intro beat to finish before revealing an
+     announcement, so the two login-time popups never stack — the social prompt
+     goes first, then this. `whenIntroSettled` resolves immediately if there is
+     no social prompt (no links configured / cooldown / not eligible). */
+  const [introDone, setIntroDone] = useState(false);
+  useEffect(
+    () => whenIntroSettled(() => queueMicrotask(() => setIntroDone(true))),
+    []
+  );
 
   /* The assistant's route list, reused rather than duplicated: the set of pages
      where an uninvited dialog is unwelcome is the same set. */
   if (assistantHiddenOn(pathname)) return null;
-  if (!current) return null;
+  if (!current || !introDone) return null;
 
   const meta = KIND_META[current.kind] ?? KIND_META.info;
   const Icon = meta.icon;
@@ -186,27 +196,35 @@ function AnnouncementBody({
           </p>
         )}
 
-        {/* One button for both cases on purpose. `onCta` is what decides between
-            a client-side navigation and a new tab, so the markup does not have
-            to — and an <a> styled as a button would still fire a full page load
-            for an internal route. */}
-        {announcement.cta_label && announcement.cta_href && (
+        {/* The acknowledge row lives in its own button container. An
+            announcement always has an acknowledgement action — "Got it" for an
+            informational post, or the CTA plus a dismiss for one with a button —
+            and the dismiss is a real, coloured, tappable button rather than a
+            bare text link so the single thing the user taps to acknowledge a
+            announcement reads as a button. */}
+        <div className="mt-6 flex flex-col gap-2">
+          {/* One button for both CTA cases on purpose. `onCta` is what decides
+              between a client-side navigation and a new tab, so the markup does
+              not have to — and an <a> styled as a button would still fire a full
+              page load for an internal route. */}
+          {announcement.cta_label && announcement.cta_href && (
+            <button
+              type="button"
+              onClick={onCta}
+              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-500 py-3.5 font-bold text-white shadow-lg shadow-fuchsia-500/20 transition active:scale-[0.98] hover:opacity-95"
+            >
+              {announcement.cta_label}
+            </button>
+          )}
+
           <button
             type="button"
-            onClick={onCta}
-            className="mt-6 w-full rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-500 py-3.5 font-bold text-white transition hover:opacity-90"
+            onClick={onDismiss}
+            className="w-full rounded-2xl border border-white/15 bg-white/[0.07] py-3 text-[13.5px] font-bold text-white transition active:scale-[0.98] hover:bg-white/[0.12]"
           >
-            {announcement.cta_label}
+            {announcement.cta_label ? "Maybe later" : "OK"}
           </button>
-        )}
-
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="mt-3 w-full py-2 text-[12.5px] font-semibold theme-text-subtle transition hover:opacity-80"
-        >
-          {announcement.cta_label ? "Maybe later" : "Got it"}
-        </button>
+        </div>
       </motion.div>
     </div>
   );

@@ -8,7 +8,6 @@ import ShareMessageCard from "@/components/ShareMessageCard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import GlassPanel from "@/components/GlassPanel";
 import { HINT_UNLOCK_COST } from "@/lib/coins";
-import { discardCloudinaryUpload, isCloudinaryUrl } from "@/lib/cloudinary";
 import { useToast } from "@/components/ToastProvider";
 import { Heart, Download, Trash2, Lightbulb, LockKeyhole, Loader2, ChevronDown } from "lucide-react";
 
@@ -277,60 +276,50 @@ export default function NotificationsPage() {
     }
   }
 
-  /**
-   * The storage key inside a legacy Supabase `message-images` URL.
-   *
-   * Only whispers received before the Cloudinary migration have one — newer rows
-   * hold a Cloudinary URL, which is deleted through `/api/cloudinary/destroy`
-   * instead. Returns null for those, and for anything else it cannot parse.
-   */
-  function extractStoragePath(imageUrl: string): string | null {
-    const marker = "/message-images/";
-    const idx = imageUrl.indexOf(marker);
-    if (idx === -1) return null;
-    return imageUrl.slice(idx + marker.length);
-  }
-
   async function confirmDelete() {
     if (!pendingDelete) return;
     const item = pendingDelete;
 
     setDeleting(item.id);
 
-    if (item.image_url) {
-      if (isCloudinaryUrl(item.image_url)) {
-        /* The photo sits in `whisper/message-images/<recipient-id>/…`, and the
-           recipient is the person reading this page — so the destroy route's
-           folder check passes for exactly the whispers they are allowed to
-           delete. Deleting needs the API secret, hence the round trip. */
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        await discardCloudinaryUpload(item.image_url, session?.access_token);
-      } else {
-        const path = extractStoragePath(item.image_url);
-        if (path) {
-          const { error: storageError } = await supabase.storage
-            .from("message-images")
-            .remove([path]);
-          if (storageError) {
-            console.error("Failed to remove image from storage:", storageError.message);
-          }
-        }
-      }
-    }
+    /* Complete delete on the server: the route destroys the Cloudinary image
+       (or the legacy bucket object) AND removes the database row in one
+       authorized call, so a failure in one half can't leave an orphaned asset
+       or a row pointing at nothing. */
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-    const { error } = await supabase.from("messages").delete().eq("id", item.id);
+    let failed = false;
+    if (session) {
+      try {
+        const res = await fetch("/api/messages/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ messageId: item.id }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.error("Couldn't delete message:", data.error);
+          failed = true;
+        }
+      } catch (err) {
+        console.error("Couldn't delete message:", err);
+        failed = true;
+      }
+    } else {
+      failed = true;
+    }
 
     setDeleting(null);
     setPendingDelete(null);
 
-    if (error) {
-      console.error("Couldn't delete message:", error.message);
-      return;
+    if (!failed) {
+      setNotifications((prev) => prev.filter((n) => n.id !== item.id));
     }
-
-    setNotifications((prev) => prev.filter((n) => n.id !== item.id));
   }
 
   return (

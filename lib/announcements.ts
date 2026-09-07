@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-import { getCachedSession } from "@/lib/supabase/session";
+import { getCachedSession, onSessionChange } from "@/lib/supabase/session";
 
 /**
  * The client half of the Announcement Center.
@@ -79,19 +79,29 @@ export function useAnnouncements() {
   const [queue, setQueue] = useState<Announcement[]>([]);
   const [current, setCurrent] = useState<Announcement | null>(null);
   const [voting, setVoting] = useState(false);
+  /* Bumped by a fresh sign-in so the fetch below re-runs even inside the
+     30-minute refetch floor — see the cadence comment on `load`. */
+  const [armToken, setArmToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    /* `ignoreFloor` is set only by a genuine signed-out → signed-in
+       transition. A user logging in must be offered a published announcement on
+       that moment regardless of when this device last checked — the same rule
+       the follow-socials prompt follows — whereas an hourly token refresh
+       fires the same subscription and must not re-open anything. */
+    async function load(ignoreFloor = false) {
       const session = await getCachedSession();
       if (cancelled || !session) return;
 
-      try {
-        const last = Number(window.localStorage.getItem(LAST_FETCH_KEY));
-        if (Number.isFinite(last) && last > 0 && Date.now() - last < REFETCH_FLOOR_MS) return;
-      } catch {
-        /* No storage; fall through and fetch. */
+      if (!ignoreFloor) {
+        try {
+          const last = Number(window.localStorage.getItem(LAST_FETCH_KEY));
+          if (Number.isFinite(last) && last > 0 && Date.now() - last < REFETCH_FLOOR_MS) return;
+        } catch {
+          /* No storage; fall through and fetch. */
+        }
       }
 
       const { data, error } = await supabase.rpc("active_announcements_for_me");
@@ -113,10 +123,31 @@ export function useAnnouncements() {
     }
 
     void load();
+
+    /* Re-arm on a real sign-in, mirroring components/SocialFollowPrompt.tsx.
+       Subscribes to the shared session cache and requires a signed-out state
+       first so a token refresh never triggers it. */
+    let sawSignedOut = false;
+    const unsubscribeSession = onSessionChange((session) => {
+      if (!session) {
+        sawSignedOut = true;
+        /* Clear any queued dialogs so the previous account's announcements
+           cannot surface after sign-out or under the next account. */
+        setQueue([]);
+        setCurrent(null);
+        return;
+      }
+      if (!sawSignedOut) return;
+      sawSignedOut = false;
+      setArmToken((token) => token + 1);
+      void load(true);
+    });
+
     return () => {
       cancelled = true;
+      unsubscribeSession();
     };
-  }, []);
+  }, [armToken]);
 
   const dismiss = useCallback((id: string) => {
     writeSeen(new Set(readSeen()).add(id));

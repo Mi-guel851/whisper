@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useCallback } from "react";
+import { memo, useCallback, useRef } from "react";
 import Image from "next/image";
+import { Pin } from "lucide-react";
 import MessageTicks from "@/components/MessageTicks";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 
@@ -19,8 +20,18 @@ export type ChatRowProps = {
   showTicks: boolean;
   deliveredAt: string | null;
   readAt: string | null;
+  /** Pinned chats float to the top; the glyph mirrors WhatsApp's. */
+  pinned: boolean;
+  /** Held row while its long-press action menu is open. */
+  selected: boolean;
   onOpen: (conversationId: string) => void;
+  /** Long-press / right-click: open the WhatsApp-style row menu. */
+  onLongPress: (conversationId: string, anchor: { x: number; y: number }) => void;
 };
+
+/** How long a press has to stay down before it counts as a hold, matching the
+    chat bubble menu's 450ms. */
+const LONG_PRESS_MS = 420;
 
 /**
  * One row of the chat list.
@@ -50,25 +61,86 @@ function ChatRowBase({
   showTicks,
   deliveredAt,
   readAt,
+  pinned,
+  selected,
   onOpen,
+  onLongPress,
 }: ChatRowProps) {
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressed = useRef(false);
+  /* Where the finger went down — the menu anchors there rather than on a
+     hardcoded corner, so it appears next to the held row. */
+  const anchorRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
   /* Bound here rather than as an inline arrow in the parent's map: an arrow
      created during render is a new function identity every time, which would
      invalidate the memo on every parent render and undo the whole point. */
-  const handleOpen = useCallback(() => onOpen(conversationId), [onOpen, conversationId]);
+  const handleOpen = useCallback(() => {
+    /* A long-press that just fired must not also count as the tap that opens
+       the conversation. */
+    if (longPressed.current) {
+      longPressed.current = false;
+      return;
+    }
+    onOpen(conversationId);
+  }, [onOpen, conversationId]);
+
+  const startPress = useCallback(
+    (event: React.PointerEvent) => {
+      anchorRef.current = { x: event.clientX, y: event.clientY };
+      longPressed.current = false;
+      if (pressTimer.current) clearTimeout(pressTimer.current);
+      pressTimer.current = setTimeout(() => {
+        longPressed.current = true;
+        navigator.vibrate?.(18);
+        onLongPress(conversationId, { ...anchorRef.current });
+      }, LONG_PRESS_MS);
+    },
+    [conversationId, onLongPress]
+  );
+
+  const cancelPress = useCallback(() => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }, []);
+
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      /* Desktop: right-click opens the same menu instead of the browser one. */
+      event.preventDefault();
+      cancelPress();
+      longPressed.current = true;
+      onLongPress(conversationId, { x: event.clientX, y: event.clientY });
+      /* Release the swallow flag on the next tick so a subsequent ordinary
+         click still opens the chat. */
+      window.setTimeout(() => {
+        longPressed.current = false;
+      }, 0);
+    },
+    [conversationId, onLongPress, cancelPress]
+  );
 
   return (
     <li>
       <button
         type="button"
         onClick={handleOpen}
+        onPointerDown={startPress}
+        onPointerUp={cancelPress}
+        onPointerLeave={cancelPress}
+        onPointerCancel={cancelPress}
+        onContextMenu={handleContextMenu}
         /* `px-4 sm:px-6` matches the page container's own padding, which the
            list cancels with `-mx-4 sm:-mx-6`. Net effect: the row's background
            runs edge to edge like WhatsApp's, while its text still lines up with
            the heading above the list. Hover and press live in `.chat-row` —
            a Tailwind `active:` variant compiles to a class the theme bridge
            doesn't rewrite, so it would flash white in light theme. */
-        className="chat-row flex w-full items-center gap-3 px-4 py-3 text-left sm:px-6"
+        className={`chat-row flex w-full items-center gap-3 px-4 py-3 text-left sm:px-6 ${
+          selected ? "chat-row-selected" : ""
+        }`}
       >
         <div className="relative h-12 w-12 shrink-0">
           {/* `unoptimized` on purpose: DiceBear returns an SVG, and running an
@@ -103,6 +175,14 @@ function ChatRowBase({
             >
               {label}
             </p>
+            {pinned && (
+              <Pin
+                size={12}
+                className="shrink-0 text-gray-400"
+                fill="currentColor"
+                aria-label="Pinned chat"
+              />
+            )}
             <span
               className={`shrink-0 text-[11px] ${
                 unread ? "font-bold text-emerald-400" : "text-gray-500"
@@ -121,9 +201,14 @@ function ChatRowBase({
             >
               {typing ? "typing..." : previewText}
             </p>
-            {unreadCount > 0 && (
-              <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-black text-black">
-                {unreadCount > 99 ? "99+" : unreadCount}
+            {unread && (
+              <span
+                className={`flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-black text-black ${
+                  unreadCount > 0 ? "bg-emerald-500" : "chat-row-dot-unread"
+                }`}
+                aria-label={unreadCount > 0 ? `${unreadCount} unread messages` : "Marked unread"}
+              >
+                {unreadCount > 0 ? (unreadCount > 99 ? "99+" : unreadCount) : ""}
               </span>
             )}
           </div>
