@@ -6454,3 +6454,40 @@ html.viewport-locked body {
 /* The drawer's entry point. Same shape as "Start a poll" so the two stack
    cleanly; the gradient icon is the only tell that this one is special. */
 .feed-drawer-official > svg { color: var(--theme-accent-from); }
+
+/* ===========================================================================
+   Admin control center tokens.
+
+   Kept beside the rules that use them, the same way the chat tokens above are,
+   because nothing outside /admin reads them and an adjacent light/dark pair is
+   what stops the two drifting apart.
+
+   The panel is deliberately lower-key than the rest of Whisper: it is a tool
+   people read tables in for an hour, so the surfaces are near-solid rather than
+   frosted. `backdrop-filter` is priced per element per frame, and a twelve-card
+   dashboard of glass panels would pay for twelve readbacks on every scroll for
+   an effect that adds nothing over an opaque fill.
+   ========================================================================= */
+
+:root {
+  --admin-surface:       #100b1e;
+  --admin-surface-2:     #16102a;
+  --admin-muted:         #9a93b8;
+  --admin-line:          rgba(255, 255, 255, 0.08);
+  --admin-hover:         rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="light"] {
+  --admin-surface:       #ffffff;
+  --admin-surface-2:     #f5f3fb;
+  --admin-muted:         #6b6486;
+  --admin-line:          rgba(22, 23, 44, 0.08);
+  --admin-hover:         rgba(22, 23, 44, 0.04);
+}
+
+/* Numbers in tables and stat cards. Without this, 1,240 and 1,140 do not line
+   up, and a column of figures that does not align is a column nobody can scan. */
+.admin-numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

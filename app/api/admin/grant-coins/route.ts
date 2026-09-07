@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { timingSafeEqual } from "crypto";
-import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
+import { handleAdminError, logAdmin, requireAdmin } from "@/lib/admin/auth";
 
 /**
  * The only path to a coin grant.
@@ -16,96 +14,47 @@ import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
  * So the PIN is checked here, and 202608190004 makes the RPC refuse anything but
  * the service role. That key exists only in server environment variables, so this
  * route is the sole way in and the check cannot be walked around.
+ *
+ * WHAT CHANGED WITH THE CONTROL PANEL
+ *
+ * The credential check moved into `requireAdmin` (lib/admin/auth.ts), which every
+ * other admin route shares: one implementation of "is this an admin", verified
+ * against GoTrue and compared in constant time, rather than a second copy here
+ * that could drift from the first. The grant itself is untouched — same RPC, same
+ * arguments, same per-grant cap — and it is now audited, so `admin_audit_logs`
+ * answers "who granted what, when, and why" without reading the ledger.
+ *
+ * The request body still carries `pin` (accepted by `requireAdmin` as a
+ * fallback), so the pre-panel page and this one keep working through a deploy.
  */
-
-/** Constant-time compare, so a wrong PIN takes the same time whatever it is. */
-function pinMatches(supplied: string, expected: string): boolean {
-  const a = Buffer.from(supplied, "utf8");
-  const b = Buffer.from(expected, "utf8");
-  // timingSafeEqual throws outright on a length mismatch, so that case is
-  // answered first. It leaks the PIN's length and nothing else, which is not
-  // worth defending against here; what matters is that two equal-length guesses
-  // are indistinguishable by timing.
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 
 export async function POST(req: NextRequest) {
   try {
-    /* Same reasoning as /api/admin/verify-pin: a correct-PIN guess against an
-       internet-reachable endpoint must not be free. Tighter here because this one
-       actually moves balances. */
-    const limited = consume("admin-grant-coins", clientIp(req.headers), 6, 10 * 60_000);
-    if (limited) return rateLimitedResponse(limited);
+    const body = await req.json().catch(() => null);
+    /* Rate limiting, the authenticated-account check and the constant-time PIN
+       comparison all happen inside. It throws before a client is created, so a
+       failed attempt never touches the service role key. */
+    const admin = await requireAdmin(req, body);
 
-    const { pin, username, amount, note } = await req.json();
-
-    /* Checked before the PIN comparison. Without it an unset variable makes
-       `pin !== undefined` true for every input, so a correct PIN is reported as
-       "Incorrect PIN" and the real problem — a missing deploy variable — stays
-       invisible. */
-    const expectedPin = process.env.ADMIN_GRANT_PIN;
-    if (!expectedPin) {
-      return NextResponse.json(
-        { error: "ADMIN_GRANT_PIN is not set on the server. Add it to the deployment environment and redeploy." },
-        { status: 500 }
-      );
-    }
-
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!serviceKey) {
-      return NextResponse.json(
-        { error: "SUPABASE_SERVICE_ROLE_KEY is not set on the server." },
-        { status: 500 }
-      );
-    }
-
-    /* Being signed in is still required. It is not what authorizes the grant —
-       the PIN is — but it puts a real user id in the ledger's `granted_by`, so a
-       grant can be traced to an account afterwards. */
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    const supabaseAuth = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseAuth.auth.getUser(authHeader.slice("Bearer ".length));
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
-    }
-
-    if (typeof pin !== "string" || !pinMatches(pin, expectedPin)) {
-      return NextResponse.json({ error: "Incorrect PIN" }, { status: 401 });
-    }
-
-    const cleanUsername = typeof username === "string" ? username.trim().toLowerCase() : "";
+    const cleanUsername =
+      typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
     if (!cleanUsername) {
       return NextResponse.json({ error: "Enter a username." }, { status: 400 });
     }
 
     /* Parsed here rather than trusting the client's number: the form sends a
        string, and Number("") is 0 while parseInt("500abc") is 500. */
-    const coinAmount = Number.parseInt(String(amount), 10);
+    const coinAmount = Number.parseInt(String(body?.amount), 10);
     if (!Number.isFinite(coinAmount) || coinAmount <= 0) {
       return NextResponse.json({ error: "Enter a coin amount greater than zero." }, { status: 400 });
     }
 
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    const { data, error } = await supabaseAdmin.rpc("admin_grant_coins", {
+    const { data, error } = await admin.db.rpc("admin_grant_coins", {
       target_username: cleanUsername,
       coin_amount: coinAmount,
-      grant_note: typeof note === "string" && note.trim() ? note.trim() : "Premium Grant",
-      granted_by_user: user.id,
+      grant_note:
+        typeof body?.note === "string" && body.note.trim() ? body.note.trim() : "Premium Grant",
+      granted_by_user: admin.adminId,
     });
 
     if (error) {
@@ -119,9 +68,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
+    await logAdmin(admin.db, admin.adminId, "coin.granted", null, {
+      username: cleanUsername,
+      amount: coinAmount,
+      balance_after: data,
+      note:
+        typeof body?.note === "string" && body.note.trim()
+          ? body.note.trim().slice(0, 200)
+          : "Premium Grant",
+    });
+
     return NextResponse.json({ balance: data });
   } catch (err) {
-    console.error("[admin/grant-coins]", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return handleAdminError(err, "admin/grant-coins");
   }
 }

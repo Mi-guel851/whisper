@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "crypto";
 import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
+import { isAdminEmail } from "@/lib/admin/emails";
 
 /**
  * Unlocks the grant form's UI. It does not authorize a grant — /api/admin/grant-coins
@@ -58,6 +59,23 @@ export async function POST(req: NextRequest) {
 
     if (userError || !user) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
+
+    /* The allowlist, before the PIN — same order as requireAdmin, same reason.
+
+       This route is currently unreferenced: the Grant Coins page it unlocked is
+       now a redirect to /admin/coins, and the panel unlocks through
+       /api/admin/session instead. It is kept because a deployed client from
+       before that change may still call it, and because deleting a route that
+       something might POST to is a worse failure than keeping one that nothing
+       does. But an orphaned endpoint that answers "is this the PIN?" for any
+       signed-in account is a brute-force oracle, so it gets the same account
+       check as every other admin surface. */
+    if (!isAdminEmail(user.email, "server")) {
+      return NextResponse.json(
+        { error: "This account is not authorized to use the admin panel." },
+        { status: 403 }
+      );
     }
 
     if (typeof pin !== "string" || !pinMatches(pin, expectedPin)) {

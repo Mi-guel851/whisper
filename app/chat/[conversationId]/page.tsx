@@ -1,7 +1,8 @@
 "use client";
 
 import ChatDoodleBackground from "@/components/ChatDoodleBackground";
-import MessageTicks from "@/components/MessageTicks";
+import MessageStatus from "@/components/MessageStatus";
+import { tempId } from "@/lib/tempId";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -75,6 +76,16 @@ type Message = {
   media_kind: "gif" | "sticker" | null;
   media_width: number | null;
   media_height: number | null;
+  /**
+   * Client-only. Never written to the database and never read back from it.
+   *
+   * `sending` is set the instant SEND is pressed, before any request is in
+   * flight; `failed` replaces it when the insert comes back with an error. Both
+   * disappear when the row is reconciled against the real one. Its presence in
+   * the type is what lets an optimistic message and a delivered one live in the
+   * same list without a parallel array to keep in sync.
+   */
+  send_state?: "sending" | "failed";
 };
 
 type Reaction = {
@@ -160,7 +171,7 @@ const MessageBubble = memo(function MessageBubbleBase({
   toggleReaction, setReplyingTo, startPress, cancelPress, onSwipeReply,
   onViewPhoto, onPlayAudio, viewingPhotoId, onDelete, onCopy, onPin,
   isPinned, isGroupStart, isGroupEnd, isSearchHit, isActiveHit, isHighlighted,
-  onJumpToQuote, registerRef,
+  onJumpToQuote, registerRef, onRetry,
 }: {
   msg: Message;
   isMe: boolean;
@@ -187,6 +198,8 @@ const MessageBubble = memo(function MessageBubbleBase({
   isHighlighted: boolean;
   onJumpToQuote: (id: string) => void;
   registerRef: (id: string, node: HTMLDivElement | null) => void;
+  /** Present for every row, used only by one whose send failed. */
+  onRetry: (msg: Message) => void;
 }) {
   const x = useMotionValue(0);
   const replyIconOpacity = useTransform(x, [0, SWIPE_THRESHOLD], [0, 1]);
@@ -290,7 +303,14 @@ const MessageBubble = memo(function MessageBubbleBase({
               )}
               <div className="chat-day-chip mt-1 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] leading-none">
                 {bubbleTime(msg.created_at)}
-                {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+                {isMe && (
+                    <MessageStatus
+                      sendState={msg.send_state}
+                      deliveredAt={msg.delivered_at}
+                      readAt={msg.read_at}
+                      onRetry={() => onRetry(msg)}
+                    />
+                  )}
               </div>
             </div>
           ) : (
@@ -329,7 +349,14 @@ const MessageBubble = memo(function MessageBubbleBase({
                 )}
                 <div className="chat-meta flex items-center justify-end gap-1 px-2 py-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
-                  {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+                  {isMe && (
+                    <MessageStatus
+                      sendState={msg.send_state}
+                      deliveredAt={msg.delivered_at}
+                      readAt={msg.read_at}
+                      onRetry={() => onRetry(msg)}
+                    />
+                  )}
                 </div>
               </div>
             ) : isMediaMessage ? (
@@ -391,14 +418,28 @@ const MessageBubble = memo(function MessageBubbleBase({
                 )}
                 <div className="chat-meta mt-1 flex items-center justify-end gap-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
-                  {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+                  {isMe && (
+                    <MessageStatus
+                      sendState={msg.send_state}
+                      deliveredAt={msg.delivered_at}
+                      readAt={msg.read_at}
+                      onRetry={() => onRetry(msg)}
+                    />
+                  )}
                 </div>
               </div>
             ) : (
               <div className={`chat-text text-sm ${hasUnbreakableRun ? "chat-text-unbroken" : ""}`}>
                 <span className="chat-meta float-right ml-2 mt-1.5 flex items-center gap-1 text-[10px] leading-none">
                   {bubbleTime(msg.created_at)}
-                  {isMe && <MessageTicks deliveredAt={msg.delivered_at} readAt={msg.read_at} />}
+                  {isMe && (
+                    <MessageStatus
+                      sendState={msg.send_state}
+                      deliveredAt={msg.delivered_at}
+                      readAt={msg.read_at}
+                      onRetry={() => onRetry(msg)}
+                    />
+                  )}
                 </span>
                 {/* WHY THE TEXT IS INLINE HERE AND NOT IN ITS OWN `<p>`
                     ────────────────────────────────────────────────────────────
@@ -551,6 +592,10 @@ export default function ChatPage() {
      still on screen. */
   const [flightId, setFlightId] = useState(0);
   const [flightOrigin, setFlightOrigin] = useState<{ x: number; y: number } | null>(null);
+  /* Launch point per in-flight send, keyed by the temporary message id. The send
+     is no longer synchronous, so the measurement taken at tap time has to survive
+     until the insert resolves. */
+  const pendingFlightRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
@@ -826,6 +871,34 @@ export default function ChatPage() {
             const incoming = payload.new as Message;
             setMessages((prev) => {
               if (prev.some((m) => m.id === incoming.id)) return prev;
+
+              /* Reconciliation. This event may be the confirmation of a message
+                 the composer already put on screen optimistically — and it can
+                 easily arrive BEFORE the insert's own response, because the
+                 socket and the HTTP round trip race each other and the socket
+                 frequently wins.
+
+                 Matching is by (sender, content) rather than by id, because the
+                 optimistic row's id is a local temporary one and the real row
+                 has no idea it exists. Swapping in place rather than appending
+                 keeps the position the user saw it appear at, so a fast send
+                 does not visibly jump to the bottom of the thread.
+
+                 Only the FIRST match is consumed, so sending the same word twice
+                 in a row reconciles one-for-one instead of both optimistic rows
+                 collapsing onto one real one. */
+              const pendingIndex = prev.findIndex(
+                (m) =>
+                  m.send_state === "sending" &&
+                  m.sender_id === incoming.sender_id &&
+                  (m.content ?? "") === (incoming.content ?? "")
+              );
+              if (pendingIndex >= 0) {
+                const next = [...prev];
+                next[pendingIndex] = incoming;
+                return next;
+              }
+
               return [...prev, incoming];
             });
             if (incoming.sender_id !== session.user.id) {
@@ -1245,6 +1318,127 @@ export default function ChatPage() {
     return () => { if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl); };
   }, [pendingPhoto]);
 
+  /* --------------------------------------------------------------------------
+     Sending, optimistically.
+     ------------------------------------------------------------------------ */
+
+  /**
+   * Puts the message on screen, clears the composer, and lets the network catch
+   * up — in that order, and without awaiting any of it.
+   *
+   * WHAT THIS DOES NOT DO
+   *
+   * It does not claim the message was delivered. `send_state: "sending"` is a
+   * clock, not a tick, and it only becomes a tick when the database has the row.
+   * If the insert fails the row is marked `failed` and stays there with a Retry,
+   * so a rejected send is never presented as a successful one.
+   *
+   * The temporary id is prefixed and locally generated. It can never collide with
+   * a real uuid, which is what makes "is this row still optimistic" a safe test
+   * everywhere else in this file, and it is what the reconciliation in the
+   * realtime handler swaps out.
+   */
+  function optimisticMessage(
+    content: string | null,
+    replyId: string | null,
+    media: Pick<Message, "media_url" | "media_kind" | "media_width" | "media_height"> | null
+  ): Message {
+    return {
+      id: tempId(),
+      sender_id: myIdRef.current,
+      content,
+      created_at: new Date().toISOString(),
+      reply_to_id: replyId,
+      image_path: null,
+      audio_path: null,
+      audio_duration_ms: null,
+      audio_waveform: null,
+      audio_mime: null,
+      is_view_once: false,
+      image_viewed_at: null,
+      audio_viewed_at: null,
+      delivered_at: null,
+      read_at: null,
+      media_url: media?.media_url ?? null,
+      media_kind: media?.media_kind ?? null,
+      media_width: media?.media_width ?? null,
+      media_height: media?.media_height ?? null,
+      send_state: "sending",
+    };
+  }
+
+  /**
+   * Runs the insert for one optimistic row and reconciles it.
+   *
+   * Fire-and-forget by design: the caller has already returned control to the
+   * user, and holding the composer open until this settles is exactly the
+   * behaviour being removed. The composer stays usable while this is in flight,
+   * so several of these can be running at once.
+   */
+  const deliverMessage = useCallback(async (pending: Message) => {
+    const { data, error } = await supabase
+      .from("direct_messages")
+      .insert({
+        conversation_id: conversationId,
+        sender_id: pending.sender_id,
+        content: pending.content,
+        reply_to_id: pending.reply_to_id,
+        media_url: pending.media_url,
+        media_kind: pending.media_kind,
+        media_width: pending.media_width,
+        media_height: pending.media_height,
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      /* Marked, not removed. Silently dropping a message the user watched appear
+         is worse than showing one that failed: they would have no idea it never
+         went, and nothing to retry. */
+      setMessages((prev) =>
+        prev.map((m) => (m.id === pending.id ? { ...m, send_state: "failed" as const } : m))
+      );
+      return;
+    }
+
+    const real = data as Message;
+
+    setMessages((prev) => {
+      /* The realtime handler may already have swapped this row in (see the
+         reconciliation note there), in which case the temporary id is gone and
+         the real one is present. Both branches converge on the same list. */
+      const withoutPending = prev.filter((m) => m.id !== pending.id);
+      if (withoutPending.some((m) => m.id === real.id)) return withoutPending;
+      return [...withoutPending, real];
+    });
+
+    /* Only now. Celebrating a send that failed is worse than not celebrating. */
+    const launchPoint = pendingFlightRef.current.get(pending.id);
+    if (launchPoint) {
+      pendingFlightRef.current.delete(pending.id);
+      setFlightOrigin(launchPoint);
+      setFlightId((n) => n + 1);
+    }
+
+    void supabase
+      .from("conversations")
+      .update({
+        last_message_at: new Date().toISOString(),
+        last_message_sender_id: pending.sender_id,
+      })
+      .eq("id", conversationId);
+  }, [conversationId]);
+
+  /** Re-sends a row whose insert failed. The row itself is reused, so the retry
+      replaces it in place rather than appending a second copy. */
+  const retryMessage = useEventCallback((msg: Message) => {
+    if (msg.send_state !== "failed") return;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msg.id ? { ...m, send_state: "sending" as const } : m))
+    );
+    void deliverMessage(msg);
+  });
+
   async function sendMessage() {
     setShowAttachSheet(false);
     if (pendingPhoto) { await sendPendingPhoto(); return; }
@@ -1256,42 +1450,33 @@ export default function ChatPage() {
       return;
     }
     if (!hasMessage || !myId) return;
-    /* Refused rather than queued: a message that arrives hours after it was
-       written, into a conversation that has moved on, is worse than one that
-       visibly failed and can be re-sent deliberately. */
-    if (!requireOnline(showToast, "Sending")) return;
+
     const content = input.trim();
 
     /* Measured here, before the input clears. Emptying it swaps the send button
        out for the voice recorder in the same React batch, and a rect read from a
        detached node is all zeros — the plane would launch from the top-left of
-       the screen. See PaperPlaneFlight's note on `origin`. */
+       the screen. See PaperPlaneFlight's note on `origin`.
+
+       The flight now waits for the insert rather than firing on the tap, so the
+       origin is stashed against the temporary id and read back in
+       deliverMessage. */
     const sendBox = sendButtonRef.current?.getBoundingClientRect();
     const launchPoint = sendBox
       ? { x: sendBox.left + sendBox.width / 2, y: sendBox.top + sendBox.height / 2 }
       : null;
 
+    /* The composer empties here, before anything is awaited. This single line is
+       most of what "instant" means: everything after it is background work. */
     setInput("");
     const replyId = replyingTo?.id || null;
     setReplyingTo(null);
-    const { error } = await supabase.from("direct_messages").insert({
-      conversation_id: conversationId,
-      sender_id: myId,
-      content: content,
-      reply_to_id: replyId,
-    });
-    if (error) { showToast(error.message); return; }
 
-    /* Only now. Celebrating a send that failed is worse than not celebrating. */
-    if (launchPoint) {
-      setFlightOrigin(launchPoint);
-      setFlightId((n) => n + 1);
-    }
+    const pending = optimisticMessage(content, replyId, null);
+    if (launchPoint) pendingFlightRef.current.set(pending.id, launchPoint);
+    setMessages((prev) => [...prev, pending]);
 
-    await supabase.from("conversations").update({
-      last_message_at: new Date().toISOString(),
-      last_message_sender_id: myId,
-    }).eq("id", conversationId);
+    void deliverMessage(pending);
   }
 
   async function deleteMessage(msg: Message) {
@@ -1309,7 +1494,7 @@ export default function ChatPage() {
     const { error } = await supabase.from("pinned_messages").delete().eq("conversation_id", conversationId).eq("message_id", msg.id);
     if (error) { showToast(error.message); return; }
     setPinnedMessageIds((prev) => { const s = new Set(prev); s.delete(msg.id); return s; });
-    showToast("Message unpinned.");
+    showToast("Unpinned", { variant: "subtle" });
   });
 
   const confirmPin = useEventCallback(async (msg: Message, durationHours: number | null) => {
@@ -1324,7 +1509,7 @@ export default function ChatPage() {
     });
     if (error) { showToast(error.message); return; }
     setPinnedMessageIds((prev) => new Set([...prev, msg.id]));
-    showToast(durationHours === null ? "Message pinned." : `Pinned for ${PIN_DURATIONS.find((d) => d.hours === durationHours)?.label ?? "a while"}.`);
+    showToast(durationHours === null ? "Pinned" : `Pinned for ${PIN_DURATIONS.find((d) => d.hours === durationHours)?.label ?? "a while"}`, { variant: "subtle" });
   });
 
   function triggerPhotoPicker() {
@@ -1497,7 +1682,7 @@ export default function ChatPage() {
 
       setInput("");
       setReplyingTo(null);
-      showToast("Voice note sent — plays once.");
+      showToast("Voice note sent", { variant: "subtle" });
     } finally {
       setUploadingPhoto(false);
     }
@@ -1593,7 +1778,7 @@ export default function ChatPage() {
         document.body.removeChild(scratch);
       }
       navigator.vibrate?.(15);
-      showToast("Copied to clipboard.", { variant: "success" });
+      showToast("Copied", { variant: "subtle" });
     } catch {
       showToast("Couldn't copy that message.", { variant: "error" });
     }
@@ -1808,6 +1993,7 @@ export default function ChatPage() {
                       isHighlighted={highlightedId === msg.id}
                       onJumpToQuote={jumpToMessage}
                       registerRef={registerMessageRef}
+                      onRetry={retryMessage}
                     />
                   </div>
                 );

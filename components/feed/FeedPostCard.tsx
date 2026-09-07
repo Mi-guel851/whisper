@@ -264,6 +264,36 @@ function FeedPostCardBase({
             </Link>
           )}
 
+          {/* Send state. A clock while the request is in flight, and a real
+              Retry button if it failed — the post stays on screen either way,
+              because silently removing something the author watched appear is
+              worse than showing one that did not go through. */}
+          {node.send_state && (
+            <div
+              className="mt-2 flex items-center gap-2 text-[11.5px] font-semibold"
+              role={node.send_state === "failed" ? "alert" : "status"}
+            >
+              {node.send_state === "sending" ? (
+                <>
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-purple-400/70" aria-hidden />
+                  <span className="theme-text-muted">Posting…</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ color: "var(--theme-error)" }}>Couldn&apos;t post</span>
+                  <button
+                    type="button"
+                    onClick={() => controller.onRetryPost?.(node.id)}
+                    className="underline underline-offset-2"
+                    style={{ color: "var(--theme-error)" }}
+                  >
+                    Retry
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           <FeedActionBar
             replyCount={replyCount}
             likeCount={likeCount}

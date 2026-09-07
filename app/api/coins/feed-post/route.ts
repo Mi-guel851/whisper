@@ -5,6 +5,7 @@ import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
 import { CLOUDINARY_FOLDERS, cloudinaryPublicId } from "@/lib/cloudinary";
 import { cloudinaryImageExists, destroyCloudinaryUrl } from "@/lib/cloudinary.server";
 import { consume, rateLimitedResponse } from "@/lib/apiGuard";
+import { BANNED_MESSAGE } from "@/lib/admin/auth";
 
 /**
  * Creating something on the Public Feed.
@@ -201,6 +202,30 @@ export async function POST(req: NextRequest) {
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    /* Banned accounts are refused here, before anything is charged.
+     *
+     * The before-insert trigger on `public_feed_posts` (202609080001 §B2) would
+     * stop the post anyway — that is the enforcement that actually matters, since
+     * it also covers a hand-written request that never comes through this route.
+     * But the debit happens a few lines below, so without this check a banned
+     * account would be charged and then refunded on every attempt: correct, and
+     * still two ledger rows per request from an account that should not be moving
+     * value at all.
+     *
+     * Checked through the service client so the answer cannot be influenced by
+     * the caller's own role. */
+    const { data: banned, error: banError } = await supabaseAdmin.rpc("user_is_banned", {
+      target: user.id,
+    });
+    if (banError) {
+      /* Fails open only in the sense that the trigger still applies: a database
+         that has not had the migration cannot answer the question, and refusing
+         every post on the platform over a missing function would be worse. */
+      console.error("[coins/feed-post] ban check unavailable:", banError.message);
+    } else if (banned) {
+      return NextResponse.json({ error: BANNED_MESSAGE, banned: true }, { status: 403 });
+    }
 
     /**
      * Confirm the photo is this author's, and that it is actually there.

@@ -214,7 +214,7 @@ export default function CreatorPage() {
         setRecent((current) => [json.post as FeedPost, ...current].slice(0, 5));
       }
       vibrate(HAPTIC.success);
-      showToast("Official post published — live in the feed for 24 hours.");
+      showToast("Post live", { variant: "subtle" });
       setBody("");
       clearImage();
       setPreviewing(false);

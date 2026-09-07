@@ -170,7 +170,10 @@ export default function NotificationsPage() {
           ? prev
           : [...prev, { message_id: messageId }]
       );
-      showToast(`Hint unlocked. Balance: ${data ?? 0} coins`);
+      /* Balance changes are the definition of a low-priority notification: the
+         wallet UI already reflects the new figure, and this fires on an action the
+         user just chose to take. */
+      showToast("Hint unlocked", { variant: "subtle" });
 
       /* The paid reveal itself: the columns only come back from the definer
          RPC once the receipt exists server-side, which it does now — this is a
