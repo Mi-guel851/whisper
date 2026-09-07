@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { spring, toastIn } from "@/lib/motion";
 
-export type ToastVariant = "default" | "success" | "error" | "warning" | "info" | "loading";
+export type ToastVariant = "default" | "success" | "error" | "warning" | "info" | "loading" | "subtle";
 
 export type ToastOptions = {
   variant?: ToastVariant;
@@ -52,6 +52,8 @@ export function useToast() {
 }
 
 const DEFAULT_DURATION = 3600;
+/** Long enough to register, short enough that nobody reads a progress bar. */
+const SUBTLE_DURATION = 1400;
 const MAX_VISIBLE = 3;
 
 const variantConfig: Record<
@@ -59,6 +61,9 @@ const variantConfig: Record<
   { icon: typeof Info | null; color: string }
 > = {
   default: { icon: null, color: "var(--theme-accent-purple)" },
+  /* A confirmation, not a notification. Renders as a small pill with no icon, no
+     progress bar and a short life — see the note in ToastCard. */
+  subtle: { icon: null, color: "var(--theme-accent-purple)" },
   success: { icon: CheckCircle2, color: "var(--theme-success)" },
   error: { icon: XCircle, color: "var(--theme-error)" },
   warning: { icon: AlertTriangle, color: "var(--theme-warning)" },
@@ -96,9 +101,12 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
   const showToast = useCallback(
     (message: string, options: ToastOptions = {}) => {
       const variant = options.variant ?? "default";
-      // A loading toast has no natural end; the caller resolves it.
+      /* A loading toast has no natural end; the caller resolves it. A subtle one
+         has a deliberately short one: it is a confirmation of something the user
+         just did, and the action itself is the real feedback. */
       const duration =
-        options.duration ?? (variant === "loading" ? 0 : DEFAULT_DURATION);
+        options.duration ??
+        (variant === "loading" ? 0 : variant === "subtle" ? SUBTLE_DURATION : DEFAULT_DURATION);
       const id = ++counter.current;
 
       setToasts((current) => {
@@ -167,6 +175,37 @@ function ToastCard({
   onDismiss: (id: number) => void;
 }) {
   const { icon: Icon, color } = variantConfig[toast.variant];
+
+  /* The subtle variant is a different shape, not just a smaller one: no icon, no
+     accent rail, no progress bar, centred at the bottom. It exists for the
+     confirmations that used to be full toasts — "copied", "message sent" — where
+     a card in the corner is more interruption than the event warrants. Everything
+     that can fail, or that the user has to act on, keeps the full card. */
+  if (toast.variant === "subtle") {
+    return (
+      <motion.div
+        layout
+        variants={toastIn}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        transition={spring.smooth}
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none rounded-full px-4 py-2 text-[12.5px] font-semibold"
+        style={{
+          background: "var(--theme-glass-strong)",
+          border: "1px solid var(--theme-glass-border)",
+          boxShadow: "var(--elev-3)",
+          backdropFilter: "blur(24px) saturate(180%)",
+          WebkitBackdropFilter: "blur(24px) saturate(180%)",
+          color: "var(--theme-text)",
+        }}
+      >
+        {toast.message}
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div

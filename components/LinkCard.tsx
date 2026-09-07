@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Copy, Share2, Link2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Copy, Share2, Link2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import SectionLoadingBar from "./SectionLoadingBar";
@@ -12,7 +12,15 @@ export default function LinkCard() {
   const [link, setLink] = useState("");
   const [displayPath, setDisplayPath] = useState("");
   const [loading, setLoading] = useState(true);
+  /* Copy feedback as button state rather than a toast. Copying your own link is
+     something people do repeatedly, and a stack of "copied!" cards is noise the
+     app does not need to make. The failure path still gets a toast, because a
+     button that silently did nothing is worse than either. */
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { showToast } = useToast();
+
+  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
 
   useEffect(() => {
     async function load() {
@@ -43,8 +51,16 @@ export default function LinkCard() {
 
   async function copyLink() {
     if (!link) return;
-    await navigator.clipboard.writeText(link);
-    showToast("Anonymous link copied! 🔗");
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      showToast("Couldn't copy — long-press the link to copy it manually.");
+      return;
+    }
+
+    setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 1800);
   }
 
   async function shareLink() {

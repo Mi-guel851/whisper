@@ -262,7 +262,7 @@ export default function SavedPostsPage() {
     async (post: FeedPost) => {
       try {
         await navigator.clipboard.writeText(feedPostUrl(post.id));
-        showToast("Link copied.");
+        showToast("Link copied", { variant: "subtle" });
       } catch {
         showToast("Couldn't copy that link.");
       }

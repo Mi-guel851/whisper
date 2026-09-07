@@ -74,6 +74,14 @@ export type FeedController = {
   onRequestDelete: (postId: string) => void;
   onShare: (post: FeedPost) => void;
   onVote: (postId: string, optionIndex: number) => void;
+  /**
+   * Re-sends a post whose request failed, in place.
+   *
+   * Optional so the feed degrades on a database or a build without the optimistic
+   * path: a card that can't retry is still a card, whereas a required handler that
+   * a caller forgot would be a crash.
+   */
+  onRetryPost?: (postId: string) => void;
   /** Spends this viewer's single look at a photo whisper. */
   onOpenImage: (postId: string) => void;
   /**

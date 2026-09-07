@@ -15,6 +15,8 @@ import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import OfflineHandler from "@/components/OfflineHandler";
 import WhispersAiAssistant from "@/components/ai/WhispersAiAssistant";
 import SocialFollowPrompt from "@/components/SocialFollowPrompt";
+import AnnouncementPrompt from "@/components/AnnouncementPrompt";
+import BanGate from "@/components/BanGate";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -135,10 +137,20 @@ export default function RootLayout({
                     chat routes, and nothing at all until lib/socialLinks.ts has
                     real URLs in it. */}
                 <SocialFollowPrompt />
+                {/* The admin-published counterpart to the prompt above. Mounted
+                    for the same reason — "when a user opens the app" is not a
+                    route — and it renders nothing until an announcement is
+                    actually live for this account. */}
+                <AnnouncementPrompt />
               </PushNotificationsProvider>
             </NotificationProvider>
           </ToastProvider>
         </ThemeProvider>
+        {/* Outside the providers, last in the tree, and above everything they
+            render: a banned account must not be able to interact with the app
+            behind this, and must not see a toast claiming an action succeeded
+            over the top of it. */}
+        <BanGate />
       </body>
     </html>
   );

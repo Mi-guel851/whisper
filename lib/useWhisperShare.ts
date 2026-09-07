@@ -90,7 +90,11 @@ export function useWhisperShare() {
       try {
         await navigator.clipboard.writeText(text);
         vibrate(HAPTIC.success);
-        showToast(message);
+        /* `subtle`: a copy is the quietest successful action in the app. The
+           button the user pressed is the real confirmation; a card in the corner
+           of the screen is more interruption than the event warrants. The
+           FAILURE below stays a full toast, because that one needs an answer. */
+        showToast(message, { variant: "subtle" });
         return true;
       } catch {
         /* Permission-gated, and refused outright by some in-app browsers. Saying

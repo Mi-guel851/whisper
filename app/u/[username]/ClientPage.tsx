@@ -272,7 +272,10 @@ export default function PublicProfile() {
       return;
     }
 
-    showToast("Message sent anonymously! 🎉");
+    /* The paper-plane flight is the confirmation. A full toast on top of it, for
+       the most common successful action in the product, was the single loudest
+       thing on the screen. */
+    showToast("Sent anonymously", { variant: "subtle" });
     setMessage("");
     removeImage();
 

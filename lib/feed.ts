@@ -33,6 +33,17 @@ export type FeedPost = {
   poll_options?: string[] | null;
   poll_counts?: number[] | null;
 
+  /**
+   * Client-only, never persisted and never returned by the API.
+   *
+   * `sending` marks a row the composer put on screen before its request had
+   * resolved; `failed` replaces it when the server refused. Both vanish when the
+   * row is reconciled against the real post. It lives on the type rather than in a
+   * side table so a pending post and a delivered one can share one list, one
+   * ordering and one dedup pass.
+   */
+  send_state?: "sending" | "failed";
+
   like_count?: number | null;
   reply_count?: number | null;
   viewer_liked?: boolean | null;

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Coins, Gem, Sparkles, Loader2, ShieldCheck, Gift, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { COIN_PACKAGES, CoinPackage } from "@/lib/coins";
+import { isAdminEmail } from "@/lib/admin/emails";
 import { CountryInfo, convertForDisplay, formatLocalAmount, getCountryInfo } from "@/lib/currency";
 import {
   CoinTransaction,
@@ -49,14 +50,14 @@ declare global {
 
 const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
-/* Accounts allowed to grant coins. The grant form itself still checks the
-   admin PIN server-side — this list only decides whether the "Grant Coins"
-   shortcut is even visible on the wallet page, so it is not a security
-   boundary, just a convenience + access control for the UI. */
-const ADMIN_EMAILS = new Set([
-  "mfonisobassey851@gmail.com",
-  "basseyaniekeme43@gmail.com",
-]);
+/* Accounts allowed to grant coins. This list only decides whether the "Grant
+   Coins" shortcut is even visible on the wallet page, so it is not a security
+   boundary, just a convenience + access control for the UI — the grant itself
+   checks the account and the admin PIN server-side on every request.
+
+   It is the same list the admin panel enforces, imported rather than copied:
+   see lib/admin/emails.ts. The server side is the boundary; this is the door
+   that matches it. */
 
 const TX_COLUMNS = "id,amount,description,transaction_type,created_at,reference";
 /* Rows fetched per round trip. Larger than the 4 shown initially so the first
@@ -156,7 +157,7 @@ export default function PremiumPage() {
       setUserId(session.user.id);
 
       // Admin grant shortcut is only surfaced to the two allowed accounts.
-      setIsAdmin(Boolean(session.user.email && ADMIN_EMAILS.has(session.user.email.toLowerCase())));
+      setIsAdmin(isAdminEmail(session.user.email, "client"));
 
       // Pricing is based on the country the user already gave us at signup
       // (profiles.country_code) — no IP guessing, no picker.

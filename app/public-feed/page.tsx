@@ -57,6 +57,7 @@ import {
   type FeedQuery,
   type ReportReason,
 } from "@/lib/feedApi";
+import { tempId } from "@/lib/tempId";
 import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
 import { requireOnline, isOnline } from "@/lib/offline";
 import { useAnonNames } from "@/lib/anonNames";
@@ -877,35 +878,47 @@ export default function PublicFeedPage() {
      Writing
      --------------------------------------------------------------------- */
 
-  const createPost = useCallback(
-    async (draft: ComposerDraft): Promise<boolean> => {
-      if (!myId || !ownLink) {
-        showToast("Set a username before posting.");
-        return false;
-      }
+  /* ---------------------------------------------------------------------
+     Posting, optimistically.
+     --------------------------------------------------------------------- */
 
-      /* Checked before the upload rather than after: the API route refuses a
-         photo with no preview, and finding that out afterwards would leave an
-         orphan object in the bucket. */
-      if (draft.image && !draft.image.preview) {
-        showToast("Couldn't build a preview for that photo. Try a different one.");
-        return false;
-      }
+  /**
+   * The draft behind each in-flight post, keyed by its temporary id.
+   *
+   * A retry has to re-run the whole request — upload included — and the composer
+   * has long since been cleared by then, so the draft is what makes Retry possible
+   * at all. Entries are removed on success and on give-up, never left behind.
+   */
+  const pendingDraftsRef = useRef<Map<string, ComposerDraft>>(new Map());
 
-      /* Refused rather than queued. Posting spends coins, so a write that lands
-         later — against a balance that has since changed, into a feed window that
-         has since rolled over — is worse than one that plainly didn't happen. */
-      if (!requireOnline(showToast, "Posting")) return false;
-
-      /* The Cloudinary delivery URL, not a storage key. `image_path` on
-         `public_feed_posts` now holds a full URL; /api/feed/photo fetches it
-         server-side and still never hands it to a browser. */
+  /**
+   * Uploads the photo (if any) and posts, then reconciles the optimistic row.
+   *
+   * The server stays authoritative throughout: /api/coins/feed-post authenticates
+   * the caller, checks the ban, debits the coins atomically, inserts, and refunds
+   * if the insert fails. Nothing here charges anything, and a failure means the
+   * author was not charged — the route says so explicitly in its error strings.
+   */
+  const publishPost = useCallback(
+    async (temp: FeedPost, draft: ComposerDraft) => {
       let imageUrl: string | null = null;
       let accessToken: string | null = null;
 
+      const fail = (message: string) => {
+        setPosts((current) =>
+          current.map((post) =>
+            post.id === temp.id ? { ...post, send_state: "failed" as const } : post
+          )
+        );
+        showToast(message, { variant: "error" });
+      };
+
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { showToast("Login required"); return false; }
+        if (!session) {
+          fail("Login required");
+          return;
+        }
         accessToken = session.access_token;
 
         if (draft.image) {
@@ -921,12 +934,12 @@ export default function PublicFeedPage() {
             );
             imageUrl = uploaded.url;
           } catch (error) {
-            showToast(
+            fail(
               error instanceof CloudinaryUploadError
                 ? error.message
                 : "Couldn't upload that photo."
             );
-            return false;
+            return;
           }
         }
 
@@ -947,34 +960,242 @@ export default function PublicFeedPage() {
         const json = await res.json();
 
         if (!res.ok) {
-          showToast(json.error || "Couldn't post that.");
-          /* The route unwinds its own failures, but a rejection that never got
-             as far as charging leaves the asset behind. Discarding it here costs
-             one request and keeps the Cloudinary account clean. */
+          /* The route unwinds its own failures, but a rejection that never got as
+             far as charging leaves the asset behind. Discarding it here costs one
+             request and keeps the Cloudinary account clean. */
           await discardCloudinaryUpload(imageUrl, accessToken);
-          return false;
+          fail(json.error || "Couldn't post that.");
+          return;
+        }
+
+        const row = sanitize(json.post as FeedPost);
+
+        /* Reconcile: drop the temporary row and put the real one where it was.
+           Swapping the id inside `rootOrder` rather than re-prepending it keeps
+           the post at the position the author saw it appear at, so a fast network
+           does not produce a visible jump. */
+        setPosts((current) =>
+          mergeRows(
+            current.map((post) => (post.id === temp.id ? row : post)),
+            [row]
+          ).filter((post) => post.id !== temp.id)
+        );
+        setRootOrder((current) => current.map((id) => (id === temp.id ? row.id : id)));
+        setLikeCount((current) => {
+          const next = { ...current };
+          delete next[temp.id];
+          next[row.id] = 0;
+          return next;
+        });
+        pendingDraftsRef.current.delete(temp.id);
+
+        vibrate(HAPTIC.success);
+        /* No coin figure, and `subtle`. The charge is real, atomic and recorded in
+           the ledger by /api/coins/feed-post; announcing it after every post turns
+           a normal action into a receipt. The post appearing in the feed is the
+           confirmation — this line only confirms it is live. */
+        showToast("Post live", { variant: "subtle" });
+      } catch (error) {
+        console.error(error);
+        await discardCloudinaryUpload(imageUrl, accessToken);
+        fail("Network error — your post didn't go through.");
+      }
+    },
+    [myId, showToast]
+  );
+
+  /* ---------------------------------------------------------------------
+     Replying, optimistically.
+     --------------------------------------------------------------------- */
+
+  /**
+   * The text and parent behind each in-flight reply, keyed by temporary id.
+   *
+   * Separate from `pendingDraftsRef` because a reply is not a `ComposerDraft` —
+   * it has no photo, no topic and no poll, and it costs nothing, so it shares
+   * none of the upload path. What the two do share is the need to survive the
+   * composer being cleared, which is what makes Retry possible.
+   */
+  const pendingRepliesRef = useRef<Map<string, { parentId: string; text: string }>>(new Map());
+
+  /**
+   * Sends one reply and reconciles the optimistic row.
+   *
+   * Replies are free, so unlike a post there is no charge to unwind on failure —
+   * the only thing at stake is the row on screen, which becomes `failed` with a
+   * Retry rather than vanishing.
+   */
+  const deliverReply = useCallback(
+    async (temp: FeedPost, parentId: string, text: string) => {
+      const fail = (message: string) => {
+        setPosts((current) =>
+          current.map((post) =>
+            post.id === temp.id ? { ...post, send_state: "failed" as const } : post
+          )
+        );
+        showToast(message, { variant: "error" });
+      };
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          fail("Login required");
+          return;
+        }
+
+        const res = await fetch("/api/coins/feed-post", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ message: text, parentPostId: parentId }),
+        });
+        const json = await res.json();
+
+        if (!res.ok) {
+          fail(json.error || "Couldn't send that reply.");
+          return;
         }
 
         if (json.post) {
           const row = sanitize(json.post as FeedPost);
-          setPosts((current) => mergeRows(current, [row]));
-          setRootOrder((current) =>
-            current.includes(row.id) ? current : [row.id, ...current]
+          /* Swap in place rather than append: the temporary row is already
+             attached to its parent in the tree, and replacing it keeps the reply
+             exactly where the author saw it appear. */
+          setPosts((current) =>
+            mergeRows(
+              current.map((post) => (post.id === temp.id ? row : post)),
+              [row]
+            ).filter((post) => post.id !== temp.id)
           );
-          setLikeCount((current) => ({ ...current, [row.id]: 0 }));
+          /* Nothing else on screen knows this reply exists yet, so the parent's
+             own count moves with it — the tree is the source once open. */
+          threadsLoaded.current.add(parentId);
         }
+        pendingRepliesRef.current.delete(temp.id);
 
         vibrate(HAPTIC.success);
-        showToast(`Posted — live for 24 hours. ${FEED_POST_COST} coins charged.`);
-        return true;
+        showToast("Reply posted", { variant: "subtle" });
       } catch (error) {
         console.error(error);
-        showToast("Network error");
-        await discardCloudinaryUpload(imageUrl, accessToken);
-        return false;
+        fail("Network error — your reply didn't go through.");
       }
     },
-    [myId, ownLink, showToast]
+    [showToast]
+  );
+
+  /**
+   * Retry for a post the server refused.
+   *
+   * Re-runs the whole request from the stored draft rather than resending a row,
+   * because the photo still has to be uploaded and the coins still have to be
+   * checked. The row keeps its temporary id and its position, so a successful
+   * retry looks like the post going through rather than a new one appearing.
+   */
+  const retryPost = useCallback(
+    (postId: string) => {
+      /* A reply first: it is the cheaper of the two to resend, and checking it
+         first keeps the draft branch from having to know replies exist. */
+      const pendingReply = pendingRepliesRef.current.get(postId);
+      if (pendingReply) {
+        setPosts((current) =>
+          current.map((post) =>
+            post.id === postId ? { ...post, send_state: "sending" as const } : post
+          )
+        );
+        void deliverReply({ id: postId } as FeedPost, pendingReply.parentId, pendingReply.text);
+        return;
+      }
+
+      const draft = pendingDraftsRef.current.get(postId);
+      if (!draft) {
+        /* No draft means nothing to resend — the row is a leftover. Removing it
+           is the honest response; leaving a permanent "Couldn't post" with a
+           Retry that does nothing would be worse. */
+        setPosts((current) => current.filter((post) => post.id !== postId));
+        setRootOrder((current) => current.filter((id) => id !== postId));
+        return;
+      }
+
+      setPosts((current) =>
+        current.map((post) =>
+          post.id === postId ? { ...post, send_state: "sending" as const } : post
+        )
+      );
+      void publishPost({ id: postId } as FeedPost, draft);
+    },
+    [publishPost, deliverReply]
+  );
+
+  const createPost = useCallback(
+    async (draft: ComposerDraft): Promise<boolean> => {
+      if (!myId || !ownLink) {
+        showToast("Set a username before posting.");
+        return false;
+      }
+
+      /* Checked before the upload rather than after: the API route refuses a
+         photo with no preview, and finding that out afterwards would leave an
+         orphan object in the bucket. */
+      if (draft.image && !draft.image.preview) {
+        showToast("Couldn't build a preview for that photo. Try a different one.");
+        return false;
+      }
+
+      /* Refused rather than queued. Posting spends coins, so a write that lands
+         later — against a balance that has since changed, into a feed window that
+         has since rolled over — is worse than one that plainly didn't happen. */
+      if (!requireOnline(showToast, "Posting")) return false;
+
+      /* ------------------------------------------------------------------
+         The optimistic row.
+
+         On screen before a single byte has been uploaded, because the upload is
+         the slow part and the author has no reason to stare at a spinner while
+         their own post is invisible. The temporary id is prefixed so it can never
+         collide with a real uuid, which is what makes "is this row still
+         optimistic" a safe test everywhere else in this file.
+
+         `send_state: "sending"` is the honest part: this row is not a claim that
+         the post is live. It says the post is on its way, and if the server
+         refuses — no coins, bad photo, banned account — the row becomes `failed`
+         with a Retry, and the coins were never taken.
+         ------------------------------------------------------------------ */
+      const tempIdValue = tempId();
+      const now = new Date().toISOString();
+
+      const optimistic: FeedPost = {
+        id: tempIdValue,
+        author_id: myId,
+        body: draft.body,
+        whisper_link: ownLink,
+        created_at: now,
+        /* The real value comes back from the insert. Twenty-four hours is what the
+           server sets, so showing it now is a prediction that turns out to be
+           right rather than a guess the reconciliation has to correct. */
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        topic: draft.topic,
+        has_image: Boolean(draft.image),
+        image_preview: draft.image?.preview ?? null,
+        poll_options: draft.poll,
+        like_count: 0,
+        reply_count: 0,
+        view_count: 0,
+        send_state: "sending",
+      };
+
+      setPosts((current) => [optimistic, ...current]);
+      setRootOrder((current) => [tempIdValue, ...current]);
+      setLikeCount((current) => ({ ...current, [tempIdValue]: 0 }));
+      pendingDraftsRef.current.set(tempIdValue, draft);
+
+      /* Not awaited. Returning true is what closes the composer, and the composer
+         closing is most of what "instant" means here. */
+      void publishPost(optimistic, draft);
+      return true;
+    },
+    [myId, ownLink, showToast, publishPost]
   );
 
   const sendReply = useCallback(
@@ -983,45 +1204,38 @@ export default function PublicFeedPage() {
       if (!text) { showToast("Write a reply first"); return; }
       if (!requireOnline(showToast, "Replying")) return;
 
-      setReplySendingMap((map) => ({ ...map, [postId]: true }));
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { showToast("Login required"); return; }
+      const tempReplyId = tempId();
 
-        const res = await fetch("/api/coins/feed-post", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ message: text, parentPostId: postId }),
-        });
-        const json = await res.json();
+      /* The optimistic row. `buildPostTree` attaches by `parent_post_id`, so a
+         row carrying the parent's id and a `pending-` id of its own lands in the
+         thread without the tree needing to know anything about in-flight state.
+         Sorting is by `created_at` and replies render oldest-first, so `now`
+         puts it at the bottom of the thread — where the author just typed it. */
+      const optimistic: FeedPost = {
+        id: tempReplyId,
+        author_id: myId ?? "",
+        body: text,
+        whisper_link: ownLink,
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        parent_post_id: postId,
+        like_count: 0,
+        reply_count: 0,
+        send_state: "sending",
+      };
 
-        if (!res.ok) {
-          showToast(json.error || "Failed to send reply");
-          return;
-        }
+      /* Composer cleared and the reply on screen in the same commit. This is the
+         whole point: the author's next action is not blocked on the network. */
+      setPosts((current) => [optimistic, ...current]);
+      setReplyTextMap((map) => ({ ...map, [postId]: "" }));
+      setReplyOpen((map) => ({ ...map, [postId]: false }));
+      setExpandedThreads((map) => ({ ...map, [postId]: true }));
+      setReplySendingMap((map) => ({ ...map, [postId]: false }));
+      pendingRepliesRef.current.set(tempReplyId, { parentId: postId, text });
 
-        showToast("Reply posted.");
-        if (json.post) {
-          const row = sanitize(json.post as FeedPost);
-          setPosts((current) => mergeRows(current, [row]));
-          /* Nothing else on screen knows this reply exists yet, so the parent's
-             own count moves with it — the tree is the source once open. */
-          threadsLoaded.current.add(postId);
-        }
-        setReplyTextMap((map) => ({ ...map, [postId]: "" }));
-        setReplyOpen((map) => ({ ...map, [postId]: false }));
-        setExpandedThreads((map) => ({ ...map, [postId]: true }));
-      } catch (error) {
-        console.error(error);
-        showToast("Network error");
-      } finally {
-        setReplySendingMap((map) => ({ ...map, [postId]: false }));
-      }
+      void deliverReply(optimistic, postId, text);
     },
-    [replyTextMap, showToast]
+    [replyTextMap, showToast, myId, ownLink, deliverReply]
   );
 
   /* Held in a ref so `requestSend` keeps a stable identity: `sendReply` is a
@@ -1372,7 +1586,7 @@ export default function PublicFeedPage() {
     async (post: FeedPost) => {
       try {
         await navigator.clipboard.writeText(feedPostUrl(post.id));
-        showToast("Link copied to your clipboard.");
+        showToast("Link copied", { variant: "subtle" });
       } catch {
         showToast("Couldn't copy that link.");
       }
@@ -1522,12 +1736,13 @@ export default function PublicFeedPage() {
       onVote: vote,
       onOpenImage: openImage,
       onOpenMenu: openMenu,
+      onRetryPost: retryPost,
     }),
     [
       myId, reducedMotion, likeCount, liked, replyOpen, replyTextMap, replySendingMap,
       expandedThreads, threadLoading, pollCounts, pollChoice, pollPending, imageState,
       toggleLike, toggleReplyBox, setReplyText, requestSend, toggleThread, requestDelete,
-      openShare, vote, openImage, openMenu,
+      openShare, vote, openImage, openMenu, retryPost,
     ]
   );
 
