@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getCachedSession } from "@/lib/supabase/session";
@@ -10,9 +10,11 @@ import GlassPanel from "@/components/GlassPanel";
 import FriendsHeader from "@/components/FriendsHeader";
 import ChatRow from "@/components/inbox/ChatRow";
 import InboxSkeleton from "@/components/inbox/InboxSkeleton";
+import InboxChatMenu from "@/components/inbox/InboxChatMenu";
 import EmptyState from "@/components/ui/EmptyState";
 import { useAnonNames } from "@/lib/anonNames";
 import { messagePreviewText } from "@/lib/messagePreview";
+import { useChatListState } from "@/lib/chatListActions";
 import { presenceManager } from "@/lib/realtime/presence";
 import { typingManager } from "@/lib/realtime/typing";
 import { Search, X, MessagesSquare, SearchX } from "lucide-react";
@@ -91,6 +93,29 @@ export default function InboxPage() {
   const [query, setQuery] = useState("");
   const [myId, setMyId] = useState("");
   const [loading, setLoading] = useState(true);
+  /* The long-press row menu (Pin / Mark as read), WhatsApp-style. `menuFor`
+     is the conversation id whose row is held; `menuAnchor` is the press point
+     the sheet anchors to. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const { pinned, forcedUnread, togglePinned, markUnread, clearUnread } = useChatListState(myId);
+  /* A live ref to the loaded rows so the memoized open/mark-read callbacks can
+     tell which participant the caller is (and therefore which read column to
+     stamp) without taking `conversations` as a dependency. */
+  const conversationsRef = useRef<ConversationRow[]>([]);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  /** Which `last_read_at` column belongs to this user for a given conversation. */
+  const readColumnFor = useCallback(
+    (id: string): "user_a_last_read_at" | "user_b_last_read_at" | null => {
+      const row = conversationsRef.current.find((c) => c.id === id);
+      if (!row) return null;
+      return row.user_a === myId ? "user_a_last_read_at" : "user_b_last_read_at";
+    },
+    [myId]
+  );
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -363,12 +388,24 @@ export default function InboxPage() {
   }
 
   function isUnread(c: ConversationRow) {
+    /* "Mark as unread" wins over the database: the reader deliberately flipped
+       this row back to bold, so it stays bold until they open the chat, even
+       though `last_read_at` already says read. The override is cleared on open. */
+    if (forcedUnread.has(c.id)) return true;
     if (!c.last_message_at) return false;
     if (c.last_message_sender_id === myId) return false; // you sent it — not unread for you
     const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
     if (!lastRead) return true;
     return new Date(c.last_message_at) > new Date(lastRead);
   }
+
+  /* Pinned chats float to the top of the list, WhatsApp-style; within each
+     group the existing newest-activity order is preserved. */
+  const visibleConversations = useMemo(() => {
+    const pinnedRows = conversations.filter((c) => pinned.has(c.id));
+    const restRows = conversations.filter((c) => !pinned.has(c.id));
+    return [...pinnedRows, ...restRows];
+  }, [conversations, pinned]);
 
   function previewText(c: ConversationRow) {
     const preview = previews[c.id];
@@ -381,15 +418,15 @@ export default function InboxPage() {
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return conversations;
-    return conversations.filter((c) => {
+    if (!needle) return visibleConversations;
+    return visibleConversations.filter((c) => {
       const other = c.user_a === myId ? c.user_b : c.user_a;
       return (
         nameOf(other).toLowerCase().includes(needle) ||
         (previews[c.id]?.content || "").toLowerCase().includes(needle)
       );
     });
-  }, [conversations, myId, nameOf, previews, query]);
+  }, [visibleConversations, myId, nameOf, previews, query]);
 
   /* Sets for O(1) lookup inside the map. The arrays come from state and change
      often (presence, typing), but the check `array.includes(id)` is O(n) and
@@ -405,24 +442,132 @@ export default function InboxPage() {
      It takes an id rather than the row, and both state updates are functional
      updaters, so `conversations` is deliberately NOT a dependency. Depending on
      it would give this callback a new identity on every realtime refresh and
-     re-render the entire list for a change to one row's timestamp. */
-  const handleOpenConversation = useCallback((id: string) => {
-    const now = new Date().toISOString();
+     re-render the entire list for a change to one row's timestamp.
 
-    setConversations((prev) =>
-      prev.map((row) =>
-        row.id === id
-          ? {
-              ...row,
-              user_a_last_read_at: row.user_a === myId ? now : row.user_a_last_read_at,
-              user_b_last_read_at: row.user_b === myId ? now : row.user_b_last_read_at,
-            }
-          : row
-      )
-    );
-    setUnreadCounts((prev) => ({ ...prev, [id]: 0 }));
-    router.push(`/chat/${id}`);
-  }, [myId, router]);
+     THE READ RECEIPT IS PERSISTED. The old version only rewrote the row in
+     local state, so the optimistic "read" look lived in memory and the next
+     refetch — the realtime refresh this page fires on any conversation change,
+     a reload, or coming back to the tab — showed the unread row again. The
+     update below writes `user_x_last_read_at` to the database; the open chat
+     also marks each `direct_messages.read_at`, so the inbox unread state and
+     the per-message ticks cannot drift. Fire-and-forget: navigation must not
+     wait on it, and the optimistic state above is what the user sees. */
+  const handleOpenConversation = useCallback(
+    (id: string) => {
+      const now = new Date().toISOString();
+
+      setConversations((prev) =>
+        prev.map((row) =>
+          row.id === id
+            ? {
+                ...row,
+                user_a_last_read_at: row.user_a === myId ? now : row.user_a_last_read_at,
+                user_b_last_read_at: row.user_b === myId ? now : row.user_b_last_read_at,
+              }
+            : row
+        )
+      );
+      setUnreadCounts((prev) => ({ ...prev, [id]: 0 }));
+      /* Opening a chat always clears a "marked unread" override. */
+      clearUnread(id);
+
+      /* Stamp only THIS user's read column — touching both would mark the
+         other participant's inbox read too. The open chat page performs the
+         same write as a backstop, so a failure here still self-heals. */
+      const column = readColumnFor(id);
+      if (myId && column) {
+        void supabase
+          .from("conversations")
+          .update({ [column]: now })
+          .eq("id", id)
+          .then(({ error }) => {
+            if (error) console.error("Inbox: could not persist read receipt:", error.message);
+          });
+      }
+
+      router.push(`/chat/${id}`);
+    },
+    [myId, router, clearUnread, readColumnFor]
+  );
+
+  /* Persist a "mark as read" from the long-press menu without navigating:
+     stamp the conversation read and zero the unread count, same write the open
+     path makes. */
+  const markConversationRead = useCallback(
+    async (id: string) => {
+      const now = new Date().toISOString();
+      setConversations((prev) =>
+        prev.map((row) =>
+          row.id === id
+            ? {
+                ...row,
+                user_a_last_read_at: row.user_a === myId ? now : row.user_a_last_read_at,
+                user_b_last_read_at: row.user_b === myId ? now : row.user_b_last_read_at,
+              }
+            : row
+        )
+      );
+      setUnreadCounts((prev) => ({ ...prev, [id]: 0 }));
+      clearUnread(id);
+      const column = readColumnFor(id);
+      if (!column) return;
+
+      /* Two writes, because the row bold and the count badge read different
+         sources. `user_x_last_read_at` drives the bold row; the count badge is
+         `direct_messages.read_at is null` (unread_message_counts). Marking only
+         the conversation would clear the bold and then the next refetch would
+         bring the number badge back. The chat page proves this client update is
+         permitted by RLS. Both are fire-and-forget. */
+      const { error: convoError } = await supabase
+        .from("conversations")
+        .update({ [column]: now })
+        .eq("id", id);
+      if (convoError) console.error("Inbox: could not mark conversation read:", convoError.message);
+
+      const { error: msgsError } = await supabase
+        .from("direct_messages")
+        .update({ read_at: now })
+        .eq("conversation_id", id)
+        .neq("sender_id", myId)
+        .is("read_at", null);
+      if (msgsError) console.error("Inbox: could not mark messages read:", msgsError.message);
+    },
+    [myId, clearUnread, readColumnFor]
+  );
+
+  const handleLongPress = useCallback((id: string, anchor: { x: number; y: number }) => {
+    setMenuFor(id);
+    setMenuAnchor(anchor);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    setMenuFor(null);
+    setMenuAnchor(null);
+  }, []);
+
+  /* Menu actions. "Mark as unread" is a device-level flag; "Mark as read"
+     stamps the database so the badge clears for real. Plain functions rather
+     than memoized callbacks — the menu isn't a memoized component, and reading
+     the freshest `forcedUnread`/`unreadCounts` matters more than identity. */
+  function handleMenuPin() {
+    if (menuFor) togglePinned(menuFor);
+  }
+
+  function handleMenuToggleRead() {
+    if (!menuFor) return;
+    const row = conversations.find((c) => c.id === menuFor);
+    const currentlyUnread = row ? isUnread(row) : false;
+    if (currentlyUnread) {
+      /* Bold at the moment of the action → mark read. If it is only unread
+         because of a forced-unread override with zero real unread messages,
+         clearing the override is enough; otherwise also stamp the database. */
+      const count = unreadCounts[menuFor] || 0;
+      clearUnread(menuFor);
+      if (count > 0) void markConversationRead(menuFor);
+    } else {
+      markUnread(menuFor);
+    }
+  }
 
   function openConversation(c: ConversationRow) {
     handleOpenConversation(c.id);
@@ -584,13 +729,33 @@ export default function InboxPage() {
                   showTicks={!typing && sentByMe && !!preview && !preview.is_view_once}
                   deliveredAt={preview?.delivered_at ?? null}
                   readAt={preview?.read_at ?? null}
+                  pinned={pinned.has(c.id)}
+                  selected={menuFor === c.id}
                   onOpen={handleOpenConversation}
+                  onLongPress={handleLongPress}
                 />
               );
             })}
           </ul>
         )}
       </div>
+
+      <InboxChatMenu
+        open={menuFor !== null}
+        anchor={menuAnchor}
+        isPinned={menuFor ? pinned.has(menuFor) : false}
+        isUnread={
+          menuFor
+            ? isUnread(
+                conversations.find((c) => c.id === menuFor) ??
+                  ({ id: menuFor } as ConversationRow)
+              )
+            : false
+        }
+        onPin={handleMenuPin}
+        onToggleRead={handleMenuToggleRead}
+        onClose={closeMenu}
+      />
       <BottomNavigation />
     </main>
   );

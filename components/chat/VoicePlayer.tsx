@@ -132,19 +132,49 @@ function VoicePlayerBase({
     };
   }, []);
 
+  /**
+   * Destroy the in-memory copy of a view-once note.
+   *
+   * The server already deleted the object and nulled `audio_path` on the first
+   * play, so this object URL is the ONLY remaining copy of the recording. The
+   * view-once promise is "gone when you're done", not "gone when you navigate
+   * away" — so the moment playback ends the bytes are revoked and the element
+   * released, and the note flips to its inert "Played" state and can never be
+   * replayed this visit.
+   */
+  const terminateViewOnce = useCallback(() => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = null;
+    setUnlocked(false);
+    setSpent(true);
+    setPlaying(false);
+    setPosition(0);
+  }, []);
+
   /** Wire an element up to component state. Shared by both playback paths. */
-  const attach = useCallback((element: HTMLAudioElement) => {
+  const attach = useCallback((element: HTMLAudioElement, onEnded?: () => void) => {
     element.preload = "metadata";
     element.playbackRate = SPEEDS[speedIndex];
     element.onloadedmetadata = () => {
       if (Number.isFinite(element.duration) && element.duration > 0) setDuration(element.duration);
     };
     element.ontimeupdate = () => setPosition(element.currentTime);
-    element.onended = () => { setPlaying(false); setPosition(0); element.currentTime = 0; };
+    element.onended = () => {
+      setPlaying(false);
+      setPosition(0);
+      element.currentTime = 0;
+      /* A view-once note terminates the instant listening finishes; a kept
+         note just rewinds and can replay. */
+      onEnded?.();
+    };
     element.onpause = () => setPlaying(false);
     element.onplay = () => setPlaying(true);
     audioRef.current = element;
     return element;
+    /* `onEnded` is an argument, not a closure, so it intentionally isn't a
+       dependency — attach is recreated only on speed change. */
   }, [speedIndex]);
 
   /**
@@ -162,7 +192,9 @@ function VoicePlayerBase({
         if (!url) { setSpent(true); return null; }
         objectUrlRef.current = url;
         setUnlocked(true);
-        return attach(new Audio(url));
+        /* Destroy the bytes the moment playback ends. A mid-playback page
+           close is covered by the unmount cleanup. */
+        return attach(new Audio(url), terminateViewOnce);
       }
 
       if (!audioPath) return null;
@@ -186,7 +218,7 @@ function VoicePlayerBase({
     } finally {
       setLoading(false);
     }
-  }, [attach, audioPath, isViewOnce, onRequestViewOnce]);
+  }, [attach, audioPath, isViewOnce, onRequestViewOnce, terminateViewOnce]);
 
   const togglePlayback = useCallback(async () => {
     const element = await ensureAudio();

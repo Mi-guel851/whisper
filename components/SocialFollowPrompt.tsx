@@ -11,6 +11,7 @@ import { activeSocialLinks, type SocialLink } from "@/lib/socialLinks";
 import SocialIcon, { SOCIAL_LABELS, SOCIAL_SURFACES } from "@/components/SocialIcon";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import { spring, tween } from "@/lib/motion";
+import { notifyIntroSettled } from "@/lib/introPrompts";
 import { assistantHiddenOn } from "@/lib/ai/pageContext";
 import Button from "./Button";
 import Modal from "./Modal";
@@ -151,18 +152,37 @@ export default function SocialFollowPrompt() {
   }, []);
 
   useEffect(() => {
-    if (links.length === 0 || !routeAllowed) return;
+    /* No social links configured, or we're on a page where the prompt would be
+       rude: the intro beat is over immediately, so the announcement popup that
+       waits on it is free to appear. */
+    if (links.length === 0 || !routeAllowed) {
+      notifyIntroSettled();
+      return;
+    }
     if (shownThisRuntime) return;
 
     const alreadyOpened = readOpened();
+    /* Hydrating client-only state (localStorage can't be read during the
+       server pass) from an effect — the same external-system sync the hook is
+       for. It settles before first paint of the dialog, which is delayed by the
+       4.5s timer below. */
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpened(alreadyOpened);
     /* Nothing left to ask for. Note this is per platform, so adding a new one to
        the config makes the prompt relevant again on its own. */
-    if (links.every((link) => alreadyOpened.has(link.platform))) return;
+    if (links.every((link) => alreadyOpened.has(link.platform))) {
+      notifyIntroSettled();
+      return;
+    }
 
     if (!skipCooldownOnce) {
       const last = Number(readFlag(LAST_SHOWN_KEY));
-      if (Number.isFinite(last) && last > 0 && Date.now() - last < COOLDOWN_MS) return;
+      if (Number.isFinite(last) && last > 0 && Date.now() - last < COOLDOWN_MS) {
+        /* Within the reload cooldown: we won't show, so don't hold the
+           announcement gate open either. */
+        notifyIntroSettled();
+        return;
+      }
     }
 
     let cancelled = false;
@@ -171,12 +191,19 @@ export default function SocialFollowPrompt() {
          hit the network on a cold load, and doing it up front would race the
          delay we deliberately introduced. */
       const session = await getCachedSession();
-      if (cancelled || !session) return;
+      if (cancelled) return;
+      if (!session) {
+        notifyIntroSettled();
+        return;
+      }
       /* A second tab may have opened it during the delay, and the runtime flag is
          per document — the timestamp is the only thing both tabs can see. */
       if (!skipCooldownOnce) {
         const last = Number(readFlag(LAST_SHOWN_KEY));
-        if (Number.isFinite(last) && last > 0 && Date.now() - last < COOLDOWN_MS) return;
+        if (Number.isFinite(last) && last > 0 && Date.now() - last < COOLDOWN_MS) {
+          notifyIntroSettled();
+          return;
+        }
       }
 
       shownThisRuntime = true;
@@ -195,7 +222,12 @@ export default function SocialFollowPrompt() {
        lets a sign-in re-run it. */
   }, [links.length, routeAllowed, armToken]);
 
-  const close = useCallback(() => setOpen(false), []);
+  /* Closing the social prompt (a follow tap or a dismiss) ends the intro beat,
+     so the announcement queue can reveal itself next. */
+  const close = useCallback(() => {
+    setOpen(false);
+    notifyIntroSettled();
+  }, []);
 
   /* Tapping a tile records that platform and closes the dialog, so the user
      returns to a clean screen rather than to a prompt asking them to do the thing
@@ -207,6 +239,7 @@ export default function SocialFollowPrompt() {
       return next;
     });
     setOpen(false);
+    notifyIntroSettled();
     /* `noopener` is not optional on a target=_blank link to a third party: without
        it the opened tab gets a handle on `window.opener` and can navigate this one. */
     window.open(link.url, "_blank", "noopener,noreferrer");
