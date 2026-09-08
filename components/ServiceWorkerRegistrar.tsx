@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { supabase } from "@/lib/supabase/client";
 
 /**
  * Installs the service worker, for everybody.
@@ -20,9 +21,13 @@ import { useEffect } from "react";
  *
  * SECURITY BOUNDARY
  *
- * The worker caches only the static application shell. Supabase reads, API routes,
- * RSC payloads, and authenticated navigations are deliberately excluded by the
- * worker, so there is no private data cache to associate with a signed-in user.
+ * The worker caches only the static application shell plus last-visit snapshots
+ * (components/PageSnapshotter). Supabase reads, API routes, RSC payloads, and
+ * authenticated navigations are deliberately excluded by the worker. Snapshots
+ * are the one private thing the worker does hold — a rendered page can contain
+ * messages and balances — so the effect below drops the whole snapshot cache on
+ * sign-out and on any switch between accounts, which is what keeps a shared
+ * device from previewing the previous account's last visit.
  */
 export default function ServiceWorkerRegistrar() {
   useEffect(() => {
@@ -72,6 +77,35 @@ export default function ServiceWorkerRegistrar() {
       }
       if (timeoutHandle) clearTimeout(timeoutHandle);
     };
+  }, []);
+
+  /*
+   * Snapshots are private rendered HTML, so they belong to the session that
+   * produced them. Two transitions invalidate them: signing out (nothing of the
+   * old session may survive into a signed-out browser), and one account
+   * replacing another on the same device (the classic shared-phone case, and
+   * the same reason Supabase reads were never cached in the first place).
+   *
+   * Signing *in* over a signed-out session keeps what is there: those snapshots
+   * are public pages this device actually visited, and they are still true.
+   */
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+
+    let lastUserId: string | null = null;
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      const userId = session?.user?.id ?? null;
+
+      const switchedAccount = lastUserId !== null && userId !== null && userId !== lastUserId;
+      if (event === "SIGNED_OUT" || switchedAccount) {
+        navigator.serviceWorker.controller?.postMessage({ type: "clear-snapshots" });
+      }
+
+      lastUserId = userId;
+    });
+
+    return () => data.subscription.unsubscribe();
   }, []);
 
   return null;
