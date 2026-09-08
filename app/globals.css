@@ -6505,6 +6505,10 @@ html.viewport-locked body {
   --admin-surface:       #100b1e;
   --admin-surface-2:     #16102a;
   --admin-muted:         #9a93b8;
+  --admin-text:          #f8f7ff;
+  --admin-text-secondary:#ddd8ef;
+  --admin-input:         rgba(0, 0, 0, 0.25);
+  --admin-chrome:        rgba(7, 3, 15, 0.92);
   --admin-line:          rgba(255, 255, 255, 0.08);
   --admin-hover:         rgba(255, 255, 255, 0.04);
 }
@@ -6513,9 +6517,59 @@ html.viewport-locked body {
   --admin-surface:       #ffffff;
   --admin-surface-2:     #f5f3fb;
   --admin-muted:         #6b6486;
+  --admin-text:          #16172c;
+  --admin-text-secondary:#403a5d;
+  --admin-input:         #f5f3fb;
+  --admin-chrome:        rgba(248, 249, 253, 0.96);
   --admin-line:          rgba(22, 23, 44, 0.08);
   --admin-hover:         rgba(22, 23, 44, 0.04);
 }
+
+/* Theme-isolated dark experiences. The global preference still applies everywhere
+   else; these scopes only replace the semantic tokens consumed by the subtree. */
+.public-profile-theme,
+.landing-dark-theme {
+  color-scheme: dark;
+  --theme-bg: #080812;
+  --theme-surface: #0d0d16;
+  --theme-card: #11111a;
+  --theme-elevated: #171722;
+  --theme-border: rgba(255, 255, 255, 0.12);
+  --theme-border-strong: rgba(255, 255, 255, 0.2);
+  --theme-text: #f8f7ff;
+  --theme-text-secondary: #c7c1db;
+  --theme-text-muted: #948da9;
+  --theme-glass: rgba(15, 15, 21, 0.72);
+  --theme-glass-strong: rgba(17, 17, 24, 0.82);
+  --theme-surface-solid: #17171e;
+  --theme-nav-solid: #0b0b11;
+  --theme-nav-inactive: #7a7a8a;
+  --theme-nav-active-text: #fff;
+  --fill-1: rgba(255,255,255,.04);
+  --fill-2: rgba(255,255,255,.07);
+  --fill-3: rgba(255,255,255,.11);
+  --fill-4: rgba(255,255,255,.16);
+  --hairline: rgba(255,255,255,.1);
+  --bridge-text: #f8f7ff;
+  --bridge-text-secondary: #c7c1db;
+  --bridge-text-muted: #948da9;
+  --background: var(--theme-bg);
+  --foreground: var(--theme-text);
+}
+
+.public-profile-theme { min-height: 100dvh; background: var(--theme-bg); }
+
+/* The admin surface uses semantic tokens even where legacy utility classes remain
+   in page-specific components. This is intentionally scoped to /admin. */
+.admin-shell .text-white { color: var(--admin-text); }
+.admin-shell .text-gray-200 { color: var(--admin-text-secondary); }
+.admin-shell .border-white\/5,
+.admin-shell .border-white\/8,
+.admin-shell .border-white\/10 { border-color: var(--admin-line); }
+.admin-shell .bg-white\/5,
+.admin-shell .bg-white\/6,
+.admin-shell .bg-white\/8,
+.admin-shell .bg-white\/10 { background-color: var(--admin-hover); }
 
 /* Numbers in tables and stat cards. Without this, 1,240 and 1,140 do not line
    up, and a column of figures that does not align is a column nobody can scan. */

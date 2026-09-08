@@ -51,7 +51,7 @@ export default function AdminMessagesPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-black text-white sm:text-2xl">Messages</h1>
+        <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">Messages</h1>
         <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
           Volume only. Whisper is an anonymous-messaging product: message bodies are
           not exposed to the admin panel, and no admin role in this codebase is
@@ -87,8 +87,8 @@ export default function AdminMessagesPage() {
             <li className="flex items-start gap-2.5">
               <MessageSquare size={14} className="mt-0.5 flex-none" />
               <span>
-                <strong className="text-white">Anonymous whispers</strong> are rows in
-                the <code className="rounded bg-white/8 px-1">messages</code> table —
+                <strong className="text-[var(--admin-text)]">Anonymous whispers</strong> are rows in
+                the <code className="rounded bg-[var(--admin-hover)] px-1">messages</code> table —
                 what a visitor sends to someone&apos;s Whisper link, with or without an
                 account.
               </span>
@@ -96,8 +96,8 @@ export default function AdminMessagesPage() {
             <li className="flex items-start gap-2.5">
               <MessageSquareOff size={14} className="mt-0.5 flex-none" />
               <span>
-                <strong className="text-white">Inbox messages</strong> are rows in{" "}
-                <code className="rounded bg-white/8 px-1">direct_messages</code> —
+                <strong className="text-[var(--admin-text)]">Inbox messages</strong> are rows in{" "}
+                <code className="rounded bg-[var(--admin-hover)] px-1">direct_messages</code> —
                 conversation turns between two signed-in accounts.
               </span>
             </li>
@@ -114,9 +114,9 @@ export default function AdminMessagesPage() {
         <AdminPanel title="Why contents aren't shown">
           <div className="space-y-3 p-4 text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
             <p>
-              The sender-hint columns on <code className="rounded bg-white/8 px-1">messages</code>{" "}
-              are revoked from <code className="rounded bg-white/8 px-1">anon</code> and{" "}
-              <code className="rounded bg-white/8 px-1">authenticated</code>, and the
+              The sender-hint columns on <code className="rounded bg-[var(--admin-hover)] px-1">messages</code>{" "}
+              are revoked from <code className="rounded bg-[var(--admin-hover)] px-1">anon</code> and{" "}
+              <code className="rounded bg-[var(--admin-hover)] px-1">authenticated</code>, and the
               recipient pays 5 coins to see them. Reading them from an admin screen
               would be the same leak with a different name.
             </p>

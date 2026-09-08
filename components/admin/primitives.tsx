@@ -36,13 +36,13 @@ export function AdminPanel({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-white/8 bg-[var(--admin-surface)] ${className}`}
+      className={`rounded-2xl border border-[var(--admin-line)] bg-[var(--admin-surface)] ${className}`}
       style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.18)" }}
     >
       {(title || actions) && (
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-3.5 sm:px-5">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--admin-line)] px-4 py-3.5 sm:px-5">
           <div className="min-w-0">
-            {title && <h2 className="truncate text-[15px] font-bold text-white">{title}</h2>}
+            {title && <h2 className="truncate text-[15px] font-bold text-[var(--admin-text)]">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-xs text-[var(--admin-muted)]">{subtitle}</p>}
           </div>
           {actions && <div className="flex flex-none items-center gap-2">{actions}</div>}
@@ -82,14 +82,14 @@ export function AdminStatCard({
             : "var(--admin-muted)";
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/8 bg-[var(--admin-surface)] p-4">
+    <div className="relative overflow-hidden rounded-2xl border border-[var(--admin-line)] bg-[var(--admin-surface)] p-4">
       <span aria-hidden className="absolute inset-y-0 left-0 w-[2px]" style={{ background: accent, opacity: 0.7 }} />
       <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--admin-muted)]">{label}</p>
 
       {loading ? (
-        <div className="mt-2 h-7 w-20 animate-pulse rounded bg-white/10" />
+        <div className="mt-2 h-7 w-20 animate-pulse rounded bg-[var(--admin-hover)]" />
       ) : (
-        <p className="mt-1 text-[1.6rem] font-black leading-none tabular-nums text-white">{value}</p>
+        <p className="mt-1 text-[1.6rem] font-black leading-none tabular-nums text-[var(--admin-text)]">{value}</p>
       )}
 
       {hint && <p className="mt-1.5 text-[11.5px] text-[var(--admin-muted)]">{hint}</p>}
@@ -121,7 +121,7 @@ export function AdminTable({ head, children }: { head: React.ReactNode; children
   return (
     <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
       <thead>
-        <tr className="border-b border-white/8 text-[11px] uppercase tracking-wide text-[var(--admin-muted)]">
+        <tr className="border-b border-[var(--admin-line)] text-[11px] uppercase tracking-wide text-[var(--admin-muted)]">
           {head}
         </tr>
       </thead>
@@ -153,7 +153,7 @@ export function AdminBadge({
   title?: string;
 }) {
   const palette: Record<string, string> = {
-    neutral: "bg-white/8 text-[var(--admin-muted)]",
+    neutral: "bg-[var(--admin-hover)] text-[var(--admin-muted)]",
     success: "bg-emerald-500/15 text-emerald-300",
     danger: "bg-red-500/15 text-red-300",
     warning: "bg-amber-500/15 text-amber-300",
@@ -191,10 +191,10 @@ export function AdminButton({
   title?: string;
 }) {
   const styles: Record<string, string> = {
-    primary: "bg-gradient-to-r from-purple-600 to-purple-500 text-white hover:opacity-90",
-    ghost: "border border-white/10 text-gray-200 hover:bg-white/6",
+    primary: "bg-gradient-to-r from-purple-600 to-purple-500 text-[var(--admin-text)] hover:opacity-90",
+    ghost: "border border-[var(--admin-line)] text-[var(--admin-text-secondary)] hover:bg-[var(--admin-hover)]",
     danger: "border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20",
-    subtle: "text-[var(--admin-muted)] hover:text-white",
+    subtle: "text-[var(--admin-muted)] hover:text-[var(--admin-text)]",
   };
   return (
     <button
@@ -214,7 +214,7 @@ export function AdminButton({
 /* -------------------------------------------------------------------------- */
 
 export const adminInputClass =
-  "w-full rounded-xl border border-white/10 bg-black/25 px-3.5 py-2.5 text-[13px] text-white outline-none transition placeholder:text-[var(--admin-muted)] focus:border-purple-500/60";
+  "w-full rounded-xl border border-[var(--admin-line)] bg-[var(--admin-input)] px-3.5 py-2.5 text-[13px] text-[var(--admin-text)] outline-none transition placeholder:text-[var(--admin-muted)] focus:border-purple-500/60";
 
 export function AdminField({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -272,7 +272,7 @@ export function AdminSkeletonRows({ rows = 6, columns = 5 }: { rows?: number; co
           {Array.from({ length: columns }).map((__, colIndex) => (
             <div
               key={colIndex}
-              className="h-4 animate-pulse rounded bg-white/8"
+              className="h-4 animate-pulse rounded bg-[var(--admin-hover)]"
               /* Varied widths so the skeleton reads as a table and not as a
                  stack of identical bars. */
               style={{ width: `${colIndex === 0 ? 32 : 12 + ((rowIndex * 7 + colIndex * 13) % 18)}%` }}
@@ -288,10 +288,10 @@ export function AdminSkeletonCards({ count = 8 }: { count?: number }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-hidden>
       {Array.from({ length: count }).map((_, index) => (
-        <div key={index} className="rounded-2xl border border-white/8 bg-[var(--admin-surface)] p-4">
-          <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-          <div className="mt-3 h-7 w-16 animate-pulse rounded bg-white/10" />
-          <div className="mt-3 h-3 w-20 animate-pulse rounded bg-white/8" />
+        <div key={index} className="rounded-2xl border border-[var(--admin-line)] bg-[var(--admin-surface)] p-4">
+          <div className="h-3 w-24 animate-pulse rounded bg-[var(--admin-hover)]" />
+          <div className="mt-3 h-7 w-16 animate-pulse rounded bg-[var(--admin-hover)]" />
+          <div className="mt-3 h-3 w-20 animate-pulse rounded bg-[var(--admin-hover)]" />
         </div>
       ))}
     </div>
@@ -309,10 +309,10 @@ export function AdminEmptyState({
 }) {
   return (
     <div className="flex flex-col items-center px-6 py-12 text-center">
-      <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white/6">
+      <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--admin-hover)]">
         <Inbox size={20} className="text-[var(--admin-muted)]" />
       </div>
-      <p className="mt-3 text-sm font-bold text-white">{title}</p>
+      <p className="mt-3 text-sm font-bold text-[var(--admin-text)]">{title}</p>
       {body && <p className="mt-1 max-w-sm text-[12.5px] leading-relaxed text-[var(--admin-muted)]">{body}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
@@ -342,7 +342,7 @@ export function AdminErrorState({
       <div className="grid h-11 w-11 place-items-center rounded-2xl bg-red-500/12">
         <AlertTriangle size={20} className="text-red-300" />
       </div>
-      <p className="mt-3 text-sm font-bold text-white">
+      <p className="mt-3 text-sm font-bold text-[var(--admin-text)]">
         {misconfigured ? "The server isn't configured for this" : "Couldn't load that"}
       </p>
       <p className="mt-1 max-w-md text-[12.5px] leading-relaxed text-[var(--admin-muted)]">{message}</p>

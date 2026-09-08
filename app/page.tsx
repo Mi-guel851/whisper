@@ -39,7 +39,7 @@ export default function Home() {
   return (
     <main
       data-surface="dark"
-      className="theme-bg-gradient min-h-screen relative overflow-x-hidden"
+      className="landing-dark-theme theme-bg-gradient min-h-screen relative overflow-x-hidden"
     >
       <Background />
 

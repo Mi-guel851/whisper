@@ -205,7 +205,7 @@ export default function AnnouncementEditor({
                 className={`rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
                   draft.kind === kind.key
                     ? "bg-purple-500/20 text-purple-200"
-                    : "border border-white/10 text-[var(--admin-muted)] hover:text-white"
+                    : "border border-[var(--admin-line)] text-[var(--admin-muted)] hover:text-[var(--admin-text)]"
                 }`}
               >
                 {kind.label}
@@ -287,7 +287,7 @@ export default function AnnouncementEditor({
                       type="button"
                       onClick={() => set("pollOptions", draft.pollOptions.filter((_, i) => i !== index))}
                       aria-label={`Remove option ${index + 1}`}
-                      className="flex-none rounded-lg p-2 text-[var(--admin-muted)] transition hover:bg-white/6 hover:text-red-300"
+                      className="flex-none rounded-lg p-2 text-[var(--admin-muted)] transition hover:bg-[var(--admin-hover)] hover:text-red-300"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -353,7 +353,7 @@ export default function AnnouncementEditor({
           </AdminField>
         </div>
 
-        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 p-3.5">
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--admin-line)] p-3.5">
           <input
             type="checkbox"
             checked={draft.active}
@@ -361,7 +361,7 @@ export default function AnnouncementEditor({
             className="h-4 w-4 accent-purple-500"
           />
           <span>
-            <span className="block text-[13px] font-bold text-white">Publish</span>
+            <span className="block text-[13px] font-bold text-[var(--admin-text)]">Publish</span>
             <span className="block text-[11.5px] text-[var(--admin-muted)]">
               Off saves it as a draft. A future start time schedules it.
             </span>

@@ -51,5 +51,7 @@ export async function generateMetadata({
 }
 
 export default function ProfileLayout({ children }: Props) {
-  return children;
+  // Public profiles are a deliberately dark, theme-isolated experience. The
+  // user's preference continues to control the rest of the application.
+  return <div className="public-profile-theme">{children}</div>;
 }

@@ -130,7 +130,7 @@ export default function AdminOverviewPage() {
         <AdminPanel title="Registrations" subtitle="Last 30 days, from profile creation timestamps">
           {loading ? (
             <div className="p-4">
-              <div className="h-40 animate-pulse rounded-xl bg-white/6" />
+              <div className="h-40 animate-pulse rounded-xl bg-[var(--admin-hover)]" />
             </div>
           ) : registrations.length === 0 ? (
             <p className="px-4 py-10 text-center text-[13px] text-[var(--admin-muted)]">
@@ -146,7 +146,7 @@ export default function AdminOverviewPage() {
             {(loading ? PLACEHOLDER_DAYS : recentDays).map((day) => (
               <li key={day.date} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <span className="text-[12.5px] text-[var(--admin-muted)]">{formatDayLabel(day.date)}</span>
-                <span className="admin-numeric text-[13px] font-bold text-white">{day.count}</span>
+                <span className="admin-numeric text-[13px] font-bold text-[var(--admin-text)]">{day.count}</span>
               </li>
             ))}
           </ul>
@@ -244,7 +244,7 @@ export default function AdminOverviewPage() {
                 <Megaphone size={18} className="text-purple-300" />
               </span>
               <div>
-                <p className="admin-numeric text-xl font-black text-white">
+                <p className="admin-numeric text-xl font-black text-[var(--admin-text)]">
                   {loading ? "—" : fmt(totals?.active_announcements)}
                 </p>
                 <p className="text-[12px] text-[var(--admin-muted)]">
@@ -283,7 +283,7 @@ function PageHeader({ title, subtitle, action }: { title: string; subtitle: stri
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-black text-white sm:text-2xl">{title}</h1>
+        <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">{title}</h1>
         <p className="mt-1 text-[12.5px] text-[var(--admin-muted)]">{subtitle}</p>
       </div>
       {action}

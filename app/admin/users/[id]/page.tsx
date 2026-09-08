@@ -93,7 +93,7 @@ export default function AdminUserDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/admin/users"
-          className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[var(--admin-muted)] transition hover:text-white"
+          className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[var(--admin-muted)] transition hover:text-[var(--admin-text)]"
         >
           <ArrowLeft size={14} />
           All users
@@ -360,7 +360,7 @@ function Detail({
           <AdminBadge tone={badge}>{value ?? "—"}</AdminBadge>
         ) : (
           <span
-            className={`min-w-0 truncate text-[13px] font-semibold text-white ${mono ? "font-mono text-[12px]" : ""}`}
+            className={`min-w-0 truncate text-[13px] font-semibold text-[var(--admin-text)] ${mono ? "font-mono text-[12px]" : ""}`}
             title={value ?? undefined}
           >
             {value || "—"}
@@ -371,7 +371,7 @@ function Detail({
             type="button"
             onClick={action}
             aria-label={`Copy ${label}`}
-            className="flex-none rounded-lg p-1 text-[var(--admin-muted)] transition hover:bg-white/6 hover:text-white"
+            className="flex-none rounded-lg p-1 text-[var(--admin-muted)] transition hover:bg-[var(--admin-hover)] hover:text-[var(--admin-text)]"
           >
             <Copy size={13} />
           </button>
