@@ -101,7 +101,7 @@ export default function AdminModerationPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-black text-white sm:text-2xl">Moderation</h1>
+        <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">Moderation</h1>
         <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
           Bans in force, and the accounts they belong to. A ban is enforced by the
           database, not by this page — every whisper, message, post, reaction and
@@ -204,7 +204,7 @@ export default function AdminModerationPage() {
         title="Bans"
         subtitle={scope === "active" ? "Currently in force" : "Every ban event, newest first"}
         actions={
-          <div className="flex items-center gap-1 rounded-xl border border-white/10 p-0.5">
+          <div className="flex items-center gap-1 rounded-xl border border-[var(--admin-line)] p-0.5">
             {(["active", "all"] as const).map((option) => (
               <button
                 key={option}
@@ -212,7 +212,7 @@ export default function AdminModerationPage() {
                 onClick={() => setScope(option)}
                 aria-pressed={scope === option}
                 className={`rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${
-                  scope === option ? "bg-purple-500/20 text-purple-200" : "text-[var(--admin-muted)] hover:text-white"
+                  scope === option ? "bg-purple-500/20 text-purple-200" : "text-[var(--admin-muted)] hover:text-[var(--admin-text)]"
                 }`}
               >
                 {option === "active" ? "Active" : "All"}
@@ -250,7 +250,7 @@ export default function AdminModerationPage() {
                   <AdminTd>
                     <Link
                       href={`/admin/users/${ban.user_id}`}
-                      className="inline-flex items-center gap-1 text-[13px] font-bold text-white hover:text-purple-300"
+                      className="inline-flex items-center gap-1 text-[13px] font-bold text-[var(--admin-text)] hover:text-purple-300"
                     >
                       @{ban.username ?? "unknown"}
                       <ExternalLink size={11} />
@@ -300,7 +300,7 @@ export default function AdminModerationPage() {
                     ) : (
                       <Link
                         href={`/admin/users/${ban.user_id}`}
-                        className="inline-flex items-center gap-1 text-[12px] font-bold text-purple-300 hover:text-white"
+                        className="inline-flex items-center gap-1 text-[12px] font-bold text-purple-300 hover:text-[var(--admin-text)]"
                       >
                         <Flag size={12} />
                         Review
@@ -354,7 +354,7 @@ function SearchResultRow({
   return (
     <AdminRow index={index}>
       <AdminTd>
-        <p className="text-[13px] font-bold text-white">@{user.username}</p>
+        <p className="text-[13px] font-bold text-[var(--admin-text)]">@{user.username}</p>
         {user.display_name && <p className="text-[11.5px] text-[var(--admin-muted)]">{user.display_name}</p>}
       </AdminTd>
       <AdminTd className="whitespace-nowrap text-[12px] text-[var(--admin-muted)]">

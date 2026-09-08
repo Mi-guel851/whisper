@@ -96,7 +96,7 @@ export default function Navbar() {
             Login
           </ButtonLink>
           <ButtonLink href="/signup" size="sm">
-            Get my link
+            Start Whispering
           </ButtonLink>
 
           <button

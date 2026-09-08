@@ -102,7 +102,7 @@ export default function AdminUsersPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-black text-white sm:text-2xl">Users</h1>
+          <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">Users</h1>
           <p className="mt-1 text-[12.5px] text-[var(--admin-muted)]">
             Search by username, email, phone or user id. Emails and phone numbers are
             masked here; the detail page shows them in full and logs the view.
@@ -136,7 +136,7 @@ export default function AdminUsersPage() {
               className={`flex-none whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
                 status === filter.key
                   ? "bg-purple-500/20 text-purple-200"
-                  : "border border-white/10 text-[var(--admin-muted)] hover:bg-white/5 hover:text-white"
+                  : "border border-[var(--admin-line)] text-[var(--admin-muted)] hover:bg-[var(--admin-hover)] hover:text-[var(--admin-text)]"
               }`}
             >
               {filter.label}
@@ -221,7 +221,7 @@ function UserRow({ user, index }: { user: AdminUserRow; index: number }) {
             {(user.display_name || user.username || "?").slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-[13px] font-bold text-white">@{user.username}</p>
+            <p className="truncate text-[13px] font-bold text-[var(--admin-text)]">@{user.username}</p>
             {user.display_name && (
               <p className="truncate text-[11.5px] text-[var(--admin-muted)]">{user.display_name}</p>
             )}
@@ -248,7 +248,7 @@ function UserRow({ user, index }: { user: AdminUserRow; index: number }) {
       </AdminTd>
 
       <AdminTd className="text-right">
-        <span className="admin-numeric text-[13px] font-bold text-white">
+        <span className="admin-numeric text-[13px] font-bold text-[var(--admin-text)]">
           {user.coin_balance.toLocaleString()}
         </span>
       </AdminTd>
@@ -268,7 +268,7 @@ function UserRow({ user, index }: { user: AdminUserRow; index: number }) {
       <AdminTd className="text-right">
         <Link
           href={`/admin/users/${user.id}`}
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-bold text-purple-300 transition hover:bg-white/6"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-bold text-purple-300 transition hover:bg-[var(--admin-hover)]"
         >
           View
           <ExternalLink size={12} />

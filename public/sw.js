@@ -36,13 +36,11 @@
  * than one that plainly failed.
  */
 
-const SHELL_CACHE = "whisper-shell-v4";
-const DATA_CACHE = "whisper-data-v1";
+const SHELL_CACHE = "whisper-shell-v5";
 const OFFLINE_URL = "/offline.html";
 
 /** Past this, a cached copy beats waiting. See the note above about one bar. */
 const NAVIGATION_TIMEOUT_MS = 2500;
-const DATA_TIMEOUT_MS = 4000;
 
 /*
  * The routes worth having before they are first visited. Precaching a shell is
@@ -100,7 +98,7 @@ self.addEventListener("activate", (event) => {
       const names = await caches.keys();
       await Promise.all(
         names
-          .filter((name) => name !== SHELL_CACHE && name !== DATA_CACHE)
+          .filter((name) => name !== SHELL_CACHE)
           .map((name) => caches.delete(name))
       );
 
@@ -113,48 +111,12 @@ self.addEventListener("activate", (event) => {
 
 /* ------------------------------------------------------------------------- *
  * Cache ownership
- * ------------------------------------------------------------------------- */
-
-/*
- * The page tells us who is signed in. Anything cached for a different account is
- * dropped on the spot — see the security note at the top of this file. Kept in a
- * variable *and* in the cache so a restarted worker still knows whose data it is
- * holding; a worker is killed and respawned freely between events.
+ * ------------------------------------------------------------------------- *
+ * The worker intentionally has no private-data cache. Supabase and application
+ * API responses are account-scoped (often by headers rather than URL), so putting
+ * them in the shared Cache API can disclose one account to another. The shell is
+ * the only offline cache owned by this worker.
  */
-let cachedUserId = null;
-
-async function rememberUser(userId) {
-  const cache = await caches.open(DATA_CACHE);
-  const marker = await cache.match("/__whisper_cache_owner");
-  const previous = marker ? await marker.text() : null;
-
-  if (previous && previous !== userId) {
-    await caches.delete(DATA_CACHE);
-  }
-
-  cachedUserId = userId;
-
-  if (userId) {
-    const fresh = await caches.open(DATA_CACHE);
-    await fresh.put("/__whisper_cache_owner", new Response(userId));
-  }
-}
-
-self.addEventListener("message", (event) => {
-  const data = event.data || {};
-
-  if (data.type === "WHISPER_USER") {
-    event.waitUntil(rememberUser(data.userId || null));
-    return;
-  }
-
-  /* Sign-out. Everything personal goes; the shell stays, because the next
-     person to open the app still wants it to start instantly. */
-  if (data.type === "WHISPER_SIGNED_OUT") {
-    cachedUserId = null;
-    event.waitUntil(caches.delete(DATA_CACHE));
-  }
-});
 
 /* ------------------------------------------------------------------------- *
  * Strategies
@@ -255,13 +217,6 @@ function isRscRequest(request, url) {
   return request.headers.get("RSC") === "1" || url.searchParams.has("_rsc");
 }
 
-function isSupabaseRead(request, url) {
-  return (
-    request.method === "GET" &&
-    url.hostname.endsWith(".supabase.co") &&
-    url.pathname.startsWith("/rest/v1/")
-  );
-}
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;
@@ -288,24 +243,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (isSupabaseRead(request, url)) {
-    /* Anonymous reads are not stored — there is no user to scope them to, so the
-       account-isolation guarantee above could not be kept. */
-    if (!cachedUserId) return;
-    event.respondWith(networkFirst(request, DATA_CACHE, DATA_TIMEOUT_MS, null));
-    return;
-  }
+  /* Supabase REST reads are never cached. They may contain private messages,
+     profile details, balances, or admin data, and URL keys do not include auth
+     headers. */
+  if (url.hostname.endsWith(".supabase.co")) return;
 
   /* Only our own origin past here. Cross-origin images, DiceBear avatars and the
      like are left to the browser's own HTTP cache. */
   if (url.origin !== self.location.origin) return;
 
   if (isRscRequest(request, url)) {
-    event.respondWith(networkFirst(request, SHELL_CACHE, NAVIGATION_TIMEOUT_MS, null));
+    /* RSC payloads can contain private server-rendered data. Let the browser
+       retry them normally; the already-cached document/static chunks still make
+       the app shell visible on a cold offline launch. */
     return;
   }
 
   if (request.mode === "navigate") {
+    /* Do not store requests carrying session credentials. Public shell documents
+       are safe to keep; private HTML is not. */
+    if (request.headers.get("authorization") || request.headers.get("cookie")) return;
     event.respondWith(networkFirst(request, SHELL_CACHE, NAVIGATION_TIMEOUT_MS, OFFLINE_URL));
   }
 });

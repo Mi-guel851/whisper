@@ -235,8 +235,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   if (phase === "error") {
     return (
-      <main className="min-h-screen theme-bg-gradient px-4 py-16 text-white">
-        <div className="mx-auto max-w-lg rounded-2xl border border-white/10 bg-[var(--admin-surface)]">
+      <main className="min-h-screen theme-bg-gradient px-4 py-16 text-[var(--admin-text)]">
+        <div className="mx-auto max-w-lg rounded-2xl border border-[var(--admin-line)] bg-[var(--admin-surface)]">
           <AdminErrorState
             message={error?.message ?? "The server is not configured for the admin panel."}
             misconfigured
@@ -252,8 +252,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
      is being signed into the wrong one. */
   if (phase === "denied") {
     return (
-      <main className="grid min-h-screen place-items-center px-5 theme-bg-gradient text-white">
-        <div className="w-full max-w-sm rounded-[1.75rem] border border-white/10 bg-[var(--admin-surface)] p-7 text-center">
+      <main className="grid min-h-screen place-items-center px-5 theme-bg-gradient text-[var(--admin-text)]">
+        <div className="w-full max-w-sm rounded-[1.75rem] border border-[var(--admin-line)] bg-[var(--admin-surface)] p-7 text-center">
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-red-500/15">
             <ShieldAlert size={26} className="text-red-300" />
           </div>
@@ -271,13 +271,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
           <Link
             href="/contact-support"
-            className="mt-3 block text-[12.5px] font-semibold text-[var(--admin-muted)] hover:text-white"
+            className="mt-3 block text-[12.5px] font-semibold text-[var(--admin-muted)] hover:text-[var(--admin-text)]"
           >
             Think this is wrong? Contact support
           </Link>
           <Link
             href="/dashboard"
-            className="mt-2 block text-[12.5px] font-semibold text-[var(--admin-muted)] hover:text-white"
+            className="mt-2 block text-[12.5px] font-semibold text-[var(--admin-muted)] hover:text-[var(--admin-text)]"
           >
             Back to Whisper
           </Link>
@@ -288,10 +288,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   if (phase === "unlock") {
     return (
-      <main className="grid min-h-screen place-items-center px-5 theme-bg-gradient text-white">
+      <main className="grid min-h-screen place-items-center px-5 theme-bg-gradient text-[var(--admin-text)]">
         <form
           onSubmit={submitPin}
-          className="w-full max-w-sm rounded-[1.75rem] border border-white/10 bg-[var(--admin-surface)] p-7 text-center"
+          className="w-full max-w-sm rounded-[1.75rem] border border-[var(--admin-line)] bg-[var(--admin-surface)] p-7 text-center"
         >
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-purple-500/15">
             <ShieldCheck size={26} className="text-purple-300" />
@@ -324,7 +324,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             {verifying ? "Checking…" : "Unlock panel"}
           </AdminButton>
 
-          <Link href="/dashboard" className="mt-4 block text-[12.5px] font-semibold text-[var(--admin-muted)] hover:text-white">
+          <Link href="/dashboard" className="mt-4 block text-[12.5px] font-semibold text-[var(--admin-muted)] hover:text-[var(--admin-text)]">
             Back to Whisper
           </Link>
         </form>
@@ -333,16 +333,16 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <div className="min-h-screen theme-bg-gradient text-white lg:flex">
+    <div className="admin-shell min-h-screen theme-bg-gradient text-[var(--admin-text)] lg:flex">
       {/* ------------------------------------------------------------ */}
       {/* Mobile header                                                */}
       {/* ------------------------------------------------------------ */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/8 bg-[#07030f]/90 px-4 py-3 backdrop-blur-xl lg:hidden">
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[var(--admin-line)] bg-[var(--admin-chrome)] px-4 py-3 backdrop-blur-xl lg:hidden">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
           aria-label="Open admin navigation"
-          className="grid h-9 w-9 place-items-center rounded-xl border border-white/10"
+          className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--admin-line)]"
         >
           <BarChart3 size={17} />
         </button>
@@ -354,7 +354,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           type="button"
           onClick={signOut}
           aria-label="Sign out"
-          className="grid h-9 w-9 place-items-center rounded-xl border border-white/10"
+          className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--admin-line)]"
         >
           <LogOut size={16} />
         </button>
@@ -363,7 +363,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       {/* ------------------------------------------------------------ */}
       {/* Sidebar (desktop) / drawer (mobile)                          */}
       {/* ------------------------------------------------------------ */}
-      <aside className="hidden w-60 flex-none border-r border-white/8 bg-[#07030f]/70 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col">
+      <aside className="hidden w-60 flex-none border-r border-[var(--admin-line)] bg-[var(--admin-chrome)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col">
         <SidebarBody pathname={pathname} adminEmail={adminEmail} onSignOut={signOut} />
       </aside>
 
@@ -384,7 +384,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 380, damping: 34 }}
-              className="fixed inset-y-0 left-0 z-50 flex w-[16.5rem] flex-col border-r border-white/10 bg-[#0a0518] lg:hidden"
+              className="fixed inset-y-0 left-0 z-50 flex w-[16.5rem] flex-col border-r border-[var(--admin-line)] bg-[var(--admin-chrome)] lg:hidden"
               role="dialog"
               aria-label="Admin navigation"
             >
@@ -392,7 +392,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 type="button"
                 onClick={() => setDrawerOpen(false)}
                 aria-label="Close navigation"
-                className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-white/10"
+                className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg border border-[var(--admin-line)]"
               >
                 <X size={15} />
               </button>
@@ -431,9 +431,9 @@ function SidebarBody({
 }) {
   return (
     <>
-      <div className="flex items-center gap-2.5 border-b border-white/8 px-5 py-4">
+      <div className="flex items-center gap-2.5 border-b border-[var(--admin-line)] px-5 py-4">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-600">
-          <ShieldCheck size={17} className="text-white" />
+          <ShieldCheck size={17} className="text-[var(--admin-text)]" />
         </div>
         <div className="min-w-0">
           <p className="truncate text-[13.5px] font-black leading-tight">Whisper Admin</p>
@@ -453,8 +453,8 @@ function SidebarBody({
               aria-current={active ? "page" : undefined}
               className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition ${
                 active
-                  ? "bg-purple-500/15 text-white"
-                  : "text-[var(--admin-muted)] hover:bg-white/5 hover:text-white"
+                  ? "bg-purple-500/15 text-[var(--admin-text)]"
+                  : "text-[var(--admin-muted)] hover:bg-[var(--admin-hover)] hover:text-[var(--admin-text)]"
               }`}
             >
               <Icon size={16} className={active ? "text-purple-300" : ""} />
@@ -465,7 +465,7 @@ function SidebarBody({
         })}
       </nav>
 
-      <div className="border-t border-white/8 p-3">
+      <div className="border-t border-[var(--admin-line)] p-3">
         {adminEmail && (
           <p className="mb-2 truncate px-2 text-[11px] text-[var(--admin-muted)]" title={adminEmail}>
             {adminEmail}
@@ -474,7 +474,7 @@ function SidebarBody({
         <button
           type="button"
           onClick={onSignOut}
-          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[var(--admin-muted)] transition hover:bg-white/5 hover:text-white"
+          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[var(--admin-muted)] transition hover:bg-[var(--admin-hover)] hover:text-[var(--admin-text)]"
         >
           <LogOut size={16} />
           Sign out

@@ -95,7 +95,7 @@ export default function AdminReportsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-black text-white sm:text-2xl">Reports</h1>
+        <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">Reports</h1>
         <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
           Public feed reports filed by users. Self-harm reports are sorted first, at
           the database level, regardless of age.
@@ -118,10 +118,10 @@ export default function AdminReportsPage() {
                 type="button"
                 onClick={() => setStatus(tab.key)}
                 aria-pressed={status === tab.key}
-                className={`flex-none whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${
+                className={`flex-none whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70 ${
                   status === tab.key
                     ? "bg-purple-500/20 text-purple-200"
-                    : "text-[var(--admin-muted)] hover:bg-white/5 hover:text-white"
+                    : "text-[var(--admin-muted)] hover:bg-[var(--admin-hover)] hover:text-[var(--admin-text)]"
                 }`}
               >
                 {tab.label}
@@ -169,7 +169,7 @@ export default function AdminReportsPage() {
                         {report.author_username ? (
                           <Link
                             href={`/admin/users/${report.author_id}`}
-                            className="inline-flex items-center gap-1 text-[13px] font-bold text-white hover:text-purple-300"
+                            className="inline-flex items-center gap-1 text-[13px] font-bold text-[var(--admin-text)] hover:text-purple-300"
                           >
                             @{report.author_username}
                             <ExternalLink size={11} />
@@ -183,7 +183,7 @@ export default function AdminReportsPage() {
                           </p>
                         )}
                         {report.details && (
-                          <p className="mt-1.5 line-clamp-2 rounded-lg bg-white/5 px-2 py-1 text-[11.5px] italic text-[var(--admin-muted)]">
+                          <p className="mt-1.5 line-clamp-2 rounded-lg bg-[var(--admin-hover)] px-2 py-1 text-[11.5px] italic text-[var(--admin-muted)]">
                             “{report.details}”
                           </p>
                         )}

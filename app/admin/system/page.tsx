@@ -69,7 +69,7 @@ export default function AdminSystemPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-black text-white sm:text-2xl">System</h1>
+        <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">System</h1>
         <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
           Every privileged action taken through this panel, including reads of
           accounts&apos; private details. Append-only — there is no delete.
@@ -82,8 +82,8 @@ export default function AdminSystemPage() {
             <li className="flex items-start gap-2.5">
               <KeyRound size={14} className="mt-0.5 flex-none" />
               <span>
-                <code className="rounded bg-white/8 px-1 text-white">ADMIN_GRANT_PIN</code> —
-                checked in <code className="rounded bg-white/8 px-1">lib/admin/auth.ts</code>{" "}
+                <code className="rounded bg-[var(--admin-hover)] px-1 text-[var(--admin-text)]">ADMIN_GRANT_PIN</code> —
+                checked in <code className="rounded bg-[var(--admin-hover)] px-1">lib/admin/auth.ts</code>{" "}
                 on every request, in constant time. Missing it makes every route
                 answer with a configuration error rather than “incorrect PIN”.
               </span>
@@ -91,7 +91,7 @@ export default function AdminSystemPage() {
             <li className="flex items-start gap-2.5">
               <Database size={14} className="mt-0.5 flex-none" />
               <span>
-                <code className="rounded bg-white/8 px-1 text-white">SUPABASE_SERVICE_ROLE_KEY</code>{" "}
+                <code className="rounded bg-[var(--admin-hover)] px-1 text-[var(--admin-text)]">SUPABASE_SERVICE_ROLE_KEY</code>{" "}
                 — server only. Every admin read and write goes through it, and it
                 never reaches a browser.
               </span>
@@ -100,8 +100,8 @@ export default function AdminSystemPage() {
               <ShieldCheck size={14} className="mt-0.5 flex-none" />
               <span>
                 Migrations{" "}
-                <code className="rounded bg-white/8 px-1">202609080001</code> and{" "}
-                <code className="rounded bg-white/8 px-1">202609080002</code>. Without
+                <code className="rounded bg-[var(--admin-hover)] px-1">202609080001</code> and{" "}
+                <code className="rounded bg-[var(--admin-hover)] px-1">202609080002</code>. Without
                 them the panel reports the missing object by name instead of failing
                 silently.
               </span>
@@ -118,15 +118,15 @@ export default function AdminSystemPage() {
             </p>
             <p>
               Every admin database function is EXECUTE-revoked from{" "}
-              <code className="rounded bg-white/8 px-1">anon</code> and{" "}
-              <code className="rounded bg-white/8 px-1">authenticated</code>, and the
+              <code className="rounded bg-[var(--admin-hover)] px-1">anon</code> and{" "}
+              <code className="rounded bg-[var(--admin-hover)] px-1">authenticated</code>, and the
               tables behind them have row-level security enabled with no client
               policy. A browser that skipped this UI entirely would still have no
               path to another user&apos;s email or phone number.
             </p>
             <p>
               Bans are enforced in the database by before-insert triggers, not by this
-              interface — see <code className="rounded bg-white/8 px-1">/admin/moderation</code>.
+              interface — see <code className="rounded bg-[var(--admin-hover)] px-1">/admin/moderation</code>.
             </p>
           </div>
         </AdminPanel>
@@ -165,7 +165,7 @@ export default function AdminSystemPage() {
               className={`flex-none whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${
                 scope === option.key
                   ? "bg-purple-500/20 text-purple-200"
-                  : "text-[var(--admin-muted)] hover:bg-white/5 hover:text-white"
+                  : "text-[var(--admin-muted)] hover:bg-[var(--admin-hover)] hover:text-[var(--admin-text)]"
               }`}
             >
               {option.label}
@@ -203,7 +203,7 @@ export default function AdminSystemPage() {
                     })}
                   </AdminTd>
                   <AdminTd>
-                    <span className="text-[12.5px] font-semibold text-white">
+                    <span className="text-[12.5px] font-semibold text-[var(--admin-text)]">
                       {ACTION_LABELS[entry.action] ?? entry.action}
                     </span>
                   </AdminTd>

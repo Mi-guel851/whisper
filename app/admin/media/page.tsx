@@ -49,7 +49,7 @@ export default function AdminMediaPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-black text-white sm:text-2xl">Media</h1>
+        <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">Media</h1>
         <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
           Image counts from database records, not from walking storage buckets. The
           files themselves are not shown here — chat photos are view-once and

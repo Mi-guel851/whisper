@@ -131,7 +131,7 @@ export default function AdminAnnouncementsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-black text-white sm:text-2xl">Announcements</h1>
+          <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">Announcements</h1>
           <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
             Published announcements appear as a popup on targeted users&apos; dashboard.
             One row reaches everyone in the audience — nothing is sent per user.
@@ -168,7 +168,7 @@ export default function AdminAnnouncementsPage() {
                 className={`flex-none whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-bold transition ${
                   tab === option.key
                     ? "bg-purple-500/20 text-purple-200"
-                    : "text-[var(--admin-muted)] hover:bg-white/5 hover:text-white"
+                    : "text-[var(--admin-muted)] hover:bg-[var(--admin-hover)] hover:text-[var(--admin-text)]"
                 }`}
               >
                 {option.label}
@@ -237,7 +237,7 @@ export default function AdminAnnouncementsPage() {
                         </span>
                       </div>
 
-                      <h3 className="mt-2 truncate text-[15px] font-bold text-white">{announcement.title}</h3>
+                      <h3 className="mt-2 truncate text-[15px] font-bold text-[var(--admin-text)]">{announcement.title}</h3>
                       <p className="mt-1 line-clamp-2 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
                         {announcement.body}
                       </p>
@@ -245,7 +245,7 @@ export default function AdminAnnouncementsPage() {
                       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-[var(--admin-muted)]">
                         {announcement.cta_label && (
                           <span>
-                            Button: <span className="text-white">{announcement.cta_label}</span> →{" "}
+                            Button: <span className="text-[var(--admin-text)]">{announcement.cta_label}</span> →{" "}
                             <span className="font-mono">{announcement.cta_href}</span>
                           </span>
                         )}
@@ -274,8 +274,8 @@ export default function AdminAnnouncementsPage() {
                             const pct = total > 0 ? Math.round((tally / total) * 100) : 0;
                             return (
                               <div key={index} className="flex items-center gap-3">
-                                <span className="w-40 flex-none truncate text-[12px] text-white">{option}</span>
-                                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/8">
+                                <span className="w-40 flex-none truncate text-[12px] text-[var(--admin-text)]">{option}</span>
+                                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--admin-hover)]">
                                   <div
                                     className="h-full rounded-full bg-purple-500/70 transition-[width] duration-500"
                                     style={{ width: `${pct}%` }}

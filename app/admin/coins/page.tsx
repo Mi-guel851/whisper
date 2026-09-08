@@ -118,7 +118,7 @@ export default function AdminCoinsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-black text-white sm:text-2xl">Coins</h1>
+        <h1 className="text-xl font-black text-[var(--admin-text)] sm:text-2xl">Coins</h1>
         <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
           Grant coins and read the ledger. Every grant is verified against the admin
           PIN on the server and recorded in the audit log.
@@ -148,23 +148,23 @@ export default function AdminCoinsPage() {
             ) : searching && !results ? (
               <AdminSkeletonRows rows={3} columns={3} />
             ) : results && results.users.length > 0 && !selected ? (
-              <ul className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10">
+              <ul className="divide-y divide-white/5 overflow-hidden rounded-xl border border-[var(--admin-line)]">
                 {results.users.map((user) => (
                   <li key={user.id}>
                     <button
                       type="button"
                       onClick={() => setSelected(user)}
-                      className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-white/5"
+                      className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-[var(--admin-hover)]"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-bold text-white">
+                        <span className="block truncate text-[13px] font-bold text-[var(--admin-text)]">
                           @{user.username}
                         </span>
                         <span className="block truncate text-[11.5px] text-[var(--admin-muted)]">
                           {user.email_masked ?? "no email"}
                         </span>
                       </span>
-                      <span className="admin-numeric flex-none text-[12.5px] font-bold text-white">
+                      <span className="admin-numeric flex-none text-[12.5px] font-bold text-[var(--admin-text)]">
                         {user.coin_balance.toLocaleString()}
                         <span className="ml-1 text-[11px] font-semibold text-[var(--admin-muted)]">coins</span>
                       </span>
@@ -188,7 +188,7 @@ export default function AdminCoinsPage() {
               <div className="space-y-4 rounded-xl border border-purple-500/25 bg-purple-500/8 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-[13px] font-bold text-white">@{selected.username}</p>
+                    <p className="truncate text-[13px] font-bold text-[var(--admin-text)]">@{selected.username}</p>
                     <p className="truncate text-[11.5px] text-[var(--admin-muted)]">
                       {selected.email_masked ?? "no email"}
                     </p>
@@ -196,16 +196,16 @@ export default function AdminCoinsPage() {
                   <button
                     type="button"
                     onClick={() => setSelected(null)}
-                    className="flex-none text-[11.5px] font-semibold text-[var(--admin-muted)] hover:text-white"
+                    className="flex-none text-[11.5px] font-semibold text-[var(--admin-muted)] hover:text-[var(--admin-text)]"
                   >
                     Change
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 rounded-lg bg-black/25 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-lg bg-[var(--admin-input)] px-3 py-2">
                   <CoinsIcon size={15} className="text-purple-300" />
                   <span className="text-[12.5px] text-[var(--admin-muted)]">Current balance</span>
-                  <span className="admin-numeric ml-auto text-[13px] font-bold text-white">
+                  <span className="admin-numeric ml-auto text-[13px] font-bold text-[var(--admin-text)]">
                     {selected.coin_balance.toLocaleString()}
                   </span>
                 </div>
@@ -227,7 +227,7 @@ export default function AdminCoinsPage() {
                       key={preset}
                       type="button"
                       onClick={() => setAmount(String(preset))}
-                      className="admin-numeric rounded-full border border-white/10 px-3 py-1.5 text-[12px] font-bold text-[var(--admin-muted)] transition hover:border-purple-400/40 hover:text-white"
+                      className="admin-numeric rounded-full border border-[var(--admin-line)] px-3 py-1.5 text-[12px] font-bold text-[var(--admin-muted)] transition hover:border-purple-400/40 hover:text-[var(--admin-text)]"
                     >
                       {preset}
                     </button>
@@ -247,7 +247,7 @@ export default function AdminCoinsPage() {
                 {amount && Number.parseInt(amount, 10) > 0 && (
                   <p className="admin-numeric text-[12px] text-[var(--admin-muted)]">
                     New balance:{" "}
-                    <span className="font-bold text-white">
+                    <span className="font-bold text-[var(--admin-text)]">
                       {(selected.coin_balance + Number.parseInt(amount, 10)).toLocaleString()}
                     </span>
                   </p>
@@ -264,7 +264,7 @@ export default function AdminCoinsPage() {
                 </AdminButton>
               </div>
             ) : (
-              <p className="rounded-xl border border-white/10 p-4 text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
+              <p className="rounded-xl border border-[var(--admin-line)] p-4 text-[12.5px] leading-relaxed text-[var(--admin-muted)]">
                 A grant is capped at 1,000,000 coins per request and is written to the
                 ledger with your account recorded as the granter.
               </p>
@@ -314,7 +314,7 @@ export default function AdminCoinsPage() {
                       })}
                     </AdminTd>
                     <AdminTd>
-                      <span className="text-[12.5px] font-semibold text-white">
+                      <span className="text-[12.5px] font-semibold text-[var(--admin-text)]">
                         {row.username ? `@${row.username}` : "—"}
                       </span>
                       <span className="block max-w-[10rem] truncate text-[11px] text-[var(--admin-muted)]">
@@ -356,8 +356,8 @@ export default function AdminCoinsPage() {
           <p>
             Balances are never computed by adding up the ledger in the browser, and no
             coin movement in this app is a read-modify-write. Spending is a single
-            guarded <code className="rounded bg-white/8 px-1">update … where balance &gt;= cost</code>{" "}
-            inside a database function (<code className="rounded bg-white/8 px-1">debit_whisper_coins</code>,
+            guarded <code className="rounded bg-[var(--admin-hover)] px-1">update … where balance &gt;= cost</code>{" "}
+            inside a database function (<code className="rounded bg-[var(--admin-hover)] px-1">debit_whisper_coins</code>,
             202609070001 §S7b), so two concurrent spends cannot both succeed against the
             same balance.
           </p>
