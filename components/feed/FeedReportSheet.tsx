@@ -53,13 +53,22 @@ export default function FeedReportSheet({
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [details, setDetails] = useState("");
 
+  const postId = post?.id;
+
   /* Reset when the sheet is pointed at a different post, so a reason picked for
      one whisper can't be submitted against another. */
   useEffect(() => {
-    if (!post) return;
-    setReason(null);
-    setDetails("");
-  }, [post?.id, post]);
+    if (!postId) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setReason(null);
+      setDetails("");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [postId]);
 
   const selected = REASONS.find((entry) => entry.key === reason);
 

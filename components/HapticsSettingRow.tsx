@@ -41,7 +41,13 @@ export default function HapticsSettingRow() {
   const [report, setReport] = useState<HapticsDiagnosis | null>(null);
 
   useEffect(() => {
-    setEnabled(isHapticsEnabled());
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setEnabled(isHapticsEnabled());
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function toggle() {

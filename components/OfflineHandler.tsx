@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { WifiOff } from "lucide-react";
 import { subscribeToConnectivity, isOnline } from "@/lib/offline";
+
+function subscribe(listener: () => void) {
+  return subscribeToConnectivity(() => listener());
+}
 
 /**
  * The offline indicator.
@@ -34,15 +38,8 @@ import { subscribeToConnectivity, isOnline } from "@/lib/offline";
  * and quietly is not.
  */
 export default function OfflineHandler() {
-  const [offline, setOffline] = useState(false);
-
-  useEffect(() => {
-    /* Read once on mount as well as subscribing: the subscription only fires on
-       transitions, so a page opened while already offline would otherwise show
-       nothing until connectivity changed. */
-    setOffline(!isOnline());
-    return subscribeToConnectivity((online) => setOffline(!online));
-  }, []);
+  const online = useSyncExternalStore(subscribe, isOnline, () => true);
+  const offline = !online;
 
   return (
     <AnimatePresence>

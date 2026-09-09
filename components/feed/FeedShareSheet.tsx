@@ -50,7 +50,15 @@ export default function FeedShareSheet({ post, onClose, onCopy }: FeedShareSheet
      mismatch that swaps a button in on the second frame. */
   const [canNativeShare, setCanNativeShare] = useState(false);
   useEffect(() => {
-    setCanNativeShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setCanNativeShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const url = post ? feedPostUrl(post.id) : "";

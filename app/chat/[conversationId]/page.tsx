@@ -1358,8 +1358,6 @@ export default function ChatPage() {
     return messages.filter((message) => (message.content || "").toLowerCase().includes(query)).map((message) => message.id).reverse();
   }, [messages, searchQuery]);
 
-  useEffect(() => { setActiveHit(0); }, [searchQuery]);
-
   const searchHitSet = useMemo(() => new Set(searchHits), [searchHits]);
 
   useEffect(() => {
@@ -2105,7 +2103,7 @@ export default function ChatPage() {
               <button type="button" onClick={closeSearch} className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full" aria-label="Close search">
                 <ArrowLeft size={20} />
               </button>
-              <input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search messages..." className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[var(--chat-meta)]" />
+              <input autoFocus value={searchQuery} onChange={(event) => { setSearchQuery(event.target.value); setActiveHit(0); }} placeholder="Search messages..." className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[var(--chat-meta)]" />
               <span className="chat-meta shrink-0 px-1 text-xs">
                 {searchHits.length ? `${activeHit + 1}/${searchHits.length}` : searchQuery.trim() ? "0/0" : ""}
               </span>
