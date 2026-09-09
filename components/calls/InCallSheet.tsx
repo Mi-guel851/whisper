@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react";
+import { Mic, MicOff, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
 
 import { formatCallDuration } from "@/lib/calls/callFormat";
 import type { CallStatus } from "@/lib/calls/useVoiceCall";
@@ -23,16 +23,13 @@ type InCallSheetProps = {
 };
 
 /**
- * The in-call sheet: who, how long, mute, speaker, end.
+ * WhatsApp-style active call surface.
  *
- * A bottom sheet rather than a modal because a call is a background fact
- * while the thread is still the foreground thought — the sheet holds the
- * call and the chat stays visible underneath, the way a phone's in-call bar
- * coexists with everything else on the home screen.
- *
- * The timer starts when the call CONNECTS (startedAt), not when it is
- * dialed: a 40-second ring is "Calling…", not "0:40" of a conversation that
- * never happened.
+ * The previous call UI was a compact bottom sheet over the chat. It worked, but
+ * it did not feel like a call. This screen takes over the viewport while the
+ * call is ringing/connecting/live, keeps the anonymous identity centered, and
+ * puts large round mute/speaker/end controls along the bottom — the mental model
+ * users already know from WhatsApp/phone calls.
  */
 export default function InCallSheet({
   name,
@@ -49,8 +46,6 @@ export default function InCallSheet({
   const reduced = useSafeReducedMotion();
   const [now, setNow] = useState(() => Date.now());
 
-  /* Tick only while connected: before that there is no number to show, and
-     a per-second re-render for "Connecting…" is pure cost. */
   useEffect(() => {
     if (startedAt === null) return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -63,97 +58,133 @@ export default function InCallSheet({
         ? formatCallDuration(now - startedAt)
         : "0:00"
       : status === "outgoing"
-        ? "Calling…"
+        ? "Ringing…"
         : "Connecting…";
 
   return (
     <motion.div
-      className="fixed inset-x-0 bottom-0 z-[60] px-3 pb-3"
-      initial={reduced ? { opacity: 0 } : { y: "100%" }}
-      animate={reduced ? { opacity: 1 } : { y: 0 }}
-      transition={reduced ? { duration: 0 } : spring.gentle}
+      className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-[#07130f] px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))] text-white"
+      initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 1.02 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={reduced ? { duration: 0 } : { duration: 0.22, ease: "easeOut" }}
     >
       <div
-        className="mx-auto w-full max-w-md rounded-3xl p-5 shadow-2xl"
+        className="absolute inset-0 opacity-90"
         style={{
-          background: "var(--theme-glass-strong)",
-          border: "1px solid var(--theme-glass-border)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
+          background:
+            "radial-gradient(circle at 50% 22%, rgba(37,211,102,0.30), transparent 30%), radial-gradient(circle at 15% 85%, rgba(34,211,238,0.16), transparent 32%), linear-gradient(180deg, #0b2119 0%, #06100d 62%, #020605 100%)",
         }}
-      >
-        <div className="flex flex-col items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={avatarUrl}
-            alt=""
-            className="h-16 w-16 rounded-full object-cover"
-            style={{ border: "1px solid var(--theme-glass-border)", background: "var(--fill-2)" }}
-          />
-          <p className="mt-2.5 text-base font-black">{name}</p>
-          <p
-            className="mt-0.5 text-sm font-semibold tabular-nums"
-            style={{ color: status === "in_call" ? "var(--theme-success)" : "var(--theme-text-muted)" }}
-          >
-            {label}
-          </p>
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.06)_0_1px,transparent_1px_28px)] opacity-20" />
+
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-between">
+        <div className="flex flex-col items-center text-center">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-white/70">
+            <PhoneCall size={13} />
+            Whisper voice call
+          </div>
+
+          <div className="relative mt-14 flex items-center justify-center">
+            {!reduced && status !== "in_call" &&
+              [0, 0.9].map((delay) => (
+                <motion.span
+                  key={delay}
+                  className="absolute rounded-full border border-[#25D366]/45"
+                  style={{ width: 150, height: 150 }}
+                  initial={{ scale: 0.92, opacity: 0.8 }}
+                  animate={{ scale: 1.75, opacity: 0 }}
+                  transition={{ duration: 1.8, delay, repeat: Infinity, ease: "easeOut" }}
+                />
+              ))}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={avatarUrl}
+              alt=""
+              className="h-36 w-36 rounded-full object-cover shadow-2xl"
+              style={{ border: "4px solid rgba(37, 211, 102, 0.62)", background: "var(--fill-2)" }}
+            />
+          </div>
+
+          <h1 className="mt-8 max-w-xs truncate text-3xl font-black text-white">{name}</h1>
+          <p className="mt-2 text-base font-semibold tabular-nums text-white/72">{label}</p>
         </div>
 
-        <div className="mt-5 flex items-center justify-center gap-5">
-          <motion.button
-            type="button"
-            onClick={onToggleMute}
-            whileTap={reduced ? undefined : { scale: 0.9, transition: spring.snappy }}
-            className="flex h-14 w-14 items-center justify-center rounded-full"
-            style={{
-              background: muted
-                ? "color-mix(in srgb, #a855f7 26%, transparent)"
-                : "rgba(255,255,255,0.08)",
-              color: muted ? "#d8b4fe" : "var(--theme-text-secondary)",
-              border: "1px solid var(--theme-glass-border)",
-            }}
-            aria-label={muted ? "Unmute" : "Mute"}
-            aria-pressed={muted}
-          >
-            {muted ? <MicOff size={22} /> : <Mic size={22} />}
-          </motion.button>
+        <div className="w-full max-w-sm">
+          <div className="mb-6 grid grid-cols-3 items-center justify-items-center gap-4">
+            <CallControlButton
+              label={muted ? "Unmute" : "Mute"}
+              active={muted}
+              onClick={onToggleMute}
+              reduced={reduced}
+            >
+              {muted ? <MicOff size={24} /> : <Mic size={24} />}
+            </CallControlButton>
 
-          {/* The speaker control exists only where the platform exposes an
-              output device to switch (setSinkId, desktop). On mobile the
-              WebRTC audio follows the OS call-routing switch, and a button
-              that cannot route audio is a promise the UI makes twice —
-              once on screen, once in the "why didn't it work" report. */}
-          {speakerSupported && (
             <motion.button
               type="button"
-              onClick={onToggleSpeaker}
-              whileTap={reduced ? undefined : { scale: 0.9, transition: spring.snappy }}
-              className="flex h-14 w-14 items-center justify-center rounded-full"
-              style={{
-                background: speakerOn
-                  ? "color-mix(in srgb, #22d3ee 26%, transparent)"
-                  : "rgba(255,255,255,0.08)",
-                color: speakerOn ? "#67e8f9" : "var(--theme-text-secondary)",
-                border: "1px solid var(--theme-glass-border)",
-              }}
-              aria-label={speakerOn ? "Speaker off" : "Speaker on"}
-              aria-pressed={speakerOn}
+              onClick={onHangUp}
+              whileTap={reduced ? undefined : { scale: 0.92, transition: spring.snappy }}
+              className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-[#ef4444] text-white shadow-2xl shadow-red-950/50"
+              aria-label="End call"
             >
-              {speakerOn ? <Volume2 size={22} /> : <VolumeX size={22} />}
+              <PhoneOff size={28} />
             </motion.button>
-          )}
 
-          <motion.button
-            type="button"
-            onClick={onHangUp}
-            whileTap={reduced ? undefined : { scale: 0.9, transition: spring.snappy }}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg"
-            aria-label="End call"
-          >
-            <PhoneOff size={22} />
-          </motion.button>
+            {speakerSupported ? (
+              <CallControlButton
+                label={speakerOn ? "Speaker" : "Speaker"}
+                active={speakerOn}
+                onClick={onToggleSpeaker}
+                reduced={reduced}
+              >
+                {speakerOn ? <Volume2 size={24} /> : <VolumeX size={24} />}
+              </CallControlButton>
+            ) : (
+              <div className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-white/5 text-white/25" aria-hidden>
+                <VolumeX size={24} />
+              </div>
+            )}
+          </div>
+          <p className="text-center text-xs font-medium leading-relaxed text-white/45">
+            Audio is end-to-end over WebRTC. Whisper does not record calls.
+          </p>
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function CallControlButton({
+  label,
+  active,
+  reduced,
+  onClick,
+  children,
+}: {
+  label: string;
+  active: boolean;
+  reduced: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <motion.button
+        type="button"
+        onClick={onClick}
+        whileTap={reduced ? undefined : { scale: 0.92, transition: spring.snappy }}
+        className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full shadow-xl"
+        style={{
+          background: active ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.14)",
+          color: active ? "#07130f" : "#fff",
+          border: "1px solid rgba(255,255,255,0.16)",
+        }}
+        aria-label={label}
+        aria-pressed={active}
+      >
+        {children}
+      </motion.button>
+      <span className="text-[11px] font-bold text-white/65">{label}</span>
+    </div>
   );
 }
