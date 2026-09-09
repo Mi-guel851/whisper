@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, Share2, Link2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/components/ToastProvider";
 import SectionLoadingBar from "./SectionLoadingBar";
 import EdgeLitCard from "./EdgeLitCard";
 import Button from "./Button";
 
-export default function LinkCard() {
+export default function LinkCard({ username }: { username?: string } = {}) {
   const [link, setLink] = useState("");
   const [displayPath, setDisplayPath] = useState("");
   const [loading, setLoading] = useState(true);
@@ -24,6 +25,13 @@ export default function LinkCard() {
 
   useEffect(() => {
     async function load() {
+      if (username) {
+        setLink(`${window.location.origin}/u/${username}`);
+        setDisplayPath(`whisper.app/u/${username}`);
+        setLoading(false);
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -46,14 +54,13 @@ export default function LinkCard() {
       setLoading(false);
     }
 
-    load();
-  }, []);
+    void load();
+  }, [username]);
 
   async function copyLink() {
     if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link);
-    } catch {
+    const didCopy = await copyText(link);
+    if (!didCopy) {
       showToast("Couldn't copy — long-press the link to copy it manually.");
       return;
     }
@@ -72,11 +79,12 @@ export default function LinkCard() {
           text: "Tap my Whisper link 👇",
           url: link,
         });
-      } catch {
-        // cancelled
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        await copyLink();
       }
     } else {
-      copyLink();
+      await copyLink();
     }
   }
 
@@ -110,9 +118,9 @@ export default function LinkCard() {
             className="flex-1"
             onClick={copyLink}
             disabled={!link}
-            icon={<Copy size={16} />}
+            icon={copied ? <Check size={16} /> : <Copy size={16} />}
           >
-            Copy
+            {copied ? "Copied" : "Copy"}
           </Button>
           <Button
             className="flex-1"

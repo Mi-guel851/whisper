@@ -10,6 +10,7 @@ import { enablePushNotifications } from "@/lib/push";
 import { useToast } from "@/components/ToastProvider";
 import Button from "./Button";
 import StreakChip from "./StreakChip";
+import type { DashboardProfile } from "./dashboard/types";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -18,13 +19,15 @@ function getGreeting() {
   return "Good evening";
 }
 
-export default function DashboardHeader() {
-  const [name, setName] = useState("");
+export default function DashboardHeader({ profile }: { profile?: DashboardProfile }) {
+  const [name, setName] = useState(profile?.display_name || profile?.username || "");
   const [loading, setLoading] = useState(false);
-  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(Boolean(profile?.push_notifications));
   const { showToast } = useToast();
 
   useEffect(() => {
+    if (profile) return;
+
     async function load() {
       const {
         data: { session },
@@ -43,7 +46,7 @@ export default function DashboardHeader() {
       }
     }
     load();
-  }, []);
+  }, [profile]);
 
   async function handleNotifyClick() {
     setLoading(true);
@@ -122,6 +125,8 @@ export default function DashboardHeader() {
     setLoading(false);
   }
 
+  const visibleName = profile?.display_name || profile?.username || name;
+
   return (
     <div className="flex items-center justify-between gap-3">
       {/* min-w-0 is what lets the truncate below engage: a flex child defaults to
@@ -130,7 +135,7 @@ export default function DashboardHeader() {
       <div className="min-w-0 flex-1">
         <p className="eyebrow text-gray-300">{getGreeting()}</p>
         <h1 className="page-title mt-1 flex items-center gap-2 text-white">
-          <span className="truncate">Hey, {name || "there"}</span>
+          <span className="truncate">Hey, {visibleName || "there"}</span>
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 shadow-sm">
             <Image src="/ghost.png" alt="Whisper" width={18} height={18} />
           </span>

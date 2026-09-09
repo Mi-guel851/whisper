@@ -32,7 +32,8 @@ import {
 import {
   buildPostTree,
   dailyQuestionFor,
-  formatCount,
+  FEED_SORTS,
+  FEED_TOPICS,
   rankFeedPosts,
   type FeedLike,
   type FeedPost,
@@ -561,6 +562,24 @@ export default function PublicFeedPage() {
 
       if (cancelled) return;
       setUsername(profile?.username || "");
+
+      /* Dashboard and shared links carry their intended feed view in the URL.
+         Apply it before `ready` flips so the first request is the requested
+         view — not a throwaway For You request followed by a second fetch. */
+      const params = new URLSearchParams(window.location.search);
+      const requestedSort = params.get("sort");
+      if (requestedSort && FEED_SORTS.some((entry) => entry.key === requestedSort)) {
+        setSort(requestedSort as FeedSort);
+      }
+      const requestedTopic = params.get("topic");
+      if (requestedTopic && FEED_TOPICS.some((entry) => entry.key === requestedTopic)) {
+        setTopic(requestedTopic);
+      }
+      const requestedSearch = params.get("search")?.trim() ?? "";
+      if (requestedSearch) {
+        setSearch(requestedSearch);
+        setSearchOpen(true);
+      }
       setReady(true);
 
       await supabase
@@ -701,14 +720,16 @@ export default function PublicFeedPage() {
     if (!ready) return;
     let cancelled = false;
 
-    setLoading(true);
-    (async () => {
-      await loadPage(0, true);
-      if (!cancelled) {
-        setLoading(false);
-        setPendingNew([]);
-      }
-    })();
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      void loadPage(0, true).then(() => {
+        if (!cancelled) {
+          setLoading(false);
+          setPendingNew([]);
+        }
+      });
+    });
 
     return () => { cancelled = true; };
   }, [ready, loadPage]);
@@ -1520,7 +1541,7 @@ export default function PublicFeedPage() {
     deepLinkHandled.current = true;
 
     const target = new URLSearchParams(window.location.search).get("post");
-    if (target) void focusPost(target);
+    if (target) queueMicrotask(() => void focusPost(target));
   }, [ready, focusPost]);
 
   const surprise = useCallback(async () => {

@@ -7,55 +7,94 @@ import { supabase } from "@/lib/supabase/client";
 import { getCachedSession } from "@/lib/supabase/session";
 import { presenceManager } from "@/lib/realtime/presence";
 
-import DashboardHeader from "@/components/DashboardHeader";
-import LinkCard from "@/components/LinkCard";
-import DailyWhisperCard from "@/components/DailyWhisperCard";
-import LiveActivityStrip from "@/components/LiveActivityStrip";
-import StatsRow from "@/components/StatsRow";
 import ActivityChart from "@/components/ActivityChart";
-import RecentMessages from "@/components/RecentMessages";
 import BottomNavigation from "@/components/BottomNavigation";
 import BrandedLoader from "@/components/BrandedLoader";
+import DailyWhisperCard from "@/components/DailyWhisperCard";
+import LinkCard from "@/components/LinkCard";
+import LiveActivityStrip from "@/components/LiveActivityStrip";
+import RecentMessages from "@/components/RecentMessages";
 import TermsModal from "@/components/TermsModal";
+import DashboardHero from "@/components/dashboard/DashboardHero";
+import DashboardRightRail from "@/components/dashboard/DashboardRightRail";
+import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
+import DashboardTopbar from "@/components/dashboard/DashboardTopbar";
+import PublicFeedPreview from "@/components/dashboard/PublicFeedPreview";
+import type { DashboardProfile } from "@/components/dashboard/types";
+import { useDashboardFeed } from "@/components/dashboard/useDashboardFeed";
+
+type ProfileRow = DashboardProfile & { profile_completed: boolean | null };
+
+function DashboardExperience({ profile }: { profile: DashboardProfile }) {
+  const feed = useDashboardFeed(profile.id);
+
+  return (
+    <main className="dashboard-shell theme-bg-gradient">
+      <div className="dashboard-ambient" aria-hidden />
+      <DashboardSidebar profile={profile} />
+      <DashboardTopbar profile={profile} />
+
+      <div className="dashboard-center-column">
+        <DashboardHero profile={profile} />
+        <LiveActivityStrip />
+
+        <section id="whisper-link" className="dashboard-personal-grid" aria-label="Your sharing tools">
+          <LinkCard username={profile.username} />
+          <DailyWhisperCard initialUsername={profile.username} />
+        </section>
+
+        <PublicFeedPreview feed={feed} />
+
+        <section id="engagement" className="dashboard-insights-grid" aria-label="Your recent activity">
+          <ActivityChart initialUserId={profile.id} />
+          <RecentMessages initialUserId={profile.id} />
+        </section>
+      </div>
+
+      <DashboardRightRail
+        userId={profile.id}
+        topics={feed.topics}
+        loadingTopics={feed.loading}
+      />
+
+      <div className="dashboard-bottom-nav"><BottomNavigation /></div>
+    </main>
+  );
+}
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [profile, setProfile] = useState<DashboardProfile | null>(null);
   const [checking, setChecking] = useState(true);
   const [showTerms, setShowTerms] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function init() {
       const session = await getCachedSession();
+      if (cancelled) return;
 
       if (!session) {
-        router.push("/login");
+        router.replace("/login");
         return;
       }
 
-      /* Not awaited, and deliberately never disconnected here.
-       *
-       * `presenceManager` is a process-wide singleton shared by the dashboard,
-       * inbox, discover, friends, chat and the nav badge store. Tearing it down
-       * in this component's cleanup meant that leaving the home tab — which is
-       * on the path of most navigations — dropped the channel for all of them,
-       * so the next page had to pay a full WebSocket subscribe and `track()`
-       * before it could show a single online dot. It also raced the incoming
-       * page's `connect()`, since unmount and mount effects interleave.
-       *
-       * Presence is session-scoped, not page-scoped. It connects once and stays
-       * up; `disconnect()` belongs to sign-out. Not awaiting it here matters
-       * too: the profile check below is what actually gates this screen, and it
-       * has no reason to queue behind a handshake. */
+      /* Presence is session-scoped and process-wide. Connecting here is
+         idempotent; it must survive navigation so friends and nav badges do not
+         pay another WebSocket handshake on every page. */
       void presenceManager.connect(session.user.id);
 
-      const { data: profile } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
-        .select("profile_completed")
+        .select("id,username,display_name,avatar_url,push_notifications,profile_completed")
         .eq("id", session.user.id)
         .single();
 
-      if (!profile?.profile_completed) {
-        router.push("/complete-profile");
+      if (cancelled) return;
+      const row = data as ProfileRow | null;
+      if (error || !row?.profile_completed || !row.username) {
+        router.replace("/complete-profile");
         return;
       }
 
@@ -65,48 +104,28 @@ export default function DashboardPage() {
         setShowTerms(true);
       }
 
+      setProfile({
+        id: row.id,
+        username: row.username,
+        display_name: row.display_name,
+        avatar_url: row.avatar_url,
+        push_notifications: Boolean(row.push_notifications),
+      });
       setChecking(false);
     }
 
-    init();
+    void init();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
-  if (checking) {
-    return <BrandedLoader />;
-  }
+
+  if (checking || !profile) return <BrandedLoader />;
 
   return (
-    <main className="relative min-h-screen overflow-hidden theme-bg-gradient pb-36">
-      {/* Ambient drift.
-
-          This used to be a 15s keyframe animating the `background` shorthand on
-          <main> itself, which repaints a full-viewport gradient every frame on
-          the main thread — the single most expensive thing on the screen. It's
-          now two static gradient layers cross-fading on `opacity`, which the
-          compositor handles without touching paint, and it looks identical. */}
-      <div className="dashboard-ambient" aria-hidden />
-
-      <div className="pointer-events-none absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-purple-600/10 blur-[180px]" />
-      <div className="pointer-events-none absolute top-1/3 right-[-150px] h-[420px] w-[420px] rounded-full bg-purple-600/10 blur-[180px]" />
-
-      <div className="relative mx-auto max-w-4xl space-y-5 p-6">
-        <DashboardHeader />
-        <LinkCard />
-        {/* Directly under the link on purpose: the two read as one thought —
-            here is your link, and here is what to say when you send it. A bare
-            link asks nothing and gets ignored. */}
-        <DailyWhisperCard />
-        {/* Under the prompt, not above the fold: it is context, not content. It
-            renders nothing at all until the numbers are real and worth stating —
-            see the note in the component. */}
-        <LiveActivityStrip />
-        <StatsRow />
-        <ActivityChart />
-        <RecentMessages />
-      </div>
-
-      <BottomNavigation />
-
+    <>
+      <DashboardExperience profile={profile} />
       {showTerms && <TermsModal onAccept={() => setShowTerms(false)} />}
-    </main>
+    </>
   );
 }

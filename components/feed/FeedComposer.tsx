@@ -143,20 +143,27 @@ export default function FeedComposer({
      was already typed would produce nonsense. */
   useEffect(() => {
     if (prefillNonce === 0) return;
-    if (prefillBody) {
-      setBody(prefillBody);
-      setTopic(prefillTopic);
-    }
-    if (prefillPoll) {
-      /* A photo cannot ride with a poll, so the poll request wins and the photo
-         is dropped — the caller asked for a poll explicitly. */
-      setImage(null);
-      setImageUrl(null);
-      setPollOptions((current) => current ?? ["", ""]);
-    }
-    const field = textareaRef.current;
-    field?.focus();
-    field?.scrollIntoView({ behavior: "smooth", block: "center" });
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (prefillBody) {
+        setBody(prefillBody);
+        setTopic(prefillTopic);
+      }
+      if (prefillPoll) {
+        /* A photo cannot ride with a poll, so the poll request wins and the photo
+           is dropped — the caller asked for a poll explicitly. */
+        setImage(null);
+        setImageUrl(null);
+        setPollOptions((current) => current ?? ["", ""]);
+      }
+      const field = textareaRef.current;
+      field?.focus();
+      field?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => {
+      cancelled = true;
+    };
     // Only the nonce should trigger this; the body/topic are read at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillNonce]);

@@ -242,20 +242,26 @@ function VoiceRecorderBase({
 
   useEffect(() => {
     if (!error) return;
+    let cancelled = false;
 
-    /* Always surfaced, blocked permission included. Swallowing that one is what
-       made the button look dead: the press did nothing and said nothing. */
-    onError(error);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      /* Always surfaced, blocked permission included. Swallowing that one is
+         what made the button look dead: the press did nothing and said nothing. */
+      onError(error);
 
-    /* A block cannot be undone from in here — only from browser or OS settings
-       — so stop offering the rationale dialog, which would otherwise reappear on
-       every press and lead nowhere. */
-    if (/blocked|denied|notallowed/i.test(error)) setNeedsRationale(false);
+      /* A block cannot be undone from in here — only from browser or OS settings
+         — so stop offering a rationale dialog that can lead nowhere. */
+      if (/blocked|denied|notallowed/i.test(error)) setNeedsRationale(false);
 
-    clearError();
-    setLocked(false);
-    lockedRef.current = false;
-    resetGesture();
+      clearError();
+      setLocked(false);
+      lockedRef.current = false;
+      resetGesture();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [error, onError, clearError, resetGesture]);
 
   /* Safety net for one invariant: `locked` true while nothing is recording
@@ -266,10 +272,16 @@ function VoiceRecorderBase({
      asked to start from a non-idle state). Cheaper to hold the invariant here
      than to unwind it correctly on every failure path. */
   useEffect(() => {
-    if (status === "idle" && locked) {
+    if (status !== "idle" || !locked) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
       setLocked(false);
       lockedRef.current = false;
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [status, locked]);
 
   const onRecordingChangeRef = useRef(onRecordingChange);

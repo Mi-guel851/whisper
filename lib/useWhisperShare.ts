@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useToast } from "@/components/ToastProvider";
+import { copyText as writeToClipboard } from "@/lib/clipboard";
 import { supabase } from "@/lib/supabase/client";
 import { getCachedSession } from "@/lib/supabase/session";
 import { HAPTIC, vibrate } from "@/lib/haptics";
@@ -28,16 +29,23 @@ import { HAPTIC, vibrate } from "@/lib/haptics";
 /** How a share attempt ended, for callers that want to react differently. */
 export type ShareOutcome = "shared" | "copied" | "cancelled" | "no-link" | "failed";
 
-export function useWhisperShare() {
+export function useWhisperShare(initialUsername?: string) {
   const { showToast } = useToast();
   const [link, setLink] = useState("");
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(initialUsername ?? "");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      if (initialUsername) {
+        setLink(`${window.location.origin}/u/${initialUsername}`);
+        setUsername(initialUsername);
+        setLoading(false);
+        return;
+      }
+
       const session = await getCachedSession();
       if (cancelled) return;
 
@@ -71,7 +79,7 @@ export function useWhisperShare() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialUsername]);
 
   /**
    * The message body.
@@ -87,21 +95,20 @@ export function useWhisperShare() {
 
   const copyText = useCallback(
     async (text: string, message: string): Promise<boolean> => {
-      try {
-        await navigator.clipboard.writeText(text);
+      const copied = await writeToClipboard(text);
+      if (copied) {
         vibrate(HAPTIC.success);
         /* `subtle`: a copy is the quietest successful action in the app. The
            button the user pressed is the real confirmation; a card in the corner
-           of the screen is more interruption than the event warrants. The
-           FAILURE below stays a full toast, because that one needs an answer. */
+           of the screen is more interruption than the event warrants. */
         showToast(message, { variant: "subtle" });
         return true;
-      } catch {
-        /* Permission-gated, and refused outright by some in-app browsers. Saying
-           so beats a button that appears to do nothing. */
-        showToast("Couldn't copy — long-press the text to copy it manually.");
-        return false;
       }
+
+      /* Permission-gated, and refused outright by some in-app browsers. Saying
+         so beats a button that appears to do nothing. */
+      showToast("Couldn't copy — long-press the text to copy it manually.");
+      return false;
     },
     [showToast]
   );
@@ -127,8 +134,11 @@ export function useWhisperShare() {
           await navigator.share({ title: "Whisper", text });
           vibrate(HAPTIC.success);
           return "shared";
-        } catch {
-          return "cancelled";
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return "cancelled";
+          return (await copyText(text, "Sharing failed, so the prompt and link were copied ✓"))
+            ? "copied"
+            : "failed";
         }
       }
 

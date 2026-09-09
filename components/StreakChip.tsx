@@ -93,7 +93,7 @@ export default function StreakChip() {
             /* The glow lives on the icon, not the chip, so the pulse cannot make
                the header's layout breathe. */
             animate={reduced || !lit ? undefined : { scale: [1, 1.1, 1] }}
-            transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 0.7, ease: "easeInOut" }}
           >
             <Flame
               size={17}
@@ -114,7 +114,7 @@ export default function StreakChip() {
             <motion.span
               className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-amber-400 shadow-lg shadow-amber-500/40"
               animate={reduced ? undefined : { scale: [1, 1.25, 1], opacity: [1, 0.75, 1] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+              transition={{ duration: 0.65, ease: "easeInOut" }}
             />
           )}
         </button>

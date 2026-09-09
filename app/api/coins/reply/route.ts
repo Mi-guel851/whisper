@@ -93,17 +93,33 @@ export async function POST(req: NextRequest) {
       console.error("Reply refunded:", reason);
     }
 
-    let createdPost: any = null;
+    type CreatedPost = {
+      id: string;
+      author_id: string;
+      body: string;
+      whisper_link: string | null;
+      created_at: string;
+      expires_at: string;
+      parent_post_id?: string | null;
+    };
+    type InsertBody = {
+      author_id: string;
+      body: string;
+      whisper_link: string | null;
+      parent_post_id?: string;
+    };
+
+    let createdPost: CreatedPost | null = null;
     let postFailure = "";
     try {
       // attempt to look up the user's username for whisper_link
       const { data: profile } = await supabaseAdmin.from("profiles").select("username").eq("id", user.id).maybeSingle();
       const whisper_link = profile?.username ? `/u/${profile.username}` : null;
 
-      const insertBody: any = {
+      const insertBody: InsertBody = {
         author_id: user.id,
         body: text,
-        whisper_link: whisper_link,
+        whisper_link,
       };
       // allow optional parent post id for replies
       if (body?.postId) insertBody.parent_post_id = body.postId;
