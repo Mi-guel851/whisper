@@ -46,8 +46,9 @@ import {
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
-  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy,
+  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy, Handshake, Check,
 } from "lucide-react";
+import Button from "@/components/Button";
 
 interface SecureScreenPlugin {
   enable(): Promise<void>;
@@ -547,6 +548,35 @@ export default function ChatPage() {
   const [chatUnlocked, setChatUnlocked] = useState(false);
   const [isFriendConversation, setIsFriendConversation] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
+  /*
+   * The pending-request state behind the messaging gates (202609090002):
+   *
+   *   direction "incoming"  — the OTHER user asked to be friends. I must
+   *                           accept before I may reply; the banner + locked
+   *                           composer are this direction.
+   *   direction "outgoing"  — I asked. I may send (after the coin unlock);
+   *                           no banner for me, but if the request is
+   *                           declined or I cancel it, the database deletes
+   *                           the thread and this screen must leave, not sit
+   *                           in a conversation that no longer exists.
+   *
+   * The database is the source of truth for all of it; this state only
+   * decides what to draw between re-checks.
+   */
+  const [pendingRequest, setPendingRequest] = useState<{ id: string; direction: "incoming" | "outgoing" } | null>(null);
+  const [acceptingRequest, setAcceptingRequest] = useState(false);
+  const [decliningRequest, setDecliningRequest] = useState(false);
+
+  /*
+   * Accept-lock takes precedence over the coin lock. Paying 40 coins does not
+   * make the reply legal — the database only allows it after the request is
+   * accepted — so the paywall panel must not be offered where it can't be
+   * satisfied; the "Accept the request to reply" state is. Both locks
+   * coexist in the database; this ordering only decides which one the screen
+   * shows first.
+   */
+  const acceptLocked = !loading && pendingRequest?.direction === "incoming" && !isFriendConversation;
+  const composerLocked = !loading && !chatUnlocked && !acceptLocked;
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -707,10 +737,123 @@ export default function ChatPage() {
     }
   }, [conversationId]);
 
+  /* --------------------------------------------------------------------------
+     The messaging-gate relationship check.
+     ------------------------------------------------------------------------ */
+
+  const otherUserIdRef = useRef<string>("");
+  useEffect(() => { otherUserIdRef.current = otherUserId; }, [otherUserId]);
+
+  /**
+   * Re-reads the three facts the composer's state depends on — is the thread
+   * still alive, are we friends, is a pending request in flight — and moves
+   * the UI to match. The database answers all three; the send policy
+   * (202609090002) enforces them independently of this state, so a wrong UI
+   * can only confuse, never authorize.
+   *
+   * A missing conversation row means the thread was torn down (the request
+   * died and the database deleted it) — leaving, not lingering in a screen
+   * whose server-side row no longer exists, is the same behaviour init
+   * already has for an unknown conversation id.
+   */
+  const checkRelationship = useCallback(async () => {
+    const uid = myIdRef.current;
+    const otherId = otherUserIdRef.current;
+    if (!uid || !otherId) return;
+
+    const [convRes, friendRes, reqRes] = await Promise.all([
+      supabase.from("conversations").select("id").eq("id", conversationId).maybeSingle(),
+      supabase.from("friends").select("id").eq("user_id", uid).eq("friend_id", otherId).maybeSingle(),
+      supabase
+        .from("friend_requests")
+        .select("id,sender_id,receiver_id")
+        .or(`and(sender_id.eq.${otherId},receiver_id.eq.${uid}),and(sender_id.eq.${uid},receiver_id.eq.${otherId})`)
+        .eq("status", "pending")
+        .maybeSingle(),
+    ]);
+
+    if (!convRes.data) {
+      router.push("/active");
+      return;
+    }
+    setIsFriendConversation(Boolean(friendRes.data));
+    setPendingRequest(
+      reqRes.data
+        ? {
+            id: reqRes.data.id as string,
+            direction: (reqRes.data.sender_id as string) === otherId ? "incoming" : "outgoing",
+          }
+        : null
+    );
+  }, [conversationId, router]);
+
+  /* One re-check per burst: an acceptance fires four row events (request
+     update, two friends inserts, this channel's four subscriptions), and
+     re-running three queries four times in a row is just noise. */
+  const relationshipCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRelationshipCheck = useCallback(() => {
+    if (relationshipCheckTimer.current) return;
+    relationshipCheckTimer.current = setTimeout(() => {
+      relationshipCheckTimer.current = null;
+      void checkRelationship();
+    }, 120);
+  }, [checkRelationship]);
+
+  /** Accept from inside the thread — the same two writes the Friends page
+      performs, plus the re-check that swaps this screen from the pending
+      state into the ordinary friend-chat state (coin paywall if not yet
+      unlocked: acceptance does not grant an unlock, rule (c)). */
+  async function acceptPendingRequest() {
+    if (!myId || !pendingRequest || pendingRequest.direction !== "incoming") return;
+    setAcceptingRequest(true);
+
+    const { data: requestRow, error: fetchError } = await supabase
+      .from("friend_requests").select("id,sender_id,receiver_id,status")
+      .eq("id", pendingRequest.id).eq("receiver_id", myId).eq("status", "pending").maybeSingle();
+    if (fetchError) { showToast("Couldn't load this request."); setAcceptingRequest(false); void checkRelationship(); return; }
+    if (!requestRow) { setAcceptingRequest(false); void checkRelationship(); return; }
+
+    const { error: updateError } = await supabase.from("friend_requests")
+      .update({ status: "accepted", updated_at: new Date().toISOString() })
+      .eq("id", pendingRequest.id).eq("receiver_id", myId).eq("status", "pending");
+    if (updateError) { showToast(updateError.message); setAcceptingRequest(false); return; }
+
+    const { error: friendError } = await supabase.from("friends")
+      .insert({ user_id: myId, friend_id: requestRow.sender_id, source: "request" });
+    if (friendError && friendError.code !== "23505") showToast("Accepted, but adding the friend failed.");
+    else showToast("Friend added.");
+    /* Reverse row so both Friends tabs list the pair — best-effort for the
+       same reason as on the Friends page: the gate matches either
+       direction, so a policy-rejected reverse row degrades gracefully. */
+    const { error: reverseError } = await supabase.from("friends")
+      .insert({ user_id: requestRow.sender_id, friend_id: myId, source: "request" });
+    if (reverseError && reverseError.code !== "23505") {
+      console.warn("Reverse friendship row not written (policy likely owner-only):", reverseError.message);
+    }
+
+    setAcceptingRequest(false);
+    await checkRelationship();
+  }
+
+  /** Decline from inside the thread. The request row is removed by DELETE
+      (the existing decline convention), and the database trigger then
+      deletes the now-orphaned thread — so the re-check ends in the /active
+      redirect rather than a lingering empty screen. */
+  async function declinePendingRequest() {
+    if (!myId || !pendingRequest || pendingRequest.direction !== "incoming") return;
+    setDecliningRequest(true);
+    const { error } = await supabase.from("friend_requests")
+      .delete().eq("id", pendingRequest.id).eq("receiver_id", myId).eq("status", "pending");
+    setDecliningRequest(false);
+    if (error) { showToast("Couldn't decline the request."); return; }
+    await checkRelationship();
+  }
+
   useEffect(() => {
     let cancelled = false;
     let msgChannel: ReturnType<typeof supabase.channel> | null = null;
     let reactionChannel: ReturnType<typeof supabase.channel> | null = null;
+    let relationshipChannel: ReturnType<typeof supabase.channel> | null = null;
     let unsubscribeTyping: (() => void) | undefined;
     let unsubscribePresence: (() => void) | undefined;
 
@@ -803,15 +946,31 @@ export default function ChatPage() {
       /* Phase 2: the paint set, in one round trip instead of three. The two flags
          stay blocking because they decide whether the thread is paywalled — a
          paint before them would flash the messages of a locked chat. */
-      const [msgsResult, otherFriendship, unlockResult] = await Promise.all([
+      const [msgsResult, otherFriendship, unlockResult, pendingRequestResult] = await Promise.all([
         messagesPromise,
         supabase.from("friends").select("id").eq("user_id", session.user.id).eq("friend_id", otherUserId).maybeSingle(),
         supabase.from("chat_unlocks").select("id").eq("user_id", session.user.id).eq("conversation_id", conversationId).maybeSingle(),
+        /* The pending request, in either direction. One query rather than two:
+           the or() covers both row shapes, and maybeSingle is safe because
+           friend_requests_pending_unique guarantees at most one pending row
+           per pair. */
+        supabase
+          .from("friend_requests")
+          .select("id,sender_id,receiver_id")
+          .or(`and(sender_id.eq.${otherUserId},receiver_id.eq.${session.user.id}),and(sender_id.eq.${session.user.id},receiver_id.eq.${otherUserId})`)
+          .eq("status", "pending")
+          .maybeSingle(),
       ]);
       if (cancelled) return;
 
       setIsFriendConversation(Boolean(otherFriendship.data));
       setChatUnlocked(Boolean(unlockResult.data));
+      if (pendingRequestResult.data) {
+        setPendingRequest({
+          id: pendingRequestResult.data.id as string,
+          direction: (pendingRequestResult.data.sender_id as string) === otherUserId ? "incoming" : "outgoing",
+        });
+      }
 
       /* Newest-first + limit was the fetch shape; the thread renders old→new,
          so reverse into place and remember whether anything is left above. */
@@ -963,6 +1122,21 @@ export default function ChatPage() {
         )
         .subscribe();
 
+      /* Relationship events for the messaging gates. Four subscriptions on
+         one channel because a realtime filter is a single equality clause
+         and the pending request / friendship can live in any of the four
+         (sender, receiver, user_id, friend_id) positions. Events for OTHER
+         pairs of mine also fire these — the coalesced re-check reads only
+         THIS conversation's rows, so a stray event costs one cheap triple
+         read at most. */
+      relationshipChannel = supabase
+        .channel(`chat-relationship-${conversationId}-${Date.now()}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `sender_id=eq.${session.user.id}` }, () => scheduleRelationshipCheck())
+        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `receiver_id=eq.${session.user.id}` }, () => scheduleRelationshipCheck())
+        .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${session.user.id}` }, () => scheduleRelationshipCheck())
+        .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `friend_id=eq.${session.user.id}` }, () => scheduleRelationshipCheck())
+        .subscribe();
+
       function handleVisibilityChange() {
         if (document.visibilityState !== "visible") return;
         markMessagesRead(messagesRef.current, myIdRef.current);
@@ -980,10 +1154,12 @@ export default function ChatPage() {
       unsubscribePresence?.();
       unsubscribeTyping?.();
       void typingManager.setTyping(conversationId, myIdRef.current, false);
+      if (relationshipCheckTimer.current) clearTimeout(relationshipCheckTimer.current);
       if (msgChannel) supabase.removeChannel(msgChannel);
       if (reactionChannel) supabase.removeChannel(reactionChannel);
+      if (relationshipChannel) supabase.removeChannel(relationshipChannel);
     };
-  }, [conversationId, router, markMessagesRead]);
+  }, [conversationId, router, markMessagesRead, scheduleRelationshipCheck]);
 
   /* Pins the list to its newest message, without animating and without touching
      any scroller but this one. `bottomRef.scrollIntoView` used to do this, and it
@@ -1212,6 +1388,10 @@ export default function ChatPage() {
      states without being re-created per render. */
   const togglePicker = useEventCallback((tab: MediaTab) => {
     if (loading) return;
+    if (acceptLocked) {
+      showToast("Accept the friend request to reply.");
+      return;
+    }
     if (!chatUnlocked) {
       showToast(isFriendConversation
         ? "You need 40 coins to unlock this conversation."
@@ -1252,6 +1432,10 @@ export default function ChatPage() {
   const sendMediaMessage = useEventCallback(
     async (kind: "gif" | "sticker", url: string, width: number | null, height: number | null) => {
       if (!myId) return;
+      if (acceptLocked) {
+        showToast("Accept the friend request to reply.");
+        return;
+      }
       if (!chatUnlocked) {
         showToast(isFriendConversation
           ? "You need 40 coins to unlock this conversation."
@@ -1443,6 +1627,13 @@ export default function ChatPage() {
     setShowAttachSheet(false);
     if (pendingPhoto) { await sendPendingPhoto(); return; }
     const hasMessage = input.trim().length > 0;
+    /* Accept-lock first: the database would reject the row anyway (rule (b)),
+       so the UI says the true reason instead of pointing at a paywall that
+       acceptance — not coins — would actually satisfy. */
+    if (acceptLocked) {
+      showToast("Accept the friend request to reply.");
+      return;
+    }
     if (!chatUnlocked) {
       showToast(isFriendConversation
         ? "You need 40 coins to unlock this conversation."
@@ -1543,6 +1734,7 @@ export default function ChatPage() {
   });
 
   function triggerPhotoPicker() {
+    if (acceptLocked) { showToast("Accept the friend request to reply."); return; }
     if (!chatUnlocked) {
       showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
       return;
@@ -1551,6 +1743,7 @@ export default function ChatPage() {
   }
 
   function triggerCameraPicker() {
+    if (acceptLocked) { showToast("Accept the friend request to reply."); return; }
     if (!chatUnlocked) {
       showToast(isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`);
       return;
@@ -1855,8 +2048,6 @@ export default function ChatPage() {
 
      The status line is the fourth: `otherUserOnline` also starts false, so it
      would assert "offline" about somebody who is online. */
-  const composerLocked = !loading && !chatUnlocked;
-
   return (
     /* A frame, not `h-screen`. `100vh` is the large viewport and never shrinks for
        a keyboard, so the composer used to sit behind it; and a full-viewport child
@@ -1960,6 +2151,42 @@ export default function ChatPage() {
             {/* The WhatsApp-style trust chip, worded for what Whisper actually
                 does (TLS + RLS, not E2EE) — see the component for the audit. */}
             {!loading && <ChatPrivacyNotice />}
+            {/* The pending-request banner: shown to the RECEIVER of a pending
+                request until they accept (or the thread is torn down). The
+                composer below is locked for the same window — the banner is
+                where that lock gets its explanation and its action. */}
+            {acceptLocked && (
+              <div className="chat-context-recede mx-auto my-4 w-full max-w-sm">
+                <div className="chat-bubble rounded-3xl p-5 text-center" style={{ borderLeft: "3px solid var(--theme-accent-purple)" }}>
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: "color-mix(in srgb, var(--theme-accent-purple) 16%, transparent)", color: "var(--theme-accent-purple)" }}>
+                    <Handshake size={24} />
+                  </div>
+                  <h2 className="text-lg font-black">Someone wants to be your friend</h2>
+                  <p className="chat-meta mx-auto mt-1.5 max-w-[260px] text-sm">
+                    Accept the request to reply. Your anonymity stays intact either way.
+                  </p>
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="success"
+                      loading={acceptingRequest}
+                      onClick={acceptPendingRequest}
+                      icon={<Check size={15} />}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={acceptingRequest || decliningRequest}
+                      onClick={declinePendingRequest}
+                    >
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             {composerLocked && (
               <div className="chat-bubble rounded-3xl p-6 text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "color-mix(in srgb, var(--theme-accent-purple) 16%, transparent)", color: "var(--theme-accent-purple)" }}>
@@ -2149,8 +2376,8 @@ export default function ChatPage() {
                      keyboard to make room for, and WhatsApp Web keeps its
                      panel open while you type. */
                   onFocus={() => { if (!isDesktop) closePicker(); }}
-                  placeholder={pendingPhoto ? "Add a caption (optional)..." : composerLocked ? "Unlock chat to send messages" : "Message"}
-                  disabled={loading || !chatUnlocked}
+                  placeholder={pendingPhoto ? "Add a caption (optional)..." : acceptLocked ? "Accept the request to reply" : composerLocked ? "Unlock chat to send messages" : "Message"}
+                  disabled={loading || !chatUnlocked || acceptLocked}
                   rows={1}
                   className="max-h-32 w-full min-w-0 resize-none overflow-y-auto bg-transparent px-1 py-2.5 leading-6 outline-none placeholder:text-[var(--chat-meta)] disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -2172,10 +2399,10 @@ export default function ChatPage() {
               </button>
             ) : (
               <VoiceRecorder
-                canRecord={!loading && chatUnlocked}
+                canRecord={!loading && chatUnlocked && !acceptLocked}
                 cost={SEND_VOICE_COST}
                 busy={uploadingPhoto}
-                onBlocked={() => showToast(loading ? "One moment — still opening this chat." : isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
+                onBlocked={() => showToast(acceptLocked ? "Accept the friend request to reply." : loading ? "One moment — still opening this chat." : isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
                 onSend={handleVoiceNote}
                 onError={showToast}
                 onRecordingChange={setRecordingVoice}

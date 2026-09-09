@@ -362,6 +362,16 @@ function FriendsPageContent() {
       .insert({ user_id: myId, friend_id: requestRow.sender_id, source: "request" });
     if (friendError && friendError.code !== "23505") showSupabaseError("Request accepted, but adding the friend failed.", friendError);
     else showToast("Friend added.");
+    /* The reverse row, so both people's Friends tabs list the friendship.
+       The send gate (202609090002) matches a friendship in either direction,
+       so a rejection here degrades to the old one-directional behaviour
+       rather than breaking the conversation — which matters because some
+       databases' insert policy only admits the caller's own row. */
+    const { error: reverseError } = await supabase.from("friends")
+      .insert({ user_id: requestRow.sender_id, friend_id: myId, source: "request" });
+    if (reverseError && reverseError.code !== "23505") {
+      console.warn("Reverse friendship row not written (policy likely owner-only):", reverseError.message);
+    }
     /* The acceptance push comes from the same trigger, which fires on UPDATE as
        well as INSERT — the status change above is what it reacts to. */
     await refreshAll(myId);
@@ -408,6 +418,34 @@ function FriendsPageContent() {
       showSupabaseError("Could not start chat.", createError); setBusyId(null); return;
     }
     if (created) router.push(`/chat/${created.id}`);
+    setBusyId(null);
+  }
+
+  /**
+   * Opens the PENDING thread for a request you sent — rule (a) of the
+   * friend-request messaging gates. The pair is not friends yet, so the
+   * thread can't go through startChat's assumptions; `ensure_pending_conversation`
+   * (202609090002) is the definer RPC that verifies the pending request and
+   * creates the row. A pre-migration database has no function, in which case
+   * there is no pending-thread support at all and the honest answer is a
+   * toast, not a half-opened thread.
+   */
+  async function openPendingThread(profileId: string) {
+    if (!myId) return;
+    setBusyId(profileId);
+    const { data: conversationId, error } = await supabase.rpc("ensure_pending_conversation", {
+      target_user_id: profileId,
+    });
+    if (error) {
+      if (error.code === "PGRST202" || /could not find the function/i.test(error.message)) {
+        showToast("Pending threads aren't available on this server yet.");
+      } else {
+        showToast(error.message || "Couldn't open the pending thread.");
+      }
+      setBusyId(null);
+      return;
+    }
+    if (conversationId) router.push(`/chat/${conversationId}`);
     setBusyId(null);
   }
 
@@ -564,8 +602,8 @@ function FriendsPageContent() {
         {/* ── Requests ── */}
         {tab === "requests" && (
           <section className="mt-6 space-y-6">
-            <RequestList title="Requests" empty="No incoming requests" requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
-            <RequestList title="Sent requests" empty="No sent requests" requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
+            <RequestList title="Requests" empty="No incoming requests" requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onMessage={openPendingThread} onlineSet={onlineSet} />
+            <RequestList title="Sent requests" empty="No sent requests" requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onMessage={openPendingThread} onlineSet={onlineSet} />
           </section>
         )}
 
@@ -614,9 +652,9 @@ function FriendsPageContent() {
   );
 }
 
-function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onlineSet }: {
+function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onMessage, onlineSet }: {
   title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing";
-  busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onlineSet: ReadonlySet<string>;
+  busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onMessage: (profileId: string) => void; onlineSet: ReadonlySet<string>;
 }) {
   /* Its own batch rather than a prop threaded down from the page: the resolver
      caches per tab-lifetime, so asking twice for the same id costs one map
@@ -690,6 +728,19 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
                       <Clock size={14} />
                       Pending
                     </span>
+                    {/* The pending thread: you may message first (after the
+                        one-time coin unlock, like any chat); they may not
+                        reply until they accept. The button opens the thread
+                        through ensure_pending_conversation. */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => onMessage(profileId)}
+                      icon={<MessageCircle size={15} />}
+                    >
+                      Message
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"

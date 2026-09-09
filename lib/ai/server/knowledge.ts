@@ -259,7 +259,7 @@ const TOPICS: Record<string, Topic> = {
 
   coins: {
     keywords: ["coin", "coins", "buy", "purchase", "price", "cost", "balance", "store", "paystack", "payment", "top up", "package"],
-    text: `Whisper Coins: the Coins tab is the Coin Store. Your balance is at the top. Four packages: 100 (Starter Pack), 300 (Whisper Bundle — most popular), 500 (Whisper Vault), 1000 (Whisper Fortune). Pricing is 100 coins for ₦1,000 across Africa and India, or the equivalent of $1 per 100 coins elsewhere, shown converted into the local currency at live rates. Payment goes through Paystack, charged in Naira — international cards work and the card network handles conversion. Coins are spent on: sender hints (5), unlocking a chat (30), sending a photo in chat (10), sending a voice note (5), posting on the Public Feed (2). Buying coins requires being signed in with an email.`,
+    text: `Whisper Coins: the Coins tab is the Coin Store. Your balance is at the top. Four packages: 100 (Starter Pack), 300 (Whisper Bundle — most popular), 500 (Whisper Vault), 1000 (Whisper Fortune). Pricing is 100 coins for ₦1,000 across Africa and India, or the equivalent of $1 per 100 coins elsewhere, shown converted into the local currency at live rates. Payment goes through Paystack, charged in Naira — international cards work and the card network handles conversion. Coins are spent on: sender hints (5), unlocking a chat (40), sending a photo in chat (10), sending a voice note (5), posting on the Public Feed (2). Buying coins requires being signed in with an email.`,
   },
 
   wallet: {
@@ -273,12 +273,13 @@ Transaction history sits below Buy Coins on the same screen — purchases, spend
   chat: {
     keywords: ["chat", "chats", "conversation", "dm", "direct message", "unlock chat", "voice", "voice note", "view once", "typing", "ticks", "pin", "inbox"],
     text: `Chats: the Inbox tab lists private conversations. Everyone appears under an anonymous name, so a chat doesn't expose identities. Rows show the last message, a timestamp, unread count, a green dot when the other person is online, "typing…" while they type, and delivery/read ticks on your own messages. There's a search box, and a strip of friends across the top to start a new chat.
-Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent — until then you can read but not send. Sending a photo costs 10 coins and it sends view-once (opened once, then gone). Voice notes cost 5 coins and are also view-once. You can swipe to reply to a message, and pin a message in the conversation for a chosen duration.`,
+Inside a chat: unlocking a conversation costs 40 coins, once, and is permanent — until then you can read but not send. If the other person has a friend request pending to you, you must accept it before you can reply at all: the thread shows a "Someone wants to be your friend" banner with Accept and Decline, and the composer says "Accept the request to reply". Sending a photo costs 10 coins and it sends view-once (opened once, then gone). Voice notes cost 5 coins and are also view-once. You can swipe to reply to a message, and pin a message in the conversation for a chosen duration.`,
   },
 
   friends: {
     keywords: ["friend", "friends", "add", "request", "active", "online", "discover people", "connect"],
-    text: `Friends: Discover → Friends (or the Friends strip at the top of the Inbox) has four tabs — Discover People to find users, Active for who's online now, Requests for pending invites in both directions, and Friends for accepted ones. A green dot means online. Tapping a friend opens or starts a chat with them.`,
+    text: `Friends: Discover → Friends (or the Friends strip at the top of the Inbox) has four tabs — Discover People to find users, Active for who's online now, Requests for pending invites in both directions, and Friends for accepted ones. A green dot means online. Tapping a friend opens or starts a chat with them.
+Pending requests are conversational too: after you send a request, a Message button on the request under Sent requests opens the pending thread, and you can send there once you've unlocked the chat with 40 coins like any other conversation. The other person must accept the request before they can reply — their composer says "Accept the request to reply" until they do. Once accepted, the thread is a normal friend conversation (each of you still unlocks with coins to send). If the request is declined or withdrawn, the pending thread disappears for both of you.`,
   },
 
   feed: {
