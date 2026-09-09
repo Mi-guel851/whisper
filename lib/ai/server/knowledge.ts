@@ -279,7 +279,8 @@ Inside a chat: unlocking a conversation costs 40 coins, once, and is permanent �
   friends: {
     keywords: ["friend", "friends", "add", "request", "active", "online", "discover people", "connect"],
     text: `Friends: Discover → Friends (or the Friends strip at the top of the Inbox) has four tabs — Discover People to find users, Active for who's online now, Requests for pending invites in both directions, and Friends for accepted ones. A green dot means online. Tapping a friend opens or starts a chat with them.
-Pending requests are conversational too: after you send a request, a Message button on the request under Sent requests opens the pending thread, and you can send there once you've unlocked the chat with 40 coins like any other conversation. The other person must accept the request before they can reply — their composer says "Accept the request to reply" until they do. Once accepted, the thread is a normal friend conversation (each of you still unlocks with coins to send). If the request is declined or withdrawn, the pending thread disappears for both of you.`,
+Pending requests are conversational too: after you send a request, a Message button on the request under Sent requests opens the pending thread, and you can send there once you've unlocked the chat with 40 coins like any other conversation. The other person must accept the request before they can reply — their composer says "Accept the request to reply" until they do. Once accepted, the thread is a normal friend conversation (each of you still unlocks with coins to send). If the request is declined or withdrawn, the pending thread disappears for both of you.
+Find a Match: below the Friends tabs, tap the Find a Match panel and Scan. A short radar sweep runs, then a ranked list of people shows up — closest first is people in your own self-declared country (the one you chose at sign-up; Whisper never uses device geolocation), then who has been active recently. Friends, pending requests, blocked users and people who opted out never appear. You add them with the usual Add Friend flow, and "Scan again" shows the next page. Opt out any time in Settings → "Appear in Find a Match" (on by default).`,
   },
 
   feed: {
@@ -299,7 +300,7 @@ Pending requests are conversational too: after you send a request, a Message but
 
   settings: {
     keywords: ["setting", "settings", "logout", "log out", "sign out", "delete account", "privacy", "security", "data"],
-    text: `Settings: Profile → Settings. It holds Push Notifications (Manage), a list of content links, and Log out. Log out ends the current session only. There is no in-app account deletion — Contact Support handles that. Privacy details (what's stored, how it's protected) are in the Privacy Policy, linked from Profile and Discover.`,
+    text: `Settings: Profile → Settings. It holds Push Notifications (Manage), Vibration, "Appear in Find a Match" (on by default — turning it off stops you appearing in other people's radar scans; the radar only ever sees the country you chose at sign-up, never a precise location), a list of content links, and Log out. Log out ends the current session only. There is no in-app account deletion — Contact Support handles that. Privacy details (what's stored, how it's protected) are in the Privacy Policy, linked from Profile and Discover.`,
   },
 
   notifications: {

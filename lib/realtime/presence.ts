@@ -55,6 +55,51 @@ const REAFFIRM_MS = 25_000;
  */
 const OPEN_WATCHDOG_MS = 15_000;
 
+/**
+ * How often `last_active_at` may be re-stamped, per browser tab.
+ *
+ * The column is the durable "seen in the last 24h" signal behind Find a
+ * Match's ranking (202609090003). Presence itself is ephemeral — it dies with
+ * the socket — so the durable half is a write, and a write on every 25s
+ * reaffirm per open tab would be a pointless churn storm on profiles for a
+ * signal that only needs to say "someone saw this person recently". Ten
+ * minutes keeps a continuously-open app fresh across a whole day of work
+ * without turning presence into a write path.
+ */
+const ACTIVITY_STAMP_MIN_MS = 10 * 60_000;
+
+let lastActivityStampAt = 0;
+
+/**
+ * Stamps the caller's `profiles.last_active_at`, at most once per
+ * ACTIVITY_STAMP_MIN_MS, fire-and-forget. Silent on failure by design: this is
+ * a ranking hint, not a feature, and a failed hint must never surface on a
+ * presence path whose one contract is "never leave a caller hanging".
+ */
+function stampActivity(userId: string) {
+  const now = Date.now();
+  if (now - lastActivityStampAt < ACTIVITY_STAMP_MIN_MS) return;
+  lastActivityStampAt = now;
+  /* Promise.resolve around the builder: PostgREST's builder thenables resolve
+     to a `PromiseLike`, and `.catch` only exists on real Promises — the
+     ranking hint dies silently either way, but it dies without a type error. */
+  void Promise.resolve(
+    supabase
+      .from("profiles")
+      .update({ last_active_at: new Date(now).toISOString() })
+      .eq("id", userId)
+  )
+    .then(({ error }) => {
+      if (error) {
+        /* RLS not updated for the new column, or a legacy schema — reset the
+           throttle so the next attempt gets a fresh try, and the ranking
+           simply falls back to created_at for this user meanwhile. */
+        lastActivityStampAt = 0;
+      }
+    })
+    .catch(() => {});
+}
+
 class PresenceManager {
   private channel: RealtimeChannel | null = null;
   private listeners = new Set<(users: PresenceUser[]) => void>();
@@ -176,6 +221,7 @@ class PresenceManager {
              not carry the old presence payload — without re-tracking here we
              would watch everyone else while being invisible ourselves. */
           await channel.track({ online_at: new Date().toISOString() });
+          stampActivity(userId);
           this.startReaffirming();
           settle();
           return;
@@ -219,6 +265,9 @@ class PresenceManager {
     this.reaffirmTimer = setInterval(() => {
       if (!this.live || !this.channel) return;
       if (document.visibilityState === "hidden") return;
+      /* A long-open tab reconnects no socket but is still "active now"; the
+         throttled stamp is what keeps its last_active_at honest. */
+      if (this.userId) stampActivity(this.userId);
       void this.channel.track({ online_at: new Date().toISOString() }).catch(() => {
         /* A failed re-track means the socket is gone even though nothing told
            us. Drop the flag so the next repair actually rebuilds. */
