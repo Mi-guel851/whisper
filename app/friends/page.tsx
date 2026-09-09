@@ -85,6 +85,28 @@ function regionLabel(countryCode: string | null | undefined) {
   return COUNTRIES.find((country) => country.code === countryCode)?.name ?? "Nearby";
 }
 
+type MatchScanError = { code?: string; message?: string };
+
+/**
+ * Database diagnostics belong in the console, not in a user-facing toast.
+ * Apart from being confusing, raw Postgres messages exposed implementation
+ * details such as the function's return shape (the failure repaired in
+ * 202609090006). Keep the handful of actionable cases specific and make every
+ * other failure a stable retry message.
+ */
+function matchScanErrorMessage(error: MatchScanError) {
+  if (error.code === "28000" || error.code === "PGRST301" || /jwt|not authenticated/i.test(error.message ?? "")) {
+    return "Your session expired. Please sign in again.";
+  }
+  if (error.code === "PGRST202" || error.code === "42883" || /could not find the function/i.test(error.message ?? "")) {
+    return "Find a Match is being updated. Please try again shortly.";
+  }
+  if (/fetch|network|connection/i.test(error.message ?? "")) {
+    return "The scan couldn't connect. Check your connection and try again.";
+  }
+  return "We couldn't complete the scan. Please try again.";
+}
+
 function uniqueChannelName(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -177,8 +199,9 @@ function FriendsPageContent() {
   const [matchHasMore, setMatchHasMore] = useState(false);
   /* My own self-declared region, so a candidate sharing it can be labelled
      "Your region" — the ranking is opaque numbers; the label is the part the
-     reader actually checks. */
-  const [myCountryCode, setMyCountryCode] = useState<string | null>(null);
+     reader actually checks. `undefined` means the one-row lookup is still in
+     flight; `null` means it completed and this legacy profile has no country. */
+  const [myCountryCode, setMyCountryCode] = useState<string | null | undefined>(undefined);
 
   const showSupabaseError = useCallback((fallback: string, error: { message?: string } | null | undefined) => {
     const message = error?.message?.trim() || fallback;
@@ -262,8 +285,12 @@ function FriendsPageContent() {
         .select("country_code")
         .eq("id", session.user.id)
         .maybeSingle()
-        .then(({ data }) => {
-          if (!cancelled) setMyCountryCode((data as { country_code: string | null } | null)?.country_code ?? null);
+        .then(({ data, error }) => {
+          /* A failed label lookup must not block the server-side scan. Leave the
+             value `undefined` and let the RPC read the caller's profile itself. */
+          if (!cancelled && !error) {
+            setMyCountryCode((data as { country_code: string | null } | null)?.country_code ?? null);
+          }
         });
       /* Listener first, then connect. Registering up front means the roster is
          applied whenever it arrives — including on a later automatic rebuild —
@@ -379,33 +406,49 @@ function FriendsPageContent() {
    * complete later, against a candidate pool that has moved on, is worse
    * than one that plainly did not happen.
    *
-   * A pre-migration database has no RPC: "not available yet" is the honest
-   * toast, and the section returns to idle so nothing is left half-open.
+   * Backend failures are logged with their diagnostic details, but the toast
+   * stays actionable and never exposes raw Postgres internals. Every failure
+   * returns the section to idle so nothing is left half-open.
    */
   async function runMatchScan(page: number) {
     if (!myId) return;
     if (!requireOnline(showToast, "Scanning")) return;
-    setMatchState("scanning");
-
-    const rpcPromise = supabase.rpc("find_match_candidates", { p_page: page });
-    const sweepWait = new Promise<void>((resolve) => setTimeout(resolve, SWEEP_MS));
-    const rpc = await Promise.all([rpcPromise, sweepWait]).then(([result]) => result);
-
-    if (rpc.error) {
-      if (rpc.error.code === "PGRST202" || /could not find the function/i.test(rpc.error.message)) {
-        showToast("Find a Match isn't available on this server yet.");
-      } else {
-        showToast(rpc.error.message || "The scan didn't find anyone.");
-      }
-      setMatchState("idle");
+    if (myCountryCode === null) {
+      showToast("Add your country to your profile before scanning for a match.");
       return;
     }
 
-    const rows = (rpc.data ?? []) as MatchCandidate[];
-    setMatchCandidates(rows);
-    setMatchHasMore(rows.length === MATCH_PAGE_SIZE);
-    setMatchPage(page);
-    setMatchState("results");
+    setMatchState("scanning");
+
+    try {
+      const rpcPromise = supabase.rpc("find_match_candidates", { p_page: page });
+      const sweepWait = new Promise<void>((resolve) => setTimeout(resolve, SWEEP_MS));
+      const rpc = await Promise.all([rpcPromise, sweepWait]).then(([result]) => result);
+
+      if (rpc.error) {
+        console.error("Find a Match scan failed:", rpc.error);
+        showToast(matchScanErrorMessage(rpc.error));
+        setMatchState("idle");
+        return;
+      }
+
+      /* Treat the network response as data rather than trusting a TypeScript
+         assertion. A malformed row is skipped, so one bad result cannot crash
+         the whole Friends screen while React tries to key/render it. */
+      const rows = (Array.isArray(rpc.data) ? rpc.data : []).filter(
+        (row): row is MatchCandidate =>
+          Boolean(row) && typeof row === "object" && typeof (row as MatchCandidate).profile_id === "string"
+      );
+      setMatchCandidates(rows);
+      setMatchHasMore(rows.length === MATCH_PAGE_SIZE);
+      setMatchPage(page);
+      setMatchState("results");
+    } catch (error) {
+      const scanError = error instanceof Error ? { message: error.message } : {};
+      console.error("Find a Match scan failed before receiving a response:", error);
+      showToast(matchScanErrorMessage(scanError));
+      setMatchState("idle");
+    }
   }
 
   async function addFriend(profileId: string) {

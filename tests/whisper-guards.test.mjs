@@ -34,6 +34,7 @@ function check(name, cond, extra = "") {
 const consentSql = read("supabase/migrations/202609090001_consent_gate.sql");
 const gatesSql = read("supabase/migrations/202609090002_pending_friend_threads.sql");
 const matchSql = read("supabase/migrations/202609090003_find_a_match.sql");
+const matchResultRepairSql = read("supabase/migrations/202609090006_find_match_result_type_repair.sql");
 const callsSql = read("supabase/migrations/202609090004_voice_calls.sql");
 const signup = read("app/signup/page.tsx");
 const completeProfile = read("app/complete-profile/page.tsx");
@@ -103,8 +104,25 @@ check("excludes blocked users either way", matchSql.includes("blocked_users"));
 check("excludes friends and pending requests", matchSql.includes("public.friends") && matchSql.includes("friend_requests"));
 check("opt-out honoured, default ON", matchSql.includes("find_a_match_enabled is distinct from false") && matchSql.includes("default true"));
 check("capped at 20 per page", matchSql.includes("limit 20"));
+check(
+  "RPC score exactly matches its declared double-precision result type",
+  matchResultRepairSql.includes(")::double precision as candidate_rank_score")
+);
+check(
+  "RPC internals cannot shadow its OUT-column names",
+  matchResultRepairSql.includes("#variable_conflict error") &&
+    matchResultRepairSql.includes("candidate_profile_id") &&
+    matchResultRepairSql.includes("candidate_country_code")
+);
+check(
+  "all RPC result fields are explicitly normalized",
+  matchResultRepairSql.includes("p.id::uuid as candidate_profile_id") &&
+    matchResultRepairSql.includes("p.country_code::text as candidate_country_code") &&
+    matchResultRepairSql.includes(")::boolean as candidate_active_recent")
+);
 check("presence heartbeat feeds recency", matchSql.includes("last_active_at") && read("lib/realtime/presence.ts").includes("last_active_at"));
 check("scan refuses offline", friendsPage.includes("requireOnline"));
+check("scan never toasts a raw database error", friendsPage.includes("matchScanErrorMessage(rpc.error)"));
 check("settings toggle present and documented", read("app/settings/page.tsx").includes("FindAMatchSettingRow") && read("components/FindAMatchSettingRow.tsx").includes("find_a_match_enabled"));
 
 console.log("voice calls (feature 4)");
