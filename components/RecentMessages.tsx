@@ -24,7 +24,7 @@ type RecentMessage = {
   created_at: string;
 };
 
-export default function RecentMessages() {
+export default function RecentMessages({ initialUserId }: { initialUserId?: string } = {}) {
   const [messages, setMessages] = useState<RecentMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<{ message: string; imageUrl: string | null } | null>(null);
@@ -58,16 +58,19 @@ export default function RecentMessages() {
     }
 
     async function load() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      let uid = initialUserId;
+      if (!uid) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        uid = session?.user.id;
+      }
 
-      if (!session || cancelled) {
+      if (!uid || cancelled) {
         setLoading(false);
         return;
       }
 
-      const uid = session.user.id;
       await fetchLatest(uid);
 
       channel = supabase
@@ -105,7 +108,7 @@ export default function RecentMessages() {
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+  }, [initialUserId]);
 
   return (
     <EdgeLitCard radius="3xl" intensity={0.38} speed={19} innerClassName="p-6">

@@ -10,7 +10,9 @@ import { Skeleton } from "./Skeleton";
 import { staggerContainer, staggerItem, tween } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
 
-const REFRESH_MS = 4_000;
+/* Realtime is the normal update path. This only reconciles a dropped socket and
+   must not wake the database every four seconds for ambient dashboard numbers. */
+const REFRESH_MS = 120_000;
 
 type Stats = {
   totalMessages: number;
@@ -32,10 +34,19 @@ const EMPTY: Stats = {
   livePosts: 0,
 };
 
-export default function StatsRow() {
+export default function StatsRow({
+  variant = "default",
+  initialUserId,
+  live = true,
+}: {
+  variant?: "default" | "compact";
+  initialUserId?: string;
+  /** Disable local channels when a parent surface already owns live engagement. */
+  live?: boolean;
+} = {}) {
   const [stats, setStats] = useState<Stats>(EMPTY);
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(initialUserId ?? null);
   const reduced = useSafeReducedMotion();
 
   /**
@@ -111,7 +122,7 @@ export default function StatsRow() {
        */
       supabase
         .from("public_feed_posts")
-        .select("view_count,expires_at")
+        .select("id,view_count,expires_at")
         .eq("author_id", uid),
     ]);
 
@@ -153,6 +164,11 @@ export default function StatsRow() {
 
   useEffect(() => {
     async function init() {
+      if (initialUserId) {
+        await load(initialUserId);
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -163,8 +179,8 @@ export default function StatsRow() {
       setUserId(session.user.id);
       await load(session.user.id);
     }
-    init();
-  }, [load]);
+    void init();
+  }, [initialUserId, load]);
 
   /* Realtime "Post Views": subscribe to every view_count UPDATE on this
      author's public-feed posts. The public feed already broadcasts these (the
@@ -172,7 +188,7 @@ export default function StatsRow() {
      up the instant any reader views a post — no page refresh, and the slow
      poll below stays as a reconciliation safety net for a dropped socket. */
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !live) return;
 
     const channel = supabase
       .channel(`stats-views-${userId}`)
@@ -202,14 +218,14 @@ export default function StatsRow() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, live]);
 
   /* Realtime whispers: the instant a new anonymous message lands, the lifetime
-     and this-week totals must move — waiting up to the next 4s poll makes a
-     received whisper read as "not counted yet". Reusing `load` keeps the tile
-     in sync with the row that just appeared. */
+     and this-week totals must move — waiting for the slow reconciliation poll
+     would make a received whisper read as "not counted yet". Reusing `load`
+     keeps the tile in sync with the row that just appeared. */
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !live) return;
 
     const channel = supabase
       .channel(`stats-whispers-${userId}`)
@@ -230,7 +246,7 @@ export default function StatsRow() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [userId, load]);
+  }, [userId, load, live]);
 
   useEffect(() => {
     if (!userId) return;
@@ -268,7 +284,7 @@ export default function StatsRow() {
 
   return (
     <motion.div
-      className="stats-row-grid"
+      className={`stats-row-grid ${variant === "compact" ? "stats-row-grid-compact" : ""}`}
       variants={staggerContainer(0.07)}
       initial="hidden"
       animate="visible"
@@ -281,6 +297,7 @@ export default function StatsRow() {
         deltaLabel="this week"
         loading={loading}
         reduced={reduced}
+        compact={variant === "compact"}
       />
       <StatTile
         icon={<Eye size={13} />}
@@ -290,6 +307,7 @@ export default function StatsRow() {
         deltaLabel="today"
         loading={loading}
         reduced={reduced}
+        compact={variant === "compact"}
       />
       {/* Feed impressions. The delta is "live now" rather than a time window,
           because a post only exists for 24 hours — how many are currently earning
@@ -304,6 +322,7 @@ export default function StatsRow() {
         deltaLabel={stats.livePosts === 1 ? "post live now" : "posts live now"}
         loading={loading}
         reduced={reduced}
+        compact={variant === "compact"}
       />
     </motion.div>
   );
@@ -318,6 +337,7 @@ function StatTile({
   loading,
   reduced,
   abbreviate = false,
+  compact = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -327,15 +347,16 @@ function StatTile({
   loading: boolean;
   reduced: boolean | null;
   abbreviate?: boolean;
+  compact?: boolean;
 }) {
   return (
     <motion.div variants={staggerItem}>
       <EdgeLitCard
-        radius="3xl"
+        radius={compact ? "2xl" : "3xl"}
         intensity={0.4}
         speed={14}
         className="h-full"
-        innerClassName="h-full p-5"
+        innerClassName={compact ? "h-full p-3.5" : "h-full p-5"}
       >
         <div className="flex items-center gap-1.5 eyebrow">
           {icon}

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node tests/service-worker-navigation.test.mjs && node tests/whisper-guards.test.mjs"
+    "test": "node tests/service-worker-navigation.test.mjs && node tests/whisper-guards.test.mjs && node tests/dashboard-redesign.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

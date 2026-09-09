@@ -52,9 +52,9 @@ const CATEGORY_STORAGE_KEY = "whisper:prompt-category";
  */
 const DAILY_ACCENT = ["#8b5cf6", "#ec4899"];
 
-export default function DailyWhisperCard() {
+export default function DailyWhisperCard({ initialUsername }: { initialUsername?: string } = {}) {
   const reduced = useSafeReducedMotion();
-  const { sharePrompt, copyPrompt, ready, link, username } = useWhisperShare();
+  const { sharePrompt, copyPrompt, ready, link, username } = useWhisperShare(initialUsername);
 
   const [prompt, setPrompt] = useState<WhisperPrompt | null>(null);
   const [today, setToday] = useState("");
@@ -75,20 +75,27 @@ export default function DailyWhisperCard() {
   const [isToday, setIsToday] = useState(true);
 
   useEffect(() => {
-    const now = new Date();
-    setPrompt(promptForDate(now));
-    setToday(formatPromptDate(now));
+    let cancelled = false;
+    /* Run after the hydration commit: the local calendar and private-storage
+       reads are browser state, and deliberately cannot participate in SSR. */
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const now = new Date();
+      setPrompt(promptForDate(now));
+      setToday(formatPromptDate(now));
 
-    /* Remembered so the generator opens where the user left it. Wrapped because
-       Safari in private mode throws on localStorage rather than returning null. */
-    try {
-      const saved = window.localStorage.getItem(CATEGORY_STORAGE_KEY);
-      if (saved && PROMPT_CATEGORIES.some((entry) => entry.key === saved)) {
-        setCategory(saved as PromptCategory);
+      try {
+        const saved = window.localStorage.getItem(CATEGORY_STORAGE_KEY);
+        if (saved && PROMPT_CATEGORIES.some((entry) => entry.key === saved)) {
+          setCategory(saved as PromptCategory);
+        }
+      } catch {
+        /* No persistence available. The default is fine. */
       }
-    } catch {
-      /* No persistence available. The default is fine. */
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const shuffle = useCallback(() => {

@@ -131,10 +131,10 @@ function headlineFor(total: number, trend: number): string {
   return "Engagement is steady";
 }
 
-export default function ActivityChart() {
+export default function ActivityChart({ initialUserId }: { initialUserId?: string } = {}) {
   const [data, setData] = useState<DayBucket[]>(emptyDays);
   const [trend, setTrend] = useState(0);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(initialUserId ?? null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -232,8 +232,13 @@ export default function ActivityChart() {
     let cancelled = false;
 
     async function init() {
-      /* From memory rather than storage — this runs on the dashboard's first
-         paint, alongside several other components asking the same question. */
+      if (initialUserId) {
+        if (!cancelled) void loadData(initialUserId);
+        return;
+      }
+
+      /* From memory rather than storage when the card is used outside the
+         dashboard shell. The dashboard passes its already-verified user id. */
       const session = await getCachedSession();
       if (cancelled) return;
 
@@ -250,7 +255,7 @@ export default function ActivityChart() {
     return () => {
       cancelled = true;
     };
-  }, [loadData]);
+  }, [initialUserId, loadData]);
 
   /* One channel, four events — the four things that can move a number on this
      card. Likes and post views are filtered client-side rather than in the

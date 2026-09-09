@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
-import { Inter } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
@@ -19,14 +18,10 @@ import SocialFollowPrompt from "@/components/SocialFollowPrompt";
 import AnnouncementPrompt from "@/components/AnnouncementPrompt";
 import BanGate from "@/components/BanGate";
 
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-  // Whisper leans on 650/700/800 for headings; loading the variable axis
-  // keeps that range available without shipping four static files.
-  axes: ["opsz"],
-});
+/* Typography intentionally uses the native UI stack declared in globals.css.
+   Pulling Inter from Google during `next build` made otherwise valid production
+   builds depend on a third-party host being reachable; the native stack is
+   instant, private, and has the same variable-weight support on modern devices. */
 
 /* metadataBase resolves every relative OG/Twitter image path in the app. Left
    unset, Next falls back to http://localhost:3000 — so a profile link shared
@@ -65,7 +60,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body>
         {/* Runs before first paint, which is the whole point: the stored
             preference has to be on <html> before the browser paints, or a
