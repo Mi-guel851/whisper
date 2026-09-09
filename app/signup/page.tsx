@@ -6,6 +6,7 @@ import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
 import ComingSoonGate from "@/components/auth/ComingSoonGate";
 import GoogleMark from "@/components/auth/GoogleMark";
 import { SIGNUPS_CLOSED } from "@/lib/signupGate";
+import { grantConsent, markConsentPending } from "@/lib/consent";
 import { Capacitor } from "@capacitor/core";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -16,6 +17,12 @@ export default function SignupPage() {
   const { showToast } = useToast();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  /* Unchecked by default on purpose: a pre-ticked box is a consent screen in
+     name only. The button below stays disabled while it is unchecked, and the
+     real gate is server-side (the profiles trigger in 202609090001 refuses to
+     complete an account with no consent row), so this state is friction, not
+     enforcement. */
+  const [agreed, setAgreed] = useState(false);
 
   /* Return before any of the Google machinery is reachable.
      Not a disabled button: `signInWithOAuth` is what *creates* the account, so
@@ -91,6 +98,15 @@ export default function SignupPage() {
           return;
         }
 
+        /* The account exists now, so the consent row can be written here rather
+           than on /complete-profile. Awaiting it (one cheap RPC) keeps the
+           checkbox already ticked when onboarding continues. A failure must
+           not fail the sign-in: the person just consented, and /complete-profile
+           re-shows the checkbox if the row is missing. */
+        if (agreed) {
+          await grantConsent().catch(() => {});
+        }
+
         const { data: profile } = await supabase
           .from("profiles")
           .select("profile_completed")
@@ -116,6 +132,13 @@ export default function SignupPage() {
       return;
     }
 
+    /* The OAuth round trip leaves the device and returns to /complete-profile
+       with no React state left behind, so the tick travels as a sessionStorage
+       flag that /complete-profile consumes when it writes the consent row. The
+       flag is a hint only — the profiles trigger is the gate. The caller is
+       only reachable with the box ticked (the button is disabled otherwise). */
+    if (agreed) markConsentPending();
+
     const redirectTo = `${window.location.origin}/complete-profile`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -135,14 +158,37 @@ export default function SignupPage() {
       <h1 className="auth-title">Create Account</h1>
       <p className="auth-subtitle">Get your own Whisper link in seconds</p>
 
-      <button
-        onClick={signupWithGoogle}
-        disabled={loading}
-        className="auth-google mt-8"
-      >
-        {loading ? <Loader2 size={20} className="animate-spin" /> : <GoogleMark />}
-        {loading ? "Connecting..." : "Continue with Google"}
-      </button>
+      <div className="mt-8 space-y-3">
+        {/* `auth-check` is the form-checkbox treatment already used by the
+            recovery-phrase confirmation, so the gate reads as part of the same
+            form rather than a foreign widget. */}
+        <label className="auth-check">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+          />
+          <span>
+            I agree to Whisper&apos;s{" "}
+            <Link href="/privacy" className="auth-link">
+              Privacy Policy
+            </Link>{" "}
+            and{" "}
+            <Link href="/terms" className="auth-link">
+              Terms
+            </Link>
+          </span>
+        </label>
+
+        <button
+          onClick={signupWithGoogle}
+          disabled={loading || !agreed}
+          className="auth-google"
+        >
+          {loading ? <Loader2 size={20} className="animate-spin" /> : <GoogleMark />}
+          {loading ? "Connecting..." : "Continue with Google"}
+        </button>
+      </div>
 
       <p className="auth-footnote">
         Already have an account?{" "}

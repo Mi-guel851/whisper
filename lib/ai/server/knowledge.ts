@@ -83,7 +83,7 @@ What Whisper actually does:
 - Whisper Coins: buy in the Coin Store (Coins tab). Spent on hints, chat unlocks, photos, voice notes and public-feed posts.
 - Wallet + transfers: each account has a Whispers wallet address. Coins can be transferred wallet-to-wallet, free, with a receipt.
 - Transaction history: every purchase, spend and transfer, on the Coin Store screen.
-- Chats: private conversations in the Inbox, under anonymous names. Unlock a chat once with coins to send in it. View-once photos and voice notes cost coins.
+- Chats: private conversations in the Inbox, under anonymous names. Unlock a chat once with coins to send in it. View-once photos and voice notes cost coins. Voice calls work between accepted friends (free, no recording).
 - Friends: Discover People, Active users, Requests and Friends tabs.
 - Public Feed: short posts to the whole Whisper community that clear after 24 hours. Posting costs coins; replying is free.
 - Profile: display name, username, bio, avatar.
@@ -259,7 +259,7 @@ const TOPICS: Record<string, Topic> = {
 
   coins: {
     keywords: ["coin", "coins", "buy", "purchase", "price", "cost", "balance", "store", "paystack", "payment", "top up", "package"],
-    text: `Whisper Coins: the Coins tab is the Coin Store. Your balance is at the top. Four packages: 100 (Starter Pack), 300 (Whisper Bundle — most popular), 500 (Whisper Vault), 1000 (Whisper Fortune). Pricing is 100 coins for ₦1,000 across Africa and India, or the equivalent of $1 per 100 coins elsewhere, shown converted into the local currency at live rates. Payment goes through Paystack, charged in Naira — international cards work and the card network handles conversion. Coins are spent on: sender hints (5), unlocking a chat (30), sending a photo in chat (10), sending a voice note (5), posting on the Public Feed (2). Buying coins requires being signed in with an email.`,
+    text: `Whisper Coins: the Coins tab is the Coin Store. Your balance is at the top. Four packages: 100 (Starter Pack), 300 (Whisper Bundle — most popular), 500 (Whisper Vault), 1000 (Whisper Fortune). Pricing is 100 coins for ₦1,000 across Africa and India, or the equivalent of $1 per 100 coins elsewhere, shown converted into the local currency at live rates. Payment goes through Paystack, charged in Naira — international cards work and the card network handles conversion. Coins are spent on: sender hints (5), unlocking a chat (40), sending a photo in chat (10), sending a voice note (5), posting on the Public Feed (2). Buying coins requires being signed in with an email.`,
   },
 
   wallet: {
@@ -273,12 +273,15 @@ Transaction history sits below Buy Coins on the same screen — purchases, spend
   chat: {
     keywords: ["chat", "chats", "conversation", "dm", "direct message", "unlock chat", "voice", "voice note", "view once", "typing", "ticks", "pin", "inbox"],
     text: `Chats: the Inbox tab lists private conversations. Everyone appears under an anonymous name, so a chat doesn't expose identities. Rows show the last message, a timestamp, unread count, a green dot when the other person is online, "typing…" while they type, and delivery/read ticks on your own messages. There's a search box, and a strip of friends across the top to start a new chat.
-Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent — until then you can read but not send. Sending a photo costs 10 coins and it sends view-once (opened once, then gone). Voice notes cost 5 coins and are also view-once. You can swipe to reply to a message, and pin a message in the conversation for a chosen duration.`,
+Inside a chat: unlocking a conversation costs 40 coins, once, and is permanent — until then you can read but not send. If the other person has a friend request pending to you, you must accept it before you can reply at all: the thread shows a "Someone wants to be your friend" banner with Accept and Decline, and the composer says "Accept the request to reply". Sending a photo costs 10 coins and it sends view-once (opened once, then gone). Voice notes cost 5 coins and are also view-once. You can swipe to reply to a message, and pin a message in the conversation for a chosen duration.
+Voice calls: in a chat with an accepted friend, the phone icon in the header starts a voice call. An incoming call takes over the screen with Accept and Decline (and rings with vibration). While in a call you see the time, and can mute, toggle the speaker (where the device supports it) and end. Calls are free — no coins — and the audio goes straight between the two devices: Whisper never records or stores call audio, and only calls between accepted friends exist. A call that goes unanswered shows up for the other person as a "Missed Voice Call" notification. Calls need a connection, and on first use the device asks for microphone permission — allow it, or calls won't work.`,
   },
 
   friends: {
     keywords: ["friend", "friends", "add", "request", "active", "online", "discover people", "connect"],
-    text: `Friends: Discover → Friends (or the Friends strip at the top of the Inbox) has four tabs — Discover People to find users, Active for who's online now, Requests for pending invites in both directions, and Friends for accepted ones. A green dot means online. Tapping a friend opens or starts a chat with them.`,
+    text: `Friends: Discover → Friends (or the Friends strip at the top of the Inbox) has four tabs — Discover People to find users, Active for who's online now, Requests for pending invites in both directions, and Friends for accepted ones. A green dot means online. Tapping a friend opens or starts a chat with them.
+Pending requests are conversational too: after you send a request, a Message button on the request under Sent requests opens the pending thread, and you can send there once you've unlocked the chat with 40 coins like any other conversation. The other person must accept the request before they can reply — their composer says "Accept the request to reply" until they do. Once accepted, the thread is a normal friend conversation (each of you still unlocks with coins to send). If the request is declined or withdrawn, the pending thread disappears for both of you.
+Find a Match: below the Friends tabs, tap the Find a Match panel and Scan. A short radar sweep runs, then a ranked list of people shows up — closest first is people in your own self-declared country (the one you chose at sign-up; Whisper never uses device geolocation), then who has been active recently. Friends, pending requests, blocked users and people who opted out never appear. You add them with the usual Add Friend flow, and "Scan again" shows the next page. Opt out any time in Settings → "Appear in Find a Match" (on by default).`,
   },
 
   feed: {
@@ -298,7 +301,7 @@ Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent �
 
   settings: {
     keywords: ["setting", "settings", "logout", "log out", "sign out", "delete account", "privacy", "security", "data"],
-    text: `Settings: Profile → Settings. It holds Push Notifications (Manage), a list of content links, and Log out. Log out ends the current session only. There is no in-app account deletion — Contact Support handles that. Privacy details (what's stored, how it's protected) are in the Privacy Policy, linked from Profile and Discover.`,
+    text: `Settings: Profile → Settings. It holds Push Notifications (Manage), Vibration, "Appear in Find a Match" (on by default — turning it off stops you appearing in other people's radar scans; the radar only ever sees the country you chose at sign-up, never a precise location), a list of content links, and Log out. Log out ends the current session only. There is no in-app account deletion — Contact Support handles that. Privacy details (what's stored, how it's protected) are in the Privacy Policy, linked from Profile and Discover.`,
   },
 
   notifications: {
@@ -323,7 +326,7 @@ Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent �
 
   account: {
     keywords: ["sign up", "signup", "login", "log in", "password", "forgot", "recovery", "account", "google", "email"],
-    text: `Accounts: sign up or log in with email and password, or with Google. Forgot Password sends a reset, and a recovery phrase can be set up as a backup way in. New accounts finish at Complete Profile, where the username that forms your Whisper link is chosen. Whispers AI can't reset a password or recover an account — use Forgot Password, or Contact Support.`,
+    text: `Accounts: sign up or log in with email and password, or with Google. Creating a new account requires agreeing to Whisper's Privacy Policy and Terms — the checkbox next to Continue with Google is unchecked by default, and the button stays disabled until it is ticked (the same checkbox appears at Complete Profile if the consent hasn't been recorded yet). Forgot Password sends a reset, and a recovery phrase can be set up as a backup way in. New accounts finish at Complete Profile, where the username that forms your Whisper link is chosen. Whispers AI can't reset a password or recover an account — use Forgot Password, or Contact Support.`,
   },
 };
 

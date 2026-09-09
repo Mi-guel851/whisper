@@ -24,6 +24,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Voice notes and 1:1 voice calls both capture the microphone through
+	     getUserMedia in the WKWebView. Without this usage string the system
+	     prompt never shows and the capture fails the moment the user taps
+	     record — the feature looks broken and there is nothing to debug. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Whisper uses the microphone so you can record voice notes and make voice calls.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

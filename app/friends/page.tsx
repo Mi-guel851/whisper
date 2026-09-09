@@ -2,17 +2,20 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Clock, Compass, Ghost, MessageCircle, UserPlus, Users, X } from "lucide-react";
+import { Check, Clock, Compass, Ghost, MessageCircle, Radar, UserPlus, Users, X } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { supabase } from "@/lib/supabase/client";
 import { presenceManager } from "@/lib/realtime/presence";
+import { requireOnline } from "@/lib/offline";
+import { COUNTRIES } from "@/lib/countries";
 import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
 import Button from "@/components/Button";
 import BrandedLoader from "@/components/BrandedLoader";
 import GlassPanel from "@/components/GlassPanel";
 import PersonRow from "@/components/PersonRow";
+import RadarSweep from "@/components/RadarSweep";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import EmptyState from "@/components/ui/EmptyState";
 import type { SegmentedTab } from "@/components/SegmentedTabs";
@@ -57,7 +60,30 @@ type RelatedUserIds = {
   blockedUserIds: Set<string>;
 };
 
+type MatchCandidate = {
+  profile_id: string;
+  country_code: string | null;
+  active_recent: boolean;
+};
+
 const PAGE_SIZE = 5;
+
+/**
+ * The radar sweep's run time. It is the MINIMUM perceived duration: the RPC
+ * is fired in parallel with the sweep, and the list reveals once BOTH have
+ * landed. A 200ms fetch under a 2.5s sweep is still 2.5s — the scan has to
+ * feel like a sweep, and a scan that answers before it finishes moving reads
+ * as a loading spinner that was dressed up.
+ */
+const SWEEP_MS = 2500;
+
+/** The RPC's page size — "Scan again" advances one of these at a time. */
+const MATCH_PAGE_SIZE = 20;
+
+function regionLabel(countryCode: string | null | undefined) {
+  if (!countryCode) return "Nearby";
+  return COUNTRIES.find((country) => country.code === countryCode)?.name ?? "Nearby";
+}
 
 function uniqueChannelName(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -140,6 +166,20 @@ function FriendsPageContent() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
 
+  /* Find a Match. `idle` → `scanning` (sweep on screen, RPC in flight) →
+     `results` (ranked rows + Scan again). The page is 0-based and advances
+     per rescan — the RPC's deterministic daily order makes paging stable
+     within a day, so "Scan again" surfaces the NEXT twenty, not a reshuffle
+     of the same twenty. */
+  const [matchState, setMatchState] = useState<"idle" | "scanning" | "results">("idle");
+  const [matchCandidates, setMatchCandidates] = useState<MatchCandidate[]>([]);
+  const [matchPage, setMatchPage] = useState(0);
+  const [matchHasMore, setMatchHasMore] = useState(false);
+  /* My own self-declared region, so a candidate sharing it can be labelled
+     "Your region" — the ranking is opaque numbers; the label is the part the
+     reader actually checks. */
+  const [myCountryCode, setMyCountryCode] = useState<string | null>(null);
+
   const showSupabaseError = useCallback((fallback: string, error: { message?: string } | null | undefined) => {
     const message = error?.message?.trim() || fallback;
     console.error(fallback, error);
@@ -215,6 +255,16 @@ function FriendsPageContent() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setLoading(false); return; }
       setMyId(session.user.id);
+      /* My own region for the "Your region" label — one row, my own, and the
+         only profile the radar needs from me. */
+      void supabase
+        .from("profiles")
+        .select("country_code")
+        .eq("id", session.user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!cancelled) setMyCountryCode((data as { country_code: string | null } | null)?.country_code ?? null);
+        });
       /* Listener first, then connect. Registering up front means the roster is
          applied whenever it arrives — including on a later automatic rebuild —
          instead of only if the first connect happened to succeed. The connect
@@ -294,8 +344,9 @@ function FriendsPageContent() {
         ...people.map((profile) => profile.id),
         ...activeNow,
         ...friends.map((friend) => friend.friend_id),
+        ...matchCandidates.map((candidate) => candidate.profile_id),
       ],
-      [people, activeNow, friends]
+      [people, activeNow, friends, matchCandidates]
     )
   );
 
@@ -318,6 +369,43 @@ function FriendsPageContent() {
     const nextPage = discoverPage + 1;
     setDiscoverPage(nextPage);
     await loadPeople(myId, nextPage);
+  }
+
+  /**
+   * Runs one radar sweep: the animation is the floor, the RPC is the data.
+   *
+   * The offline refusal comes from lib/offline.ts like every other
+   * cannot-work-offline action here — a scan that would quietly queue and
+   * complete later, against a candidate pool that has moved on, is worse
+   * than one that plainly did not happen.
+   *
+   * A pre-migration database has no RPC: "not available yet" is the honest
+   * toast, and the section returns to idle so nothing is left half-open.
+   */
+  async function runMatchScan(page: number) {
+    if (!myId) return;
+    if (!requireOnline(showToast, "Scanning")) return;
+    setMatchState("scanning");
+
+    const rpcPromise = supabase.rpc("find_match_candidates", { p_page: page });
+    const sweepWait = new Promise<void>((resolve) => setTimeout(resolve, SWEEP_MS));
+    const rpc = await Promise.all([rpcPromise, sweepWait]).then(([result]) => result);
+
+    if (rpc.error) {
+      if (rpc.error.code === "PGRST202" || /could not find the function/i.test(rpc.error.message)) {
+        showToast("Find a Match isn't available on this server yet.");
+      } else {
+        showToast(rpc.error.message || "The scan didn't find anyone.");
+      }
+      setMatchState("idle");
+      return;
+    }
+
+    const rows = (rpc.data ?? []) as MatchCandidate[];
+    setMatchCandidates(rows);
+    setMatchHasMore(rows.length === MATCH_PAGE_SIZE);
+    setMatchPage(page);
+    setMatchState("results");
   }
 
   async function addFriend(profileId: string) {
@@ -362,6 +450,16 @@ function FriendsPageContent() {
       .insert({ user_id: myId, friend_id: requestRow.sender_id, source: "request" });
     if (friendError && friendError.code !== "23505") showSupabaseError("Request accepted, but adding the friend failed.", friendError);
     else showToast("Friend added.");
+    /* The reverse row, so both people's Friends tabs list the friendship.
+       The send gate (202609090002) matches a friendship in either direction,
+       so a rejection here degrades to the old one-directional behaviour
+       rather than breaking the conversation — which matters because some
+       databases' insert policy only admits the caller's own row. */
+    const { error: reverseError } = await supabase.from("friends")
+      .insert({ user_id: requestRow.sender_id, friend_id: myId, source: "request" });
+    if (reverseError && reverseError.code !== "23505") {
+      console.warn("Reverse friendship row not written (policy likely owner-only):", reverseError.message);
+    }
     /* The acceptance push comes from the same trigger, which fires on UPDATE as
        well as INSERT — the status change above is what it reacts to. */
     await refreshAll(myId);
@@ -411,6 +509,34 @@ function FriendsPageContent() {
     setBusyId(null);
   }
 
+  /**
+   * Opens the PENDING thread for a request you sent — rule (a) of the
+   * friend-request messaging gates. The pair is not friends yet, so the
+   * thread can't go through startChat's assumptions; `ensure_pending_conversation`
+   * (202609090002) is the definer RPC that verifies the pending request and
+   * creates the row. A pre-migration database has no function, in which case
+   * there is no pending-thread support at all and the honest answer is a
+   * toast, not a half-opened thread.
+   */
+  async function openPendingThread(profileId: string) {
+    if (!myId) return;
+    setBusyId(profileId);
+    const { data: conversationId, error } = await supabase.rpc("ensure_pending_conversation", {
+      target_user_id: profileId,
+    });
+    if (error) {
+      if (error.code === "PGRST202" || /could not find the function/i.test(error.message)) {
+        showToast("Pending threads aren't available on this server yet.");
+      } else {
+        showToast(error.message || "Couldn't open the pending thread.");
+      }
+      setBusyId(null);
+      return;
+    }
+    if (conversationId) router.push(`/chat/${conversationId}`);
+    setBusyId(null);
+  }
+
   if (loading) return <BrandedLoader label="Finding people" />;
 
   return (
@@ -430,6 +556,124 @@ function FriendsPageContent() {
           value={tab}
           onChange={setActiveTab}
         />
+
+        {/* ── Find a Match ──
+            A scan action, not a fifth tab: the four tabs above are stable
+            lists, and a radar is a *moment* — tap it, watch it sweep, read
+            what it finds, scan again or walk away. Tucking it into the
+            segmented control would make a one-shot gesture look like a
+            permanent section. */}
+        <section className="mt-4">
+          {matchState === "idle" && (
+            <GlassPanel strong className="rounded-3xl p-5">
+              <div className="flex items-center gap-3.5">
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, color-mix(in srgb, #22d3ee 18%, transparent), color-mix(in srgb, #a855f7 18%, transparent))",
+                    color: "var(--theme-accent-from)",
+                  }}
+                >
+                  <Radar size={22} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="card-title">Find a Match</h2>
+                  <p className="truncate text-xs theme-text-muted">
+                    Sweep for people in your region who are active — your chosen country only, never a location.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => runMatchScan(0)}
+                  icon={<Radar size={15} />}
+                >
+                  Scan
+                </Button>
+              </div>
+            </GlassPanel>
+          )}
+
+          {matchState === "scanning" && (
+            <GlassPanel strong className="rounded-3xl p-6">
+              <RadarSweep durationMs={SWEEP_MS} />
+            </GlassPanel>
+          )}
+
+          {matchState === "results" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="section-title">Matches on this sweep</h2>
+                <Button size="sm" variant="ghost" onClick={() => setMatchState("idle")}>
+                  Close
+                </Button>
+              </div>
+
+              <PersonList
+                isEmpty={matchCandidates.length === 0}
+                empty={
+                  <EmptyState
+                    icon={<Radar size={26} />}
+                    title="No matches on this sweep"
+                    description="Everyone who fits is already a friend, has a request in flight, or has opted out of the radar. New people show up as they join and set their country."
+                  />
+                }
+              >
+                {matchCandidates.map((candidate) => {
+                  const online = onlineSet.has(candidate.profile_id);
+                  const sameRegion = Boolean(myCountryCode) && candidate.country_code === myCountryCode;
+                  return (
+                    <PersonRow
+                      key={candidate.profile_id}
+                      avatarUrl={generatedAvatarUrl(candidate.profile_id)}
+                      name={anonymousName(candidate.profile_id)}
+                      online={online}
+                      subtitle={
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>{regionLabel(candidate.country_code)}</span>
+                          {sameRegion && (
+                            <span
+                              className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                              style={{
+                                background: "color-mix(in srgb, #22d3ee 18%, transparent)",
+                                color: "#22d3ee",
+                              }}
+                            >
+                              Your region
+                            </span>
+                          )}
+                          {candidate.active_recent && (
+                            <span className="font-semibold" style={{ color: "var(--theme-success)" }}>
+                              · Active recently
+                            </span>
+                          )}
+                        </span>
+                      }
+                      actions={
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          loading={busyId === candidate.profile_id}
+                          onClick={() => addFriend(candidate.profile_id)}
+                          icon={<UserPlus size={15} />}
+                        >
+                          Add Friend
+                        </Button>
+                      }
+                    />
+                  );
+                })}
+              </PersonList>
+
+              {matchHasMore && (
+                <Button variant="secondary" fullWidth onClick={() => runMatchScan(matchPage + 1)}>
+                  Scan again
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* ── Discover ── */}
         {tab === "discover" && (
@@ -564,8 +808,8 @@ function FriendsPageContent() {
         {/* ── Requests ── */}
         {tab === "requests" && (
           <section className="mt-6 space-y-6">
-            <RequestList title="Requests" empty="No incoming requests" requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
-            <RequestList title="Sent requests" empty="No sent requests" requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onlineSet={onlineSet} />
+            <RequestList title="Requests" empty="No incoming requests" requests={incoming} mode="incoming" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onMessage={openPendingThread} onlineSet={onlineSet} />
+            <RequestList title="Sent requests" empty="No sent requests" requests={outgoing} mode="outgoing" busyId={busyId} onAccept={acceptRequest} onDecline={declineRequest} onCancel={cancelRequest} onMessage={openPendingThread} onlineSet={onlineSet} />
           </section>
         )}
 
@@ -614,9 +858,9 @@ function FriendsPageContent() {
   );
 }
 
-function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onlineSet }: {
+function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline, onCancel, onMessage, onlineSet }: {
   title: string; empty: string; requests: FriendRequestRow[]; mode: "incoming" | "outgoing";
-  busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onlineSet: ReadonlySet<string>;
+  busyId: string | null; onAccept: (id: string) => void; onDecline: (id: string) => void; onCancel: (id: string) => void; onMessage: (profileId: string) => void; onlineSet: ReadonlySet<string>;
 }) {
   /* Its own batch rather than a prop threaded down from the page: the resolver
      caches per tab-lifetime, so asking twice for the same id costs one map
@@ -690,6 +934,19 @@ function RequestList({ title, empty, requests, mode, busyId, onAccept, onDecline
                       <Clock size={14} />
                       Pending
                     </span>
+                    {/* The pending thread: you may message first (after the
+                        one-time coin unlock, like any chat); they may not
+                        reply until they accept. The button opens the thread
+                        through ensure_pending_conversation. */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => onMessage(profileId)}
+                      icon={<MessageCircle size={15} />}
+                    >
+                      Message
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"

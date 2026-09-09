@@ -5,6 +5,7 @@ import GlassPanel from "@/components/GlassPanel";
 import BackButton from "@/components/BackButton";
 import LogoutButton from "@/components/LogoutButton";
 import HapticsSettingRow from "@/components/HapticsSettingRow";
+import FindAMatchSettingRow from "@/components/FindAMatchSettingRow";
 import {
   Bell,
   ChevronRight,
@@ -85,6 +86,10 @@ export default function SettingsPage() {
               is the only way to tell "Whisper didn't fire" from "Android is set
               not to buzz" — two failures that feel identical. */}
           <HapticsSettingRow />
+          {/* Discoverability is a preference too: on by default, one tap off,
+              and the sub-label states the privacy boundary (country only,
+              never a location) so opting in is an informed act. */}
+          <FindAMatchSettingRow />
         </GlassPanel>
 
         {/* `divide-white/[0.06]` rather than `divide-white/5`: only the first of
