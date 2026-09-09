@@ -10,6 +10,8 @@ import ComingSoonGate from "@/components/auth/ComingSoonGate";
 import CountryPhoneInput, { type CountryPhoneValue } from "@/components/CountryPhoneInput";
 import { COUNTRIES } from "@/lib/countries";
 import { SIGNUPS_CLOSED } from "@/lib/signupGate";
+import { consumePendingConsent, grantConsent, hasCurrentConsent } from "@/lib/consent";
+import Link from "next/link";
 import { AtSign, Lock, ShieldCheck, Loader2 } from "lucide-react";
 
 function countryCodeFromProfile(countryName: string | null | undefined, fallbackCode: string | null | undefined) {
@@ -45,6 +47,17 @@ export default function CompleteProfilePage() {
   const [recoveryPhrase, setRecoveryPhrase] = useState("");
   const [confirmedSaved, setConfirmedSaved] = useState(false);
   const [savingPhrase, setSavingPhrase] = useState(false);
+
+  /* Consent gate state. `consentChecked` is the box; `consentRecorded` is
+     whether the row already exists server-side (it can — the native Google
+     path writes it on /signup the moment the account is created). The submit
+     button waits on the box, and handleSubmit waits on the row, so a UI
+     check without a database row never reaches the profile update. The row
+     is what the profiles trigger (202609090001) verifies when
+     profile_completed flips, so these two states can disagree in only one
+     direction: checked but not yet written, which submit repairs. */
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [consentRecorded, setConsentRecorded] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -95,6 +108,20 @@ export default function CompleteProfilePage() {
         dialCode: profile?.dial_code || "+234",
         phoneNumber: profile?.phone_number || "",
       });
+
+      /* Consent, in priority order: an existing row (native path wrote it on
+         /signup, or a re-onboarding user) → the tick that rode the OAuth
+         redirect back as a sessionStorage flag → show the box unchecked. */
+      if (!(await hasCurrentConsent(session.user.id))) {
+        if (consumePendingConsent() && (await grantConsent())) {
+          setConsentChecked(true);
+          setConsentRecorded(true);
+        }
+      } else {
+        setConsentChecked(true);
+        setConsentRecorded(true);
+      }
+
       setChecking(false);
     }
 
@@ -103,6 +130,24 @@ export default function CompleteProfilePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    /* Consent before anything else: the profile update below is the first
+       server write of onboarding, and profile_completed (a few steps later)
+       is the moment the database's trigger looks for the consent row. Writing
+       it here — before the username lands — means the row exists with room to
+       spare, and a consent that is only a UI check can never complete an
+       account. */
+    if (!consentChecked) {
+      showToast("Please accept the Privacy Policy and Terms to continue.");
+      return;
+    }
+    if (!consentRecorded) {
+      if (!(await grantConsent())) {
+        showToast("Couldn't record your consent. Please try again.");
+        return;
+      }
+      setConsentRecorded(true);
+    }
 
     const cleanUsername = username.trim().toLowerCase();
 
@@ -352,7 +397,29 @@ export default function CompleteProfilePage() {
           </div>
         </div>
 
-        <button type="submit" disabled={loading} className="auth-submit">
+        {/* Same treatment as the /signup gate: `auth-check` styling, unchecked
+            unless a consent row already exists, and the submit button cannot
+            be pressed while it is unchecked. Pre-ticked state is not
+            invented — it only appears when the database already has the row. */}
+        <label className="auth-check">
+          <input
+            type="checkbox"
+            checked={consentChecked}
+            onChange={(e) => setConsentChecked(e.target.checked)}
+          />
+          <span>
+            I agree to Whisper&apos;s{" "}
+            <Link href="/privacy" className="auth-link">
+              Privacy Policy
+            </Link>{" "}
+            and{" "}
+            <Link href="/terms" className="auth-link">
+              Terms
+            </Link>
+          </span>
+        </label>
+
+        <button type="submit" disabled={loading || !consentChecked} className="auth-submit">
           {loading ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 size={18} className="animate-spin" />

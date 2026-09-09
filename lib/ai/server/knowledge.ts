@@ -323,7 +323,7 @@ Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent �
 
   account: {
     keywords: ["sign up", "signup", "login", "log in", "password", "forgot", "recovery", "account", "google", "email"],
-    text: `Accounts: sign up or log in with email and password, or with Google. Forgot Password sends a reset, and a recovery phrase can be set up as a backup way in. New accounts finish at Complete Profile, where the username that forms your Whisper link is chosen. Whispers AI can't reset a password or recover an account — use Forgot Password, or Contact Support.`,
+    text: `Accounts: sign up or log in with email and password, or with Google. Creating a new account requires agreeing to Whisper's Privacy Policy and Terms — the checkbox next to Continue with Google is unchecked by default, and the button stays disabled until it is ticked (the same checkbox appears at Complete Profile if the consent hasn't been recorded yet). Forgot Password sends a reset, and a recovery phrase can be set up as a backup way in. New accounts finish at Complete Profile, where the username that forms your Whisper link is chosen. Whispers AI can't reset a password or recover an account — use Forgot Password, or Contact Support.`,
   },
 };
 
