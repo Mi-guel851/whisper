@@ -12,6 +12,7 @@ import TypingSparks from "@/components/TypingSparks";
 import AppUrlHandler from "@/components/AppUrlHandler";
 import NativeShell from "@/components/NativeShell";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import PageSnapshotter from "@/components/PageSnapshotter";
 import OfflineHandler from "@/components/OfflineHandler";
 import WhispersAiAssistant from "@/components/ai/WhispersAiAssistant";
 import SocialFollowPrompt from "@/components/SocialFollowPrompt";
@@ -110,6 +111,9 @@ export default function RootLayout({
         <AppUrlHandler />
         <NativeShell />
         <ServiceWorkerRegistrar />
+        {/* Posts the rendered page to the service worker so a navigation that
+            cannot be served live restores this visit instead of a dead end. */}
+        <PageSnapshotter />
         <ClickHaptics />
         {/* Both are delegated listeners on `document`, mounted once: taps get a
             haptic, keystrokes get caret sparks. Neither renders anything, and

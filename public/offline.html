@@ -3,28 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Whisper — Reconnecting</title>
+    <title>Whisper</title>
     <!--
-      THIS PAGE IS A LAST RESORT, NOT THE OFFLINE EXPERIENCE.
+      THIS PAGE IS NO LONGER THE OFFLINE EXPERIENCE, AND NO LONGER SAYS ANYBODY
+      IS OFFLINE.
 
-      Capacitor shows it via `errorPath` in capacitor.config.ts when the WebView's
-      top-level load of `server.url` fails outright. Once the service worker is
-      installed it answers that navigation from cache instead, so the app opens on
-      the real dashboard with last-synced data and this file is never reached.
+      It used to be the "Reconnecting — still offline, watching for a connection"
+      screen, and the service worker served it to people who were perfectly
+      online: the old navigation handler gave the server 2.5s and answered with
+      this file whenever the route had no cache entry, which on a cold serverless
+      boot is most routes. That is fixed in public/sw.js, which now restores a
+      snapshot of the last visited page instead and never references this file.
 
-      Which makes what it does matter mostly for one case: the very first launch
-      after install, before any cache exists.
+      What is left here serves exactly one case: the Capacitor shell's
+      `errorPath` (capacitor.config.ts), reached when the native WebView's very
+      first load of `server.url` fails outright — no worker installed yet, no
+      cache, nothing to restore. In that moment there is no last visit on this
+      device to show, so the honest thing is a quiet splash that keeps trying
+      and opens the app by itself the instant the server answers. No countdown,
+      no "offline", no claim about the user's connection — a phone can be fully
+      connected while a server sleeps, and saying otherwise is what made the old
+      page feel like a lie.
 
-      WHY THE OLD RETRY BUTTON SENT PEOPLE TO localhost
+      WHY THE RETRY TARGET IS ABSOLUTE
 
-      It ran `window.location.href = '/'`. This document is served from the *bundled*
-      assets, and with `androidScheme: "https"` those live at `https://localhost/`.
-      So "/" resolved to the local bundle root — public/index.html, a Capacitor
-      placeholder — and not to the app at all. Every retry landed on a blank
-      localhost page, which looked like the app had been replaced by a browser.
-
-      The origin therefore has to be absolute. It is duplicated from
-      capacitor.config.ts's `server.url`; if that ever changes, change it here too.
+      It navigates to APP_ORIGIN below, not "/". This document is served from the
+      *bundled* assets, and with `androidScheme: "https"` those live at
+      `https://localhost/`. A relative path therefore resolved to the local
+      bundle root — a Capacitor placeholder — and not to the app at all. The
+      origin is duplicated from capacitor.config.ts's `server.url`; if that ever
+      changes, change it here too.
     -->
     <style>
         :root { color-scheme: dark; }
@@ -101,7 +109,7 @@
             height: 6px;
             margin-right: 0.4375rem;
             border-radius: 999px;
-            background: #f472b6;
+            background: #a78bfa;
             vertical-align: middle;
             animation: pulse 1.4s ease-in-out infinite;
         }
@@ -117,11 +125,11 @@
 <body>
     <div class="container">
         <img src="ghost.png" alt="" class="icon">
-        <h1>Reconnecting</h1>
-        <p>Whisper needs to reach the server once before it can work offline. We&rsquo;ll take you straight in as soon as you&rsquo;re back.</p>
+        <h1>Opening Whisper</h1>
+        <p>One moment &mdash; we&rsquo;re taking you straight back in.</p>
 
-        <button class="btn" id="retry" type="button">Try now</button>
-        <p class="status" id="status"><span class="dot"></span>Watching for a connection&hellip;</p>
+        <button class="btn" id="open" type="button">Open Whisper</button>
+        <p class="status" id="status"><span class="dot"></span>Warming up&hellip;</p>
     </div>
 
     <script>
@@ -129,25 +137,27 @@
       /* Absolute, because a relative path resolves against the bundled assets at
          https://localhost — see the comment in <head>. */
       var APP_ORIGIN = "https://whisper-anonymous.vercel.app";
+      var ENTRY_PATH = "/dashboard";
 
-      var retry = document.getElementById("retry");
+      var open = document.getElementById("open");
       var status = document.getElementById("status");
       var navigating = false;
+      var misses = 0;
 
       function enter() {
         if (navigating) return;
         navigating = true;
-        status.textContent = "Connected — opening Whisper";
+        status.innerHTML = '<span class="dot"></span>Opening&hellip;';
         /* `replace`, so the back gesture cannot return to this page once the app
            has loaded. */
-        window.location.replace(APP_ORIGIN + "/dashboard");
+        window.location.replace(APP_ORIGIN + ENTRY_PATH);
       }
 
       /*
        * A real request, not `navigator.onLine`. On Android that flag reports true
        * for a captive portal, a hotspot with no upstream, and a data connection
-       * that has not finished attaching — all of which would bounce someone into a
-       * navigation that fails again and returns them right back here.
+       * that has not finished attaching — all of which would bounce someone into
+       * a navigation that fails again and returns them right back here.
        *
        * `no-store` keeps a cached 200 from standing in for a live server.
        */
@@ -161,19 +171,24 @@
             if (response && (response.ok || response.type === "opaque")) enter();
           })
           .catch(function () {
-            /* Still down. The interval below tries again. */
+            /* Not yet. Only after several misses does the page say anything at
+               all, and even then it talks about the server, not the user's
+               connection — the two are not the same thing. */
+            misses += 1;
+            if (misses === 3) {
+              status.innerHTML = '<span class="dot"></span>Server hasn&rsquo;t answered yet &mdash; still trying&hellip;';
+            }
           });
       }
 
-      retry.addEventListener("click", function () {
-        retry.disabled = true;
-        status.innerHTML = '<span class="dot"></span>Checking&hellip;';
+      open.addEventListener("click", function () {
+        open.disabled = true;
+        status.innerHTML = '<span class="dot"></span>Opening&hellip;';
         probe();
-        /* Re-enabled rather than left dead, so a failed attempt can be repeated. */
         setTimeout(function () {
           if (navigating) return;
-          retry.disabled = false;
-          status.innerHTML = '<span class="dot"></span>Still offline — watching for a connection&hellip;';
+          open.disabled = false;
+          status.innerHTML = '<span class="dot"></span>Not there yet &mdash; tap again or wait, we&rsquo;re watching&hellip;';
         }, 2500);
       });
 
@@ -181,15 +196,15 @@
          it is not trustworthy enough to act on by itself. */
       window.addEventListener("online", probe);
 
-      /* Coming back from the app switcher is the other common moment for data to
-         have returned. */
+      /* Coming back from the app switcher is the other common moment for the
+         server to have become reachable. */
       document.addEventListener("visibilitychange", function () {
         if (!document.hidden) probe();
       });
 
-      /* Every 4s. Frequent enough to feel automatic, sparse enough that it costs
-         nothing while someone is on a train with no signal. */
-      setInterval(probe, 4000);
+      /* Every 3s: this page only exists at cold start, so it should retire
+         itself quickly rather than be sat on. */
+      setInterval(probe, 3000);
       probe();
     })();
     </script>
