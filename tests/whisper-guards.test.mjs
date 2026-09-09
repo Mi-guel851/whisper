@@ -95,15 +95,21 @@ check(
 );
 check(
   "ranking is opt-in region, not coordinates",
-  matchSql.includes("country_code") &&
-    !/latitude|longitude|geography|geometric|ST_(Geog|Point|Distance)/i.test(matchSql),
-  "no coordinate columns or PostGIS in the ranking SQL"
+  matchResultRepairSql.includes("country_code") &&
+    !/latitude|longitude|geography|geometric|ST_(Geog|Point|Distance)/i.test(matchResultRepairSql),
+  "no coordinate columns or PostGIS in the effective ranking SQL"
 );
-check("excludes banned users", matchSql.includes("user_is_banned"));
-check("excludes blocked users either way", matchSql.includes("blocked_users"));
-check("excludes friends and pending requests", matchSql.includes("public.friends") && matchSql.includes("friend_requests"));
-check("opt-out honoured, default ON", matchSql.includes("find_a_match_enabled is distinct from false") && matchSql.includes("default true"));
-check("capped at 20 per page", matchSql.includes("limit 20"));
+check("effective RPC excludes banned users", matchResultRepairSql.includes("user_is_banned"));
+check("effective RPC excludes blocked users either way", matchResultRepairSql.includes("blocked_users"));
+check(
+  "effective RPC excludes friends and pending requests",
+  matchResultRepairSql.includes("public.friends") && matchResultRepairSql.includes("friend_requests")
+);
+check(
+  "effective RPC honours opt-out, whose schema default remains ON",
+  matchResultRepairSql.includes("find_a_match_enabled is distinct from false") && matchSql.includes("default true")
+);
+check("effective RPC is capped at 20 per page", matchResultRepairSql.includes("limit 20"));
 check(
   "RPC score exactly matches its declared double-precision result type",
   matchResultRepairSql.includes(")::double precision as candidate_rank_score")
@@ -120,7 +126,7 @@ check(
     matchResultRepairSql.includes("p.country_code::text as candidate_country_code") &&
     matchResultRepairSql.includes(")::boolean as candidate_active_recent")
 );
-check("presence heartbeat feeds recency", matchSql.includes("last_active_at") && read("lib/realtime/presence.ts").includes("last_active_at"));
+check("presence heartbeat feeds recency", matchResultRepairSql.includes("last_active_at") && read("lib/realtime/presence.ts").includes("last_active_at"));
 check("scan refuses offline", friendsPage.includes("requireOnline"));
 check("scan never toasts a raw database error", friendsPage.includes("matchScanErrorMessage(rpc.error)"));
 check("settings toggle present and documented", read("app/settings/page.tsx").includes("FindAMatchSettingRow") && read("components/FindAMatchSettingRow.tsx").includes("find_a_match_enabled"));
