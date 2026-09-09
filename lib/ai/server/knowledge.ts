@@ -83,7 +83,7 @@ What Whisper actually does:
 - Whisper Coins: buy in the Coin Store (Coins tab). Spent on hints, chat unlocks, photos, voice notes and public-feed posts.
 - Wallet + transfers: each account has a Whispers wallet address. Coins can be transferred wallet-to-wallet, free, with a receipt.
 - Transaction history: every purchase, spend and transfer, on the Coin Store screen.
-- Chats: private conversations in the Inbox, under anonymous names. Unlock a chat once with coins to send in it. View-once photos and voice notes cost coins.
+- Chats: private conversations in the Inbox, under anonymous names. Unlock a chat once with coins to send in it. View-once photos and voice notes cost coins. Voice calls work between accepted friends (free, no recording).
 - Friends: Discover People, Active users, Requests and Friends tabs.
 - Public Feed: short posts to the whole Whisper community that clear after 24 hours. Posting costs coins; replying is free.
 - Profile: display name, username, bio, avatar.
@@ -273,7 +273,8 @@ Transaction history sits below Buy Coins on the same screen — purchases, spend
   chat: {
     keywords: ["chat", "chats", "conversation", "dm", "direct message", "unlock chat", "voice", "voice note", "view once", "typing", "ticks", "pin", "inbox"],
     text: `Chats: the Inbox tab lists private conversations. Everyone appears under an anonymous name, so a chat doesn't expose identities. Rows show the last message, a timestamp, unread count, a green dot when the other person is online, "typing…" while they type, and delivery/read ticks on your own messages. There's a search box, and a strip of friends across the top to start a new chat.
-Inside a chat: unlocking a conversation costs 40 coins, once, and is permanent — until then you can read but not send. If the other person has a friend request pending to you, you must accept it before you can reply at all: the thread shows a "Someone wants to be your friend" banner with Accept and Decline, and the composer says "Accept the request to reply". Sending a photo costs 10 coins and it sends view-once (opened once, then gone). Voice notes cost 5 coins and are also view-once. You can swipe to reply to a message, and pin a message in the conversation for a chosen duration.`,
+Inside a chat: unlocking a conversation costs 40 coins, once, and is permanent — until then you can read but not send. If the other person has a friend request pending to you, you must accept it before you can reply at all: the thread shows a "Someone wants to be your friend" banner with Accept and Decline, and the composer says "Accept the request to reply". Sending a photo costs 10 coins and it sends view-once (opened once, then gone). Voice notes cost 5 coins and are also view-once. You can swipe to reply to a message, and pin a message in the conversation for a chosen duration.
+Voice calls: in a chat with an accepted friend, the phone icon in the header starts a voice call. An incoming call takes over the screen with Accept and Decline (and rings with vibration). While in a call you see the time, and can mute, toggle the speaker (where the device supports it) and end. Calls are free — no coins — and the audio goes straight between the two devices: Whisper never records or stores call audio, and only calls between accepted friends exist. A call that goes unanswered shows up for the other person as a "Missed Voice Call" notification. Calls need a connection, and on first use the device asks for microphone permission — allow it, or calls won't work.`,
   },
 
   friends: {

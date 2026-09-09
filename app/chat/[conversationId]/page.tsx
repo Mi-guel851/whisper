@@ -46,9 +46,12 @@ import {
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   Send, X, CornerUpLeft, LockKeyhole, Coins, ImagePlus, Eye, Loader2, Trash2, Pin, PinOff,
-  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy, Handshake, Check,
+  ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy, Handshake, Check, Phone,
 } from "lucide-react";
 import Button from "@/components/Button";
+import { useVoiceCall } from "@/lib/calls/useVoiceCall";
+import IncomingCallOverlay from "@/components/calls/IncomingCallOverlay";
+import InCallSheet from "@/components/calls/InCallSheet";
 
 interface SecureScreenPlugin {
   enable(): Promise<void>;
@@ -577,6 +580,21 @@ export default function ChatPage() {
    */
   const acceptLocked = !loading && pendingRequest?.direction === "incoming" && !isFriendConversation;
   const composerLocked = !loading && !chatUnlocked && !acceptLocked;
+
+  /*
+   * The voice call, if this thread is an accepted friendship. `enabled` is
+   * the whole feature gate: no friendship (the send gate's relationship arm
+   * says so, not the UI) means no channel, no media, nothing — and a
+   * pending thread can never ring, because a pending pair is not a friend
+   * pair.
+   */
+  const call = useVoiceCall({
+    conversationId,
+    myId,
+    otherUserId,
+    enabled: Boolean(isFriendConversation) && !loading && Boolean(myId) && Boolean(otherUserId),
+    onNotice: showToast,
+  });
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -2123,6 +2141,21 @@ export default function ChatPage() {
                   </p>
                 )}
               </div>
+              {/* The call button exists only for accepted friendships — the
+                  same relationship the send gate holds, so a pending thread
+                  can never ring. While a call is live it stays visible and
+                  inert: the sheet below is where the call is managed. */}
+              {!loading && isFriendConversation && (
+                <button
+                  type="button"
+                  onClick={() => void call.startCall()}
+                  disabled={call.status !== "idle"}
+                  className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
+                  aria-label="Start voice call"
+                >
+                  <Phone size={19} />
+                </button>
+              )}
               <button type="button" onClick={() => setSearchOpen(true)} className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full" aria-label="Search messages">
                 <Search size={19} />
               </button>
@@ -2463,6 +2496,33 @@ export default function ChatPage() {
           input clears, so anything rendered inside that branch would be torn down
           while the plane was still in the air. */}
       <PaperPlaneFlight flightId={flightId} origin={flightOrigin} />
+
+      {/* The call surfaces, above every in-app layer (the overlay at z-70
+          beats the pin-duration and delete modals at z-50 — a call arriving
+          over an open dialog wins that screen, the way a phone call beats
+          whatever is on the lock screen). */}
+      {call.status === "incoming" && (
+        <IncomingCallOverlay
+          name={otherLabel || "Anonymous Friend"}
+          avatarUrl={generatedAvatarUrl(otherUserId || "ghost")}
+          onAccept={() => void call.acceptIncoming()}
+          onDecline={call.declineIncoming}
+        />
+      )}
+      {(call.status === "outgoing" || call.status === "connecting" || call.status === "in_call") && (
+        <InCallSheet
+          name={otherLabel || "Anonymous Friend"}
+          avatarUrl={generatedAvatarUrl(otherUserId || "ghost")}
+          status={call.status}
+          startedAt={call.startedAt}
+          muted={call.muted}
+          speakerSupported={call.speakerSupported}
+          speakerOn={call.speakerOn}
+          onToggleMute={call.toggleMute}
+          onToggleSpeaker={() => void call.toggleSpeaker()}
+          onHangUp={call.hangUp}
+        />
+      )}
     </main>
   );
 }
