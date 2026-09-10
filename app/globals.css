@@ -7132,3 +7132,66 @@ html.viewport-locked body {
   .dashboard-shell .edge-lit:hover, .dashboard-shell .edge-lit:focus-within { animation:none; }
   .dashboard-shell .edge-lit, .dashboard-shell .edge-lit::after { transition:none; }
 }
+
+/* Discover keeps the signature Whisper midnight/pink treatment in dark mode,
+   but becomes a calm, luminous surface in light mode instead of carrying dark
+   utility fills across the page. */
+.discover-page { background: var(--theme-bg); color: var(--theme-text); }
+.discover-ambient { opacity: .9; }
+.discover-card-inner {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--theme-card) 92%, var(--theme-accent-purple) 8%),
+    color-mix(in srgb, var(--theme-card) 94%, var(--theme-accent-pink) 6%));
+  border: 1px solid color-mix(in srgb, var(--theme-border) 82%, var(--theme-accent-pink) 18%);
+  box-shadow: var(--elev-2), inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
+}
+.discover-page .text-white { color: var(--theme-text); }
+.discover-page .bg-white\/\[0\.06\] { background: var(--fill-2); }
+.discover-page .text-\[\#7a7a8e\] { color: var(--theme-text-muted); }
+.discover-page .border-white\/\[0\.08\],
+.discover-page .border-white\/\[0\.07\] { border-color: var(--theme-border); }
+.discover-page .discover-card-inner > div > div:first-child { background: color-mix(in srgb, var(--theme-accent-purple) 12%, var(--theme-card)); }
+:root[data-theme="light"] .discover-page .discover-ambient { opacity: .38; }
+
+/* Restore the dashboard's travelling edge light on hover: still quiet at rest,
+   vivid when a rectangular surface is actually being explored. */
+.dashboard-shell .edge-lit:hover,
+.dashboard-shell .dashboard-card:hover,
+.dashboard-shell .dashboard-details:hover {
+  --edge-angle: 115deg;
+  box-shadow: var(--elev-3), 0 0 26px color-mix(in srgb, var(--theme-accent-pink) 18%, transparent);
+}
+.dashboard-shell .edge-lit:hover::before { opacity: 1; }
+.dashboard-shell { overflow: visible; }
+html { scroll-behavior: smooth; }
+body { scroll-behavior: smooth; }
+:root[data-theme="light"] .discover-page .bg-\[\#191922\],
+:root[data-theme="light"] .discover-page .bg-\[\#18181f\] {
+  background: color-mix(in srgb, var(--theme-card) 88%, var(--theme-accent-purple) 12%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), var(--elev-1);
+}
+:root[data-theme="light"] .discover-page .text-white\/90,
+:root[data-theme="light"] .discover-page .text-white\/80 { color: var(--theme-text-secondary); }
+:root[data-theme="light"] .discover-page .text-\[\#5a5a6e\] { color: var(--theme-text-muted); }
+
+/* Non EdgeLit dashboard panels get the same tactile edge response as cards. */
+@media (hover: hover) and (pointer: fine) {
+  .dashboard-shell .dashboard-hero,
+  .dashboard-shell .dashboard-feed-card,
+  .dashboard-shell .dashboard-upgrade-card,
+  .dashboard-shell .dashboard-details,
+  .dashboard-shell .stats-row-grid-compact > *,
+  .dashboard-shell .dashboard-person-row {
+    transition: border-color 180ms ease, box-shadow 220ms ease, transform 220ms ease;
+  }
+  .dashboard-shell .dashboard-hero:hover,
+  .dashboard-shell .dashboard-feed-card:hover,
+  .dashboard-shell .dashboard-upgrade-card:hover,
+  .dashboard-shell .dashboard-details:hover,
+  .dashboard-shell .stats-row-grid-compact > *:hover,
+  .dashboard-shell .dashboard-person-row:hover {
+    border-color: color-mix(in srgb, var(--theme-accent-pink) 48%, var(--theme-border));
+    box-shadow: var(--elev-3), 0 0 24px color-mix(in srgb, var(--theme-accent-pink) 14%, transparent);
+    transform: translateY(-1px);
+  }
+}

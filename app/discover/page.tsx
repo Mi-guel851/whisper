@@ -103,9 +103,9 @@ export default function DiscoverPage() {
   }, [friendIds, onlineUserIds]);
 
   return (
-    <main className="min-h-screen bg-[#050508] pb-28 text-white selection:bg-[#7C3AED]/30">
+    <main className="discover-page min-h-screen pb-28 selection:bg-[#7C3AED]/30">
       {/* Subtle ambient glows behind content - keeps Whisper premium dark aesthetic */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div className="discover-ambient pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[520px] w-[520px] rounded-full bg-[#7C3AED]/[0.18] blur-[110px]" />
         <div className="absolute -top-20 right-0 h-[420px] w-[420px] rounded-full bg-[#22d3ee]/[0.10] blur-[100px]" />
         <div className="absolute bottom-0 left-1/2 h-[600px] w-[700px] -translate-x-1/2 rounded-full bg-[#ec4899]/[0.08] blur-[120px]" />
@@ -129,7 +129,7 @@ export default function DiscoverPage() {
               EXPLORE
             </span>
           </div>
-          <p className="mt-3 text-[15px] font-medium leading-[1.5] tracking-[-0.01em] text-[#a1a1b5] sm:text-[16px]">
+          <p className="mt-3 text-[15px] font-medium leading-[1.5] tracking-[-0.01em] text-[var(--theme-text-secondary)] sm:text-[16px]">
             Your world, expanded.
           </p>
         </div>
@@ -147,7 +147,7 @@ export default function DiscoverPage() {
                   radius="2xl"
                   className="rounded-[22px] transition-transform duration-300 ease-out group-hover:-translate-y-[1px] group-active:translate-y-0 group-active:scale-[0.99]"
                   style={{ animationDelay: card.delay } as React.CSSProperties}
-                  innerClassName="rounded-[21px] !bg-[#111114] sm:!bg-[#111114] flex items-center gap-4 p-[18px] sm:p-6"
+                  innerClassName="discover-card-inner rounded-[21px] flex items-center gap-4 p-[18px] sm:p-6"
                 >
                   <div className="flex w-full items-center gap-4">
                     {/* Icon box */}
@@ -163,7 +163,7 @@ export default function DiscoverPage() {
                     {/* Text */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h2 className="truncate text-[16px] font-bold leading-tight tracking-[-0.01em] text-white sm:text-[18px]">
+                        <h2 className="truncate text-[16px] font-bold leading-tight tracking-[-0.01em] text-[var(--theme-text)] sm:text-[18px]">
                           {card.label}
                         </h2>
                         {isFriends && onlineFriendCount > 0 && (
@@ -173,7 +173,7 @@ export default function DiscoverPage() {
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[1.4] text-[#9a9ab0] sm:text-[14px]">
+                      <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[1.4] text-[var(--theme-text-muted)] sm:text-[14px]">
                         {card.desc}
                         {isFriends && onlineFriendCount > 0 && (
                           <span className="sm:hidden"> • {onlineFriendCount} active now</span>
@@ -204,7 +204,7 @@ export default function DiscoverPage() {
                   radius="2xl"
                   className="h-full rounded-[18px] transition-transform duration-300 ease-out group-hover:-translate-y-[1px] group-active:translate-y-0 group-active:scale-[0.98]"
                   style={{ animationDelay: card.delay } as React.CSSProperties}
-                  innerClassName="rounded-[17px] !bg-[#101014] flex h-full min-h-[88px] items-center gap-3 p-4 sm:min-h-[96px] sm:gap-3.5 sm:p-[18px]"
+                  innerClassName="discover-card-inner rounded-[17px] flex h-full min-h-[88px] items-center gap-3 p-4 sm:min-h-[96px] sm:gap-3.5 sm:p-[18px]"
                 >
                   <div className="flex w-full items-center gap-3">
                     {/* Icon box - smaller for utility */}
@@ -213,7 +213,7 @@ export default function DiscoverPage() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <h3 className="line-clamp-2 text-[13px] font-bold leading-[1.25] tracking-[-0.01em] text-white sm:text-[14px]">
+                      <h3 className="line-clamp-2 text-[13px] font-bold leading-[1.25] tracking-[-0.01em] text-[var(--theme-text)] sm:text-[14px]">
                         {card.label}
                       </h3>
                     </div>
