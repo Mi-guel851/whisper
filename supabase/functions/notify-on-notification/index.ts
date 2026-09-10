@@ -39,15 +39,6 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/**
- * The route key FCMMessagingService switches on. Its `sendNotification` compares
- * against "whisper" | "message" | "friend_request" | "feed" | "call" | "coins"
- * and falls through to the `default` channel and the dashboard deep link for
- * anything else — so notification-row types that are not route keys have to be
- * translated, not passed through. The metadata's own `type` wins when present
- * because that is what the triggers set deliberately (whisper rows are typed
- * `message` at the table level only for missed CALL entries; see 0005).
- */
 function routeFor(notification: { type?: string; metadata?: Record<string, unknown> | null }): string {
   const raw = String(notification.metadata?.type ?? notification.type ?? "").trim();
   if (raw === "public_feed") return "feed";
@@ -56,7 +47,6 @@ function routeFor(notification: { type?: string; metadata?: Record<string, unkno
   return raw || "default";
 }
 
-/** Vibration channels created up front by MainActivity, one per route. */
 const CHANNELS: Record<string, string> = {
   whisper: "whispers",
   message: "messages",
@@ -66,11 +56,6 @@ const CHANNELS: Record<string, string> = {
   call: "calls",
 };
 
-/**
- * Stringify the data map FCM carries. FCM v1 rejects a non-JSON-string object
- * outright, so every value must be a string; ids are also what the native side
- * derives stable notification ids from.
- */
 function toStringData(source: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(source)) {
@@ -80,30 +65,10 @@ function toStringData(source: Record<string, unknown>): Record<string, string> {
   return out;
 }
 
-/* ------------------------------------------------------------------------- *
- * Caller gate: database-only.
- *
- * Supabase's verify_jwt on a deployed function accepts ANY valid JWT — an
- * ordinary signed-in user's token is one. This function trusts the `record`
- * in the request body to decide WHO gets notified, so an ungated endpoint
- * lets any user forge pushes and burn the FCM quota. The only legitimate
- * caller is the pg_net trigger / database webhook, which authenticates with
- * the service role key — so require exactly that, compared on SHA-256
- * digests to keep the check constant-time.
- * ------------------------------------------------------------------------- */
-async function requireServiceRole(req: Request): Promise<boolean> {
+function requireServiceRole(req: Request): boolean {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return false;
-  const enc = new TextEncoder();
-  const [a, b] = await Promise.all([
-    crypto.subtle.digest("SHA-256", enc.encode(token)),
-    crypto.subtle.digest("SHA-256", enc.encode(SUPABASE_SERVICE_ROLE_KEY)),
-  ]);
-  const ua = new Uint8Array(a), ub = new Uint8Array(b);
-  if (ua.length !== ub.length) return false;
-  let diff = 0;
-  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
-  return diff === 0;
+  return token === SUPABASE_SERVICE_ROLE_KEY;
 }
 
 function unauthorized() {
@@ -122,8 +87,6 @@ async function sendOne(accessToken: string, deviceToken: string, message: unknow
     }).catch(() => null);
 
   let response = await post();
-  /* Exactly one retry, and only for transient faults. A delivered-looking 400
-     repeated is a quota burn, not a recovery. */
   if (!response || response.status === 429 || (response && response.status >= 500)) {
     await new Promise((resolve) => setTimeout(resolve, 400 + Math.floor(Math.random() * 400)));
     response = await post();
@@ -137,16 +100,9 @@ async function sendOne(accessToken: string, deviceToken: string, message: unknow
 
 Deno.serve(async (req) => {
   try {
-    if (!(await requireServiceRole(req))) return unauthorized();
+    if (!requireServiceRole(req)) return unauthorized();
     const payload = await req.json();
 
-    /* ------------------------------------------------------------------
-     * Cancel action (calls): a data-only message that removes the ringing
-     * notification from every device of the peer when the call is answered
-     * elsewhere, declined, hung up, or swept expired. No `notification`
-     * block means nothing displays — this silently retracts, and
-     * FCMMessagingService matches on `type: call_cancel` + callId.
-     * ------------------------------------------------------------------ */
     if (payload?.action === "cancel") {
       const userId = String(payload.user_id ?? "");
       const callId = String(payload.call_id ?? "");
@@ -176,13 +132,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ cancelled: tokens.length }), { status: 200 });
     }
 
-    const notification = payload.record; // The notification table entry
-
+    const notification = payload.record;
     if (!notification) return new Response(JSON.stringify({ skipped: true }), { status: 200 });
 
-    /* The per-table functions all check this and this one never did, so a user
-       who turned notifications off still got everything routed through here.
-       Feed rows additionally filter at write time (202609100003). */
     const { data: profile } = await supabase
       .from("profiles")
       .select("push_notifications")
@@ -206,9 +158,6 @@ Deno.serve(async (req) => {
     const meta = notification.metadata ?? {};
     const isCall = route === "call";
 
-    /* `type` is written last so the route survives: several triggers put their
-       own `type` in metadata, and spreading metadata over it would hand Android
-       a value its switch does not recognise. */
     const messageData = toStringData({
       ...meta,
       type: route,
@@ -228,9 +177,6 @@ Deno.serve(async (req) => {
             priority: "high",
             notification: {
               channel_id: CHANNELS[route] ?? "default",
-              /* Android only applies these if it is told not to use the
-                 channel's own pattern. Without the opt-out the timings below
-                 are parsed and then ignored. */
               default_vibrate_timings: false,
               vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
             },
@@ -241,10 +187,6 @@ Deno.serve(async (req) => {
           },
         };
 
-        /* A ring is perishable: it must not arrive after the caller hung up.
-           Collapse keeps replays/bursts to one banner, and the 60s TTL matches
-           the server-side expiry window in 202609100005 — past that, FCM
-           drops it rather than waking someone for a dead call. */
         if (isCall && meta.call_id) {
           (message.android as Record<string, unknown>).collapse_key = `call-${meta.call_id}`;
           (message.android as Record<string, unknown>).ttl = "60s";
@@ -257,10 +199,6 @@ Deno.serve(async (req) => {
       })
     );
 
-    /* Counting attempts was reported as `sent`, so an FCM 400 — a stale token,
-       a non-string data value — looked exactly like a delivered push. The
-       results are now truth-bearing, and unregistered tokens are pruned so a
-       dead install stops riding every future notification. */
     let sent = 0;
     let failed = 0;
     const deadTokens: string[] = [];
