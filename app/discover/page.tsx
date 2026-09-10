@@ -3,146 +3,98 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Compass,
-  Users,
-  Newspaper,
+  Users2,
   Gamepad2,
-  Lightbulb,
+  MessageSquareDiff,
+  Headphones,
+  HelpCircle,
   Shield,
+  Lock,
   FileText,
-  ScrollText,
-  History,
-  LifeBuoy,
-  type LucideIcon,
+  ChevronRight,
 } from "lucide-react";
 
-import BackButton from "@/components/BackButton";
 import BottomNavigation from "@/components/BottomNavigation";
-import TiltCard from "@/components/ui/TiltCard";
+import EdgeLitCard from "@/components/EdgeLitCard";
 import { supabase } from "@/lib/supabase/client";
 import { getCachedSession } from "@/lib/supabase/session";
 import { presenceManager } from "@/lib/realtime/presence";
 
-function WavingAnimeAvatar() {
-  return (
-    <svg viewBox="0 0 96 96" className="discover-anime-avatar relative h-8 w-8" role="img" aria-label="Blonde anime avatar waving hello">
-      <defs>
-        <linearGradient id="anime-shirt" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stopColor="#22d3ee" />
-          <stop offset="1" stopColor="#6366f1" />
-        </linearGradient>
-        <linearGradient id="anime-hair" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stopColor="#fff3a6" />
-          <stop offset="1" stopColor="#e7a83e" />
-        </linearGradient>
-      </defs>
-      <path d="M17 96c2-22 15-31 31-31s29 9 31 31H17Z" fill="url(#anime-shirt)" />
-      <path d="M39 57h18v15H39z" fill="#ffd0aa" />
-      <ellipse cx="48" cy="39" rx="22" ry="25" fill="#ffd9b8" />
-      <path d="M26 40c-4-25 10-36 25-34 15 1 25 13 19 39l-9-15-7 7-5-12-10 12-7-8-6 18Z" fill="url(#anime-hair)" />
-      <path d="M39 43c3 3 6 3 9 0M53 43c3 3 6 3 9 0" fill="none" stroke="#7c4a36" strokeLinecap="round" strokeWidth="2" />
-      <circle cx="40" cy="37" r="2.5" fill="#34231f" />
-      <circle cx="57" cy="37" r="2.5" fill="#34231f" />
-      <path d="M45 49c2 2 5 2 7 0" fill="none" stroke="#d47770" strokeLinecap="round" strokeWidth="2" />
-      <g className="discover-anime-wave">
-        <path d="M67 68c8-6 12-14 12-23" fill="none" stroke="#ffd9b8" strokeLinecap="round" strokeWidth="8" />
-        <path d="M79 45c-5-5-4-13 0-17 2 5 3 8 3 11 1-8 4-12 7-13 1 6-1 11-3 15 4-6 8-8 10-6-1 7-5 13-11 17" fill="#ffd9b8" stroke="#b96e61" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
-      </g>
-    </svg>
-  );
-}
+type FeatureCard = {
+  href: string;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  delay: string;
+};
 
-/* Saved Messages and Pinned Messages are deliberately absent: both opened a
-   "coming soon" placeholder, and a tile with a description like "Messages you've
-   saved" reads as a promise. Removed with their routes. */
-const QUICK_LINKS: { href: string; label: string; icon: LucideIcon; desc: string }[] = [
-  { href: "/friends?tab=friends", label: "Friends", icon: Users, desc: "Your friends, requests & active users" },
-  { href: "/games", label: "Whisper Games", icon: Gamepad2, desc: "Questions people answer anonymously" },
-  { href: "/public-feed", label: "Public Feed", icon: Newspaper, desc: "See what everyone's sharing" },
-  { href: "/activity-log", label: "Activity Log", icon: History, desc: "Your recent activity" },
-  { href: "/feedback", label: "Feedback", icon: Lightbulb, desc: "Tell us what you think" },
-  { href: "/contact-support", label: "Contact Support", icon: LifeBuoy, desc: "Get help from our team" },
-  { href: "/help-center", label: "Help Center", icon: Shield, desc: "Guides & FAQs" },
-  { href: "/community-guidelines", label: "Community Guidelines", icon: ScrollText, desc: "How we keep Whisper safe" },
-  { href: "/privacy", label: "Privacy Policy", icon: Shield, desc: "How we handle your data" },
-  { href: "/terms", label: "Terms of Service", icon: FileText, desc: "The rules of using Whisper" },
+type UtilityCard = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  delay: string;
+};
+
+const FEATURE_CARDS: FeatureCard[] = [
+  {
+    href: "/friends?tab=friends",
+    label: "Friends",
+    desc: "Connect, chat and discover new people.",
+    icon: Users2,
+    delay: "0s",
+  },
+  {
+    href: "/games",
+    label: "Whisper Games",
+    desc: "Play, have fun and win rewards.",
+    icon: Gamepad2,
+    delay: "-2.4s",
+  },
+];
+
+const UTILITY_CARDS: UtilityCard[] = [
+  { href: "/feedback", label: "Feedback", icon: MessageSquareDiff, delay: "-1.2s" },
+  { href: "/contact-support", label: "Contact Support", icon: Headphones, delay: "-3.6s" },
+  { href: "/help-center", label: "Help Center", icon: HelpCircle, delay: "-4.8s" },
+  { href: "/community-guidelines", label: "Community Guidelines", icon: Shield, delay: "-6s" },
+  { href: "/privacy", label: "Privacy Policy", icon: Lock, delay: "-7.2s" },
+  { href: "/terms", label: "Terms of Service", icon: FileText, delay: "-8.4s" },
 ];
 
 export default function DiscoverPage() {
   const [friendIds, setFriendIds] = useState<string[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
-  const [unreadFeedCount, setUnreadFeedCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let unsubscribePresence: (() => void) | undefined;
-    let feedChannel: ReturnType<typeof supabase.channel> | null = null;
 
-    async function loadFriendPresence() {
+    async function load() {
       const session = await getCachedSession();
-
       if (!session || cancelled) return;
 
-      const { data: friends, error } = await supabase
+      const { data: friends } = await supabase
         .from("friends")
         .select("friend_id")
         .eq("user_id", session.user.id);
-      if (error) console.error("Discover friends fetch error:", error);
-      if (cancelled) return;
 
-      setFriendIds((friends || []).map((friend) => friend.friend_id));
-      const { count: feedCount } = await supabase
-        .from("public_feed_notifications")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", session.user.id)
-        .eq("is_read", false);
-      if (!cancelled) setUnreadFeedCount(feedCount || 0);
+      if (!cancelled) {
+        setFriendIds((friends || []).map((f) => f.friend_id));
+      }
 
-      /* Listener before connect, connect not awaited — see the note in
-         lib/realtime/presence.ts. The roster arrives whenever the channel
-         settles, including after a rebuild, and the feed badge below no longer
-         waits on a WebSocket handshake to appear. */
       unsubscribePresence = presenceManager.subscribe((users) => {
-        if (!cancelled) setOnlineUserIds(users.map((user) => user.id));
+        if (!cancelled) setOnlineUserIds(users.map((u) => u.id));
       });
       void presenceManager.connect(session.user.id);
-
-      feedChannel = supabase
-        .channel(`discover-feed-badge-${session.user.id}-${Date.now()}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "public_feed_notifications",
-            filter: `user_id=eq.${session.user.id}`,
-          },
-          async () => {
-            const { count } = await supabase
-              .from("public_feed_notifications")
-              .select("id", { count: "exact", head: true })
-              .eq("user_id", session.user.id)
-              .eq("is_read", false);
-            if (!cancelled) setUnreadFeedCount(count || 0);
-          }
-        )
-        .subscribe();
     }
 
-    loadFriendPresence();
+    load();
     return () => {
       cancelled = true;
       unsubscribePresence?.();
-      if (feedChannel) supabase.removeChannel(feedChannel);
     };
   }, []);
 
-  /* `friendIds.filter((id) => onlineUserIds.includes(id))` is a linear scan of
-     the online list for every friend, and presence pushes a new array on every
-     connect and disconnect anywhere in the app — so this ran on every render,
-     at O(friends × online). Indexing once turns the inner check into a hash
-     lookup, and the memo means a re-render that didn't touch presence doesn't
-     redo the count at all. */
   const onlineFriendCount = useMemo(() => {
     const online = new Set(onlineUserIds);
     let count = 0;
@@ -151,72 +103,139 @@ export default function DiscoverPage() {
   }, [friendIds, onlineUserIds]);
 
   return (
-    <main className="min-h-screen theme-bg-gradient pb-28 text-white">
-      <div className="mx-auto max-w-2xl px-6 py-8">
-        <BackButton />
+    <main className="min-h-screen bg-[#050508] pb-28 text-white selection:bg-[#7C3AED]/30">
+      {/* Subtle ambient glows behind content - keeps Whisper premium dark aesthetic */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 -left-32 h-[520px] w-[520px] rounded-full bg-[#7C3AED]/[0.18] blur-[110px]" />
+        <div className="absolute -top-20 right-0 h-[420px] w-[420px] rounded-full bg-[#22d3ee]/[0.10] blur-[100px]" />
+        <div className="absolute bottom-0 left-1/2 h-[600px] w-[700px] -translate-x-1/2 rounded-full bg-[#ec4899]/[0.08] blur-[120px]" />
+      </div>
 
-        <div className="mt-4 flex items-center gap-3">
-          <Compass className="text-purple-400" size={24} />
-          <h1 className="page-title">Discover</h1>
+      <div className="mx-auto w-full max-w-[720px] px-5 py-8 sm:px-7 sm:py-10">
+        {/* Header */}
+        <div className="mb-8 sm:mb-10">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <h1
+              className="text-[40px] font-black leading-none tracking-[-0.04em] sm:text-[54px]"
+              style={{
+                fontFamily: "Georgia, 'Times New Roman', Times, serif",
+                fontStyle: "italic",
+                fontWeight: 900,
+              }}
+            >
+              Discover
+            </h1>
+            <span className="inline-flex items-center rounded-full bg-[#7C3AED] px-3 py-1 text-[10px] font-black tracking-[0.14em] text-white shadow-[0_0_22px_rgba(124,58,237,0.55),inset_0_1px_0_rgba(255,255,255,0.25)] sm:px-3.5 sm:py-1.5 sm:text-[11px]">
+              EXPLORE
+            </span>
+          </div>
+          <p className="mt-3 text-[15px] font-medium leading-[1.5] tracking-[-0.01em] text-[#a1a1b5] sm:text-[16px]">
+            Your world, expanded.
+          </p>
         </div>
-        <p className="page-subtitle mt-1">Explore Whisper and manage your connections, probably something or nothing.</p>
 
-        <h2 className="eyebrow mt-10 mb-5">
-          Explore
-        </h2>
-        <section className="discover-icon-grid grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {QUICK_LINKS.map((link) => {
-            const Icon = link.icon;
-            const isFriendsLink = link.href.startsWith("/friends");
-            const isFeedLink = link.href === "/public-feed";
+        {/* Feature Cards - stacked full width */}
+        <section className="flex flex-col gap-4 sm:gap-5">
+          {FEATURE_CARDS.map((card) => {
+            const Icon = card.icon;
+            const isFriends = card.label === "Friends";
             return (
-              /* The tilt wraps the tile rather than replacing it, so the existing
-                 edge-lit rim, badges and press styling are all untouched. It
-                 tracks a mouse only — see TiltCard — so on a phone these behave
-                 exactly as they did. */
-              <TiltCard key={link.href} maxDegrees={8} className="rounded-2xl">
-                <Link
-                  href={link.href}
-                  className="discover-tile group relative flex h-full min-w-0 flex-col items-center gap-2 rounded-2xl px-3 py-4 text-center"
+              <Link key={card.href} href={card.href} className="group block no-press">
+                <EdgeLitCard
+                  intensity={0.92}
+                  speed={9}
+                  radius="2xl"
+                  className="rounded-[22px] transition-transform duration-300 ease-out group-hover:-translate-y-[1px] group-active:translate-y-0 group-active:scale-[0.99]"
+                  style={{ animationDelay: card.delay } as React.CSSProperties}
+                  innerClassName="rounded-[21px] !bg-[#111114] sm:!bg-[#111114] flex items-center gap-4 p-[18px] sm:p-6"
                 >
-                  {/* The label lives *inside* the fill, so the whole thing is one
-                      pressable object — same as the Share button on the
-                      dashboard. Previously the caption sat outside on the page
-                      background, which made the coloured part read as an icon
-                      badge rather than as a button. */}
-                  <span className="discover-tile-icon relative flex h-9 w-9 items-center justify-center rounded-xl">
-                    {isFriendsLink ? (
-                      <WavingAnimeAvatar />
-                    ) : (
-                      <Icon size={17} strokeWidth={1.9} className="relative" />
-                    )}
+                  <div className="flex w-full items-center gap-4">
+                    {/* Icon box */}
+                    <div className="relative flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[14px] border border-white/[0.08] bg-[#191922] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_20px_rgba(0,0,0,0.4)] sm:h-[56px] sm:w-[56px] sm:rounded-[16px]">
+                      <Icon size={24} strokeWidth={2} className="text-white" />
+                      {isFriends && onlineFriendCount > 0 && (
+                        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-[#111114] bg-emerald-400 px-1 text-[10px] font-black leading-none text-[#062019] shadow-[0_2px_10px_rgba(52,211,153,0.5)]">
+                          {onlineFriendCount}
+                        </span>
+                      )}
+                    </div>
 
-                    {isFriendsLink && onlineFriendCount > 0 && (
-                      <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-400 px-1 text-[9px] font-black text-[#062019]">
-                        {onlineFriendCount}
-                      </span>
-                    )}
-                    {isFeedLink && unreadFeedCount > 0 && (
-                      <span className="discover-tile-badge absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
-                        {unreadFeedCount > 9 ? "9+" : unreadFeedCount}
-                      </span>
-                    )}
-                  </span>
+                    {/* Text */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h2 className="truncate text-[16px] font-bold leading-tight tracking-[-0.01em] text-white sm:text-[18px]">
+                          {card.label}
+                        </h2>
+                        {isFriends && onlineFriendCount > 0 && (
+                          <span className="hidden items-center gap-1 rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/20 sm:inline-flex">
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                            {onlineFriendCount} online
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[1.4] text-[#9a9ab0] sm:text-[14px]">
+                        {card.desc}
+                        {isFriends && onlineFriendCount > 0 && (
+                          <span className="sm:hidden"> • {onlineFriendCount} active now</span>
+                        )}
+                      </p>
+                    </div>
 
-                  <span className="discover-tile-label line-clamp-2 text-[12px] font-bold leading-tight">
-                    {link.label}
-                  </span>
-                  {isFriendsLink && onlineFriendCount > 0 && (
-                    <span className="discover-tile-meta text-[10px] font-bold">
-                      {onlineFriendCount} active now
-                    </span>
-                  )}
-                  <span className="sr-only">{link.desc}</span>
-                </Link>
-              </TiltCard>
+                    {/* Chevron */}
+                    <div className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[#7a7a8e] ring-1 ring-white/[0.06] transition-all duration-300 group-hover:bg-white/[0.10] group-hover:text-white group-hover:ring-white/10 sm:h-9 sm:w-9">
+                      <ChevronRight size={18} strokeWidth={2.5} />
+                    </div>
+                  </div>
+                </EdgeLitCard>
+              </Link>
             );
           })}
         </section>
+
+        {/* Utility Grid - 2 columns */}
+        <section className="mt-4 grid grid-cols-2 gap-3 sm:mt-5 sm:gap-4">
+          {UTILITY_CARDS.map((card) => {
+            const Icon = card.icon;
+            return (
+              <Link key={card.href} href={card.href} className="group block no-press">
+                <EdgeLitCard
+                  intensity={0.78}
+                  speed={12}
+                  radius="2xl"
+                  className="h-full rounded-[18px] transition-transform duration-300 ease-out group-hover:-translate-y-[1px] group-active:translate-y-0 group-active:scale-[0.98]"
+                  style={{ animationDelay: card.delay } as React.CSSProperties}
+                  innerClassName="rounded-[17px] !bg-[#101014] flex h-full min-h-[88px] items-center gap-3 p-4 sm:min-h-[96px] sm:gap-3.5 sm:p-[18px]"
+                >
+                  <div className="flex w-full items-center gap-3">
+                    {/* Icon box - smaller for utility */}
+                    <div className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] border border-white/[0.07] bg-[#18181f] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:h-[48px] sm:w-[48px] sm:rounded-[13px]">
+                      <Icon size={20} strokeWidth={2} className="text-white/90" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h3 className="line-clamp-2 text-[13px] font-bold leading-[1.25] tracking-[-0.01em] text-white sm:text-[14px]">
+                        {card.label}
+                      </h3>
+                    </div>
+
+                    <ChevronRight
+                      size={16}
+                      strokeWidth={2.5}
+                      className="ml-auto shrink-0 text-[#5a5a6e] transition-all duration-300 group-hover:translate-x-[1px] group-hover:text-white/80"
+                    />
+                  </div>
+                </EdgeLitCard>
+              </Link>
+            );
+          })}
+        </section>
+
+        {/* Subtle footer hint - keeps page feeling finished */}
+        <div className="mt-10 flex items-center justify-center gap-2 opacity-40">
+          <div className="h-px w-8 bg-gradient-to-r from-transparent to-white/20" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">Whisper</span>
+          <div className="h-px w-8 bg-gradient-to-l from-transparent to-white/20" />
+        </div>
       </div>
 
       <BottomNavigation />
