@@ -29,11 +29,12 @@ export async function verifyRecoveryPhrase(phrase: string, storedHash: string) {
 
   const iterations = Number(iterationsValue);
 
-  if (!Number.isInteger(iterations) || iterations <= 0) {
+  if (!Number.isInteger(iterations) || iterations < ITERATIONS || iterations > 1_000_000) {
     return false;
   }
 
   const expected = Buffer.from(hash, "base64url");
+  if (expected.length !== KEY_LENGTH || salt.length > 128) return false;
   const actual = await pbkdf2Async(phrase, salt, iterations, expected.length, DIGEST);
 
   return actual.length === expected.length && timingSafeEqual(actual, expected);

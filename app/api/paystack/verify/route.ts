@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { paymentBelongsToUser } from "@/lib/paymentOwnership";
 import { COIN_PACKAGES } from "@/lib/coins";
 import { getLiveRatesPerUsd } from "@/lib/currency";
 import { consume, rateLimitedResponse } from "@/lib/apiGuard";
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
   try {
     const { reference } = await req.json();
 
-    if (!reference || typeof reference !== "string") {
+    if (typeof reference !== "string" || !/^[a-zA-Z0-9_-]{1,200}$/.test(reference)) {
       return NextResponse.json({ error: "Missing reference" }, { status: 400 });
     }
 
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
         },
+        signal: AbortSignal.timeout(15_000),
+        redirect: "error",
       }
     );
 
@@ -88,6 +91,11 @@ export async function POST(req: NextRequest) {
 
     if (tx.status !== "success") {
       return NextResponse.json({ error: "Payment not successful" }, { status: 400 });
+    }
+
+    // The gateway-verified transaction, not the request body, binds the payer.
+    if (!paymentBelongsToUser(tx, reference, user.id)) {
+      return NextResponse.json({ error: "Payment does not belong to this account" }, { status: 403 });
     }
 
     const currency = String(tx.currency || "").toUpperCase();

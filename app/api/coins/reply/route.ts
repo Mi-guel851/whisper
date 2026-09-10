@@ -83,14 +83,17 @@ export async function POST(req: NextRequest) {
      * balance and the transaction are rolled back before reporting the error.
      */
     async function refund(reason: string) {
-      const { error: refundError } = await asUser.rpc("refund_whisper_coins", {
+      const { error: refundError } = await supabaseAdmin.rpc("refund_whisper_coins_for", {
+        p_user_id: user!.id,
         p_amount: COST,
         p_description: "Refund: public reply failed",
       });
       if (refundError) {
         console.error("[coins/reply] refund RPC failed:", refundError.message);
+        return false;
       }
       console.error("Reply refunded:", reason);
+      return true;
     }
 
     type CreatedPost = {
@@ -157,7 +160,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (!createdPost) {
-      await refund(postFailure || "unknown insert failure");
+      const refunded = await refund(postFailure || "unknown insert failure");
+      if (!refunded) {
+        return NextResponse.json(
+          { error: "Posting failed and the refund could not be confirmed. Please contact support before retrying." },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
         { error: "Couldn't post your reply. You have not been charged." },
         { status: 500 }

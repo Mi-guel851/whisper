@@ -320,15 +320,18 @@ export async function POST(req: NextRequest) {
      * returned `success: true`, which charged for a post that never appeared.
      */
     async function refund(reason: string) {
-      if (cost <= 0) return;
-      const { error: refundError } = await asUser.rpc("refund_whisper_coins", {
+      if (cost <= 0) return true;
+      const { error: refundError } = await supabaseAdmin.rpc("refund_whisper_coins_for", {
+        p_user_id: user!.id,
         p_amount: cost,
         p_description: "Refund: public feed post failed",
       });
       if (refundError) {
         console.error("[coins/feed-post] refund RPC failed:", refundError.message);
+        return false;
       }
       console.error("[coins/feed-post] refunded:", reason);
+      return true;
     }
 
     let createdPost: unknown = null;
@@ -416,7 +419,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (!createdPost) {
-      await refund(postFailure || "unknown insert failure");
+      const refunded = await refund(postFailure || "unknown insert failure");
+      if (!refunded) {
+        return NextResponse.json(
+          { error: "Posting failed and the refund could not be confirmed. Please contact support before retrying." },
+          { status: 500 }
+        );
+      }
 
       /* The image was uploaded straight from the browser before this request, so
          a failed insert would otherwise leave it in Cloudinary with no row to

@@ -12,7 +12,7 @@ import BottomNavigation from "@/components/BottomNavigation";
 import BrandedLoader from "@/components/BrandedLoader";
 import DailyWhisperCard from "@/components/DailyWhisperCard";
 import LinkCard from "@/components/LinkCard";
-import LiveActivityStrip from "@/components/LiveActivityStrip";
+import StatsRow from "@/components/StatsRow";
 import RecentMessages from "@/components/RecentMessages";
 import TermsModal from "@/components/TermsModal";
 import DashboardHero from "@/components/dashboard/DashboardHero";
@@ -36,25 +36,36 @@ function DashboardExperience({ profile }: { profile: DashboardProfile }) {
 
       <div className="dashboard-center-column">
         <DashboardHero profile={profile} />
-        <LiveActivityStrip />
+        <section className="dashboard-overview" aria-labelledby="overview-title">
+          <div className="dashboard-section-heading">
+            <h2 id="overview-title">At a glance</h2>
+            <a href="#engagement" className="dashboard-view-all">Your activity ↗</a>
+          </div>
+          <StatsRow variant="compact" initialUserId={profile.id} live={false} />
+        </section>
 
         <section id="whisper-link" className="dashboard-personal-grid" aria-label="Your sharing tools">
           <LinkCard username={profile.username} />
-          <DailyWhisperCard initialUsername={profile.username} />
+
         </section>
 
         <PublicFeedPreview feed={feed} />
 
-        <section id="engagement" className="dashboard-insights-grid" aria-label="Your recent activity">
-          <ActivityChart initialUserId={profile.id} />
-          <RecentMessages initialUserId={profile.id} />
-        </section>
+        <details id="engagement" className="dashboard-details">
+          <summary>Activity & recent whispers <span>View details</span></summary>
+          <div className="dashboard-insights-grid">
+            <ActivityChart initialUserId={profile.id} />
+            <RecentMessages initialUserId={profile.id} />
+          </div>
+        </details>
+        <details className="dashboard-details">
+          <summary>Need something to share? <span>Daily prompt</span></summary>
+          <DailyWhisperCard initialUsername={profile.username} />
+        </details>
       </div>
 
       <DashboardRightRail
         userId={profile.id}
-        topics={feed.topics}
-        loadingTopics={feed.loading}
       />
 
       <div className="dashboard-bottom-nav"><BottomNavigation /></div>

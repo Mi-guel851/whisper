@@ -98,8 +98,8 @@ export default function LinkCard({ username }: { username?: string } = {}) {
           <span>Your Whisper Link</span>
         </div>
 
-        <h2 className="section-title mt-2 min-h-[3.4rem] text-white sm:min-h-0">
-          Share it. Wait for honest replies.
+        <h2 className="section-title mt-2 text-white">
+          A little curiosity starts here.
         </h2>
 
         <div

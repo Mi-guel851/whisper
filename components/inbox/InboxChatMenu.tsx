@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Pin, PinOff, MailCheck, MailOpen } from "lucide-react";
 
@@ -50,13 +51,31 @@ export default function InboxChatMenu({
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
+      const items = Array.from(sheetRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]') ?? []);
+      if (!items.length) return;
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      let next: number | undefined;
+      if (event.key === "ArrowDown") next = (current + 1) % items.length;
+      if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+      if (event.key === "Home") next = 0;
+      if (event.key === "End") next = items.length - 1;
+      if (next !== undefined) { event.preventDefault(); items[next].focus(); }
+      if (event.key === "Tab") onClose();
     }
     const timer = window.setTimeout(() => {
       document.addEventListener("pointerdown", onPointerDown, true);
     }, 0);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const focusTimer = window.setTimeout(() => sheetRef.current?.querySelector<HTMLButtonElement>("button")?.focus(), 0);
     return () => {
       window.clearTimeout(timer);
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+      previousFocus?.focus({ preventScroll: true });
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKey);
     };
@@ -85,14 +104,16 @@ export default function InboxChatMenu({
 
   /* Flip above the anchor when the tap was in the bottom third of the screen,
      so the sheet always has room. */
+  if (typeof document === "undefined") return null;
+
   const flipUp = anchor ? anchor.y > window.innerHeight * 0.66 : false;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && anchor && (
         <>
           {/* The whole screen is a dismiss target, mirroring WhatsApp. */}
-          <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden />
+          <div className="fixed inset-0 z-[1000] bg-black/30" onClick={onClose} aria-hidden />
           <motion.div
             ref={sheetRef}
             initial={{ opacity: 0, scale: 0.92, y: flipUp ? 6 : -6 }}
@@ -100,11 +121,11 @@ export default function InboxChatMenu({
             exit={{ opacity: 0, scale: 0.95, y: flipUp ? 4 : -4 }}
             transition={{ duration: 0.14, ease: "easeOut" }}
             role="menu"
-            className="chat-chrome fixed z-50 w-48 overflow-hidden rounded-2xl border p-1 shadow-2xl"
+            className="overlay-surface fixed z-[1001] w-48 overflow-hidden rounded-2xl border p-1 shadow-2xl"
             style={{
-              left: Math.min(anchor.x, window.innerWidth - 208),
-              top: flipUp ? undefined : anchor.y,
-              bottom: flipUp ? window.innerHeight - anchor.y : undefined,
+              left: Math.max(8, Math.min(anchor.x, window.innerWidth - 200)),
+              top: flipUp ? undefined : Math.max(8, anchor.y),
+              bottom: flipUp ? Math.max(8, window.innerHeight - anchor.y) : undefined,
               touchAction: "none",
             }}
           >
@@ -116,7 +137,7 @@ export default function InboxChatMenu({
                   type="button"
                   role="menuitem"
                   onClick={item.onSelect}
-                  className="chat-menu-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold"
+                  className="chat-menu-item flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold"
                 >
                   <Icon size={16} className="shrink-0 opacity-80" />
                   {item.label}
@@ -126,6 +147,7 @@ export default function InboxChatMenu({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

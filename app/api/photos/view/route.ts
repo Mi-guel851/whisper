@@ -84,7 +84,11 @@ export async function POST(req: NextRequest) {
       supabaseAdmin
         .from("direct_messages")
         .update({ image_viewed_at: new Date().toISOString(), image_path: null })
-        .eq("id", messageId);
+        .eq("id", messageId)
+        .is("image_viewed_at", null)
+        .eq("image_path", storedPath)
+        .select("id")
+        .maybeSingle();
 
     if (isCloudinaryUrl(storedPath)) {
       const image = await fetchCloudinaryImage(storedPath);
@@ -114,7 +118,9 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      await markViewed();
+      const claim = await markViewed();
+      if (claim.error) return NextResponse.json({ error: "Could not record view" }, { status: 500 });
+      if (!claim.data) return NextResponse.json({ error: "Photo already viewed" }, { status: 410 });
 
       return new NextResponse(image.bytes, {
         status: 200,
@@ -134,7 +140,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Photo unavailable" }, { status: 404 });
     }
 
-    await markViewed();
+    const claim = await markViewed();
+    if (claim.error) return NextResponse.json({ error: "Could not record view" }, { status: 500 });
+    if (!claim.data) return NextResponse.json({ error: "Photo already viewed" }, { status: 410 });
 
     await supabaseAdmin.storage.from("view-once-photos").remove([storedPath]);
 

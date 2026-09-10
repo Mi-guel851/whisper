@@ -32,7 +32,7 @@ export default function ProfileCard() {
 
       const { data } = await supabase
         .from("profiles")
-        .select("*")
+        .select("display_name,username,bio,avatar_url")
         .eq("id", session.user.id)
         .single();
 

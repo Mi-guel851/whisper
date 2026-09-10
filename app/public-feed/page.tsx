@@ -1523,7 +1523,9 @@ export default function PublicFeedPage() {
           setPosts((current) => mergeRows(current, clean));
           seedLikes(clean);
         }
-        expandedRef.current = { ...expandedRef.current, [root.id]: true };
+        // Reveal only the ancestor path to a shared reply, not every branch.
+        const ancestors = Object.fromEntries(chain.slice(0, -1).map((post) => [post.id, true]));
+        expandedRef.current = { ...expandedRef.current, ...ancestors };
         setExpandedThreads(expandedRef.current);
       }
 

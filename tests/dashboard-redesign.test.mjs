@@ -47,3 +47,31 @@ ok("bottom navigation returns when the sidebar disappears", /@media \(max-width:
 ok("reduced motion disables decorative dashboard animation", /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.dashboard-feed-skeleton::after \{ animation:none; \}/.test(css));
 
 console.log("\nDASHBOARD GUARDS PASSED");
+
+const [hero, streakChip, modal, rail] = await Promise.all([
+  read("components/dashboard/DashboardHero.tsx"),
+  read("components/StreakChip.tsx"),
+  read("components/Modal.tsx"),
+  read("components/dashboard/DashboardRightRail.tsx"),
+]);
+console.log("mobile dashboard regression guards");
+ok("welcome prioritizes real actions over a decorative phone", hero.includes("StreakChip") && !hero.includes("WhisperPhoneMockup"));
+ok("check-in escapes clipped ancestors through the shared modal", streakChip.includes("<Modal open={open}") && modal.includes("createPortal(") && !streakChip.includes("absolute right-0 top-12"));
+ok("streak trigger identifies its dialog and labels the action", streakChip.includes('aria-haspopup="dialog"') && streakChip.includes('pending ? "Check in"'));
+ok("check-in retains the server-backed action and reward dialog", streakChip.includes("await checkIn()") && streakChip.includes("<StreakRewardDialog"));
+ok("streak dialog supports short screens", streakChip.includes("max-h-[85dvh] overflow-y-auto"));
+ok("stats appear once, before the sharing tools", page.indexOf("<StatsRow") < page.indexOf('id="whisper-link"') && !rail.includes("<StatsRow"));
+ok("secondary tools are disclosed on demand", page.includes('<details id="engagement"') && page.includes("Daily prompt"));
+ok("community preview is limited to two posts", preview.includes("slice(0, 2)"));
+ok("mobile search remains accessible on demand", topbar.includes('aria-controls="dashboard-search"') && css.includes(".dashboard-global-search.is-open"));
+
+const [postCard, inboxMenu] = await Promise.all([
+  read("components/feed/FeedPostCard.tsx"),
+  read("components/inbox/InboxChatMenu.tsx"),
+]);
+ok("reply branches no longer inherit expansion from parents", !postCard.includes("threadOpen") && postCard.includes("Boolean(controller.expanded[node.id])"));
+ok("shared reply links reveal only their ancestor path", publicFeed.includes("chain.slice(0, -1)"));
+ok("inbox actions escape clipping and close on scroll", inboxMenu.includes("createPortal(") && inboxMenu.includes('addEventListener("scroll", onClose, true)'));
+ok("dialogs have opaque surfaces", modal.includes('background: "var(--theme-surface-solid)"'));
+ok("both themes share opaque chrome tokens", css.includes('--theme-glass-chrome: var(--theme-surface-solid)'));
+ok("dashboard restores hover and keyboard edge lighting", css.includes('.dashboard-shell .edge-lit:hover') && css.includes('.dashboard-shell .edge-lit:focus-within'));
