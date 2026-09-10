@@ -551,6 +551,12 @@ export default function ChatPage() {
   const [chatUnlocked, setChatUnlocked] = useState(false);
   const [isFriendConversation, setIsFriendConversation] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
+  /* The gate reads (friendship, unlock, pending request) FAILED — as opposed
+     to answering "locked". A failed check must never masquerade as a paywall:
+     while this is set the composer shows a retry instead of a dead input
+     nobody explained. */
+  const [gateError, setGateError] = useState<string | null>(null);
+  const [gateChecking, setGateChecking] = useState(false);
   /*
    * The pending-request state behind the messaging gates (202609090002):
    *
@@ -763,25 +769,29 @@ export default function ChatPage() {
   useEffect(() => { otherUserIdRef.current = otherUserId; }, [otherUserId]);
 
   /**
-   * Re-reads the three facts the composer's state depends on — is the thread
-   * still alive, are we friends, is a pending request in flight — and moves
-   * the UI to match. The database answers all three; the send policy
-   * (202609090002) enforces them independently of this state, so a wrong UI
-   * can only confuse, never authorize.
+   * Re-reads the four facts the composer's state depends on — is the thread
+   * still alive, are we friends, is the chat unlocked, is a pending request
+   * in flight — and moves the UI to match. The database answers all four;
+   * the send policy (202609090002) enforces them independently of this state,
+   * so a wrong UI can only confuse, never authorize.
    *
    * A missing conversation row means the thread was torn down (the request
    * died and the database deleted it) — leaving, not lingering in a screen
    * whose server-side row no longer exists, is the same behaviour init
-   * already has for an unknown conversation id.
+   * already has for an unknown conversation id. A missing row *with* an error
+   * means the read failed, and reports instead of redirecting: booting the
+   * user out of a healthy chat because the network blinked is not leaving,
+   * it's crashing.
    */
   const checkRelationship = useCallback(async () => {
     const uid = myIdRef.current;
     const otherId = otherUserIdRef.current;
     if (!uid || !otherId) return;
 
-    const [convRes, friendRes, reqRes] = await Promise.all([
+    const [convRes, friendRes, unlockRes, reqRes] = await Promise.all([
       supabase.from("conversations").select("id").eq("id", conversationId).maybeSingle(),
       supabase.from("friends").select("id").eq("user_id", uid).eq("friend_id", otherId).maybeSingle(),
+      supabase.from("chat_unlocks").select("id").eq("user_id", uid).eq("conversation_id", conversationId).maybeSingle(),
       supabase
         .from("friend_requests")
         .select("id,sender_id,receiver_id")
@@ -790,11 +800,19 @@ export default function ChatPage() {
         .maybeSingle(),
     ]);
 
-    if (!convRes.data) {
+    if (!convRes.data && !convRes.error) {
       router.push("/active");
       return;
     }
+    /* A failed re-check is reported, not acted on: re-locking the composer
+       over a dropped read would deaden the typing box with no explanation,
+       and that is exactly what "blocked by something invisible" feels like.
+       The previous flags stand until a read succeeds. */
+    const recheckFailure = convRes.error || friendRes.error || unlockRes.error || reqRes.error;
+    setGateError(recheckFailure ? recheckFailure.message || "Couldn't verify this chat." : null);
+    if (recheckFailure) return;
     setIsFriendConversation(Boolean(friendRes.data));
+    setChatUnlocked(Boolean(unlockRes.data));
     setPendingRequest(
       reqRes.data
         ? {
@@ -816,6 +834,19 @@ export default function ChatPage() {
       void checkRelationship();
     }, 120);
   }, [checkRelationship]);
+
+  /* The composer's "Try again": re-runs the gate reads without tearing down
+     the thread, realtime channels, or presence — a tap over a recovered
+     connection lands the flags the first attempt missed. */
+  async function retryGate() {
+    if (gateChecking) return;
+    setGateChecking(true);
+    try {
+      await checkRelationship();
+    } finally {
+      setGateChecking(false);
+    }
+  }
 
   /** Accept from inside the thread — the same two writes the Friends page
       performs, plus the re-check that swaps this screen from the pending
@@ -981,6 +1012,14 @@ export default function ChatPage() {
       ]);
       if (cancelled) return;
 
+      /* Gate failure is not gate denial. The messages query is fired first with
+         a head start, so on a dying connection it can land while these three
+         fail — locking the composer over a network error, with the paywall
+         panel scrolled out of sight, reads as "the typing box is blocked by
+         something invisible". Record the failure so the composer offers a
+         retry instead of a verdict. */
+      const gateFailure = otherFriendship.error || unlockResult.error || pendingRequestResult.error;
+      setGateError(gateFailure ? gateFailure.message || "Couldn't verify this chat." : null);
       setIsFriendConversation(Boolean(otherFriendship.data));
       setChatUnlocked(Boolean(unlockResult.data));
       if (pendingRequestResult.data) {
@@ -1404,6 +1443,10 @@ export default function ChatPage() {
      states without being re-created per render. */
   const togglePicker = useEventCallback((tab: MediaTab) => {
     if (loading) return;
+    if (gateError) {
+      showToast("Couldn't verify this chat — tap Try again below.");
+      return;
+    }
     if (acceptLocked) {
       showToast("Accept the friend request to reply.");
       return;
@@ -2378,7 +2421,60 @@ export default function ChatPage() {
         <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex-shrink-0 p-3 pt-2 md:px-6">
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
           <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected} />
-          <div className="relative flex items-end gap-2">
+          {!loading && gateError ? (
+            /* The gates failed (network, not denial): a retry, not a paywall
+               and not a dead input nobody explained. */
+            <div className="flex items-center gap-3 rounded-[22px] border border-red-400/25 bg-red-500/10 px-4 py-3">
+              <p className="min-w-0 flex-1 text-xs font-semibold leading-snug text-red-100">
+                Couldn&apos;t verify this chat. <span className="font-normal opacity-75">{gateError}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => void retryGate()}
+                disabled={gateChecking}
+                className="shrink-0 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 py-2 text-xs font-black text-white shadow-lg transition active:scale-95 disabled:opacity-60"
+              >
+                {gateChecking ? "Checking…" : "Try again"}
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* A disabled composer always explains itself, right where the
+                  fingers are: the paywall/accept panels live at the top of a
+                  thread nobody scrolls back through, so without this strip a
+                  locked input reads as "blocked by something invisible". */}
+              {!loading && !gateError && acceptLocked && (
+                <div className="mb-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                  <p className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-200">
+                    Accept {otherLabel || "this user"}&apos;s request to reply.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void acceptPendingRequest()}
+                    disabled={acceptingRequest}
+                    className="shrink-0 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 px-4 py-1.5 text-xs font-black text-white shadow transition active:scale-95 disabled:opacity-60"
+                  >
+                    {acceptingRequest ? "Accepting…" : "Accept"}
+                  </button>
+                </div>
+              )}
+              {!loading && !gateError && !acceptLocked && composerLocked && (
+                <div className="mb-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                  <p className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-200">
+                    Unlock this chat once to send messages.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void unlockChat()}
+                    disabled={unlocking}
+                    className="flex shrink-0 items-center gap-1 rounded-full px-4 py-1.5 text-xs font-black shadow transition active:scale-95 disabled:opacity-60"
+                    style={{ background: "linear-gradient(135deg, var(--theme-accent-from), var(--theme-accent-to))", color: "var(--theme-accent-contrast)" }}
+                  >
+                    <Coins size={13} /> {unlocking ? "Unlocking…" : `Unlock · ${UNLOCK_CHAT_COST}`}
+                  </button>
+                </div>
+              )}
+              <div className="relative flex items-end gap-2">
             <div className="chat-field flex min-w-0 flex-1 items-end gap-0.5 rounded-[26px] p-1">
               <button
                 type="button"
@@ -2433,13 +2529,15 @@ export default function ChatPage() {
                 canRecord={!loading && chatUnlocked && !acceptLocked}
                 cost={SEND_VOICE_COST}
                 busy={uploadingPhoto}
-                onBlocked={() => showToast(acceptLocked ? "Accept the friend request to reply." : loading ? "One moment — still opening this chat." : isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
+                onBlocked={() => showToast(gateError ? "Couldn't verify this chat — tap Try again." : acceptLocked ? "Accept the friend request to reply." : loading ? "One moment — still opening this chat." : isFriendConversation ? "You need 40 coins to unlock this conversation." : `Unlock this chat once for ${UNLOCK_CHAT_COST} Whisper Coins first.`)}
                 onSend={handleVoiceNote}
                 onError={showToast}
                 onRecordingChange={setRecordingVoice}
               />
-            )}
-          </div>
+              )}
+              </div>
+            </>
+          )}
         </form>
       </div>
 
