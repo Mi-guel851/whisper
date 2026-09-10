@@ -16,7 +16,7 @@ a real Android device, or a push provider — I don't have access to those from 
 
 ## 1. What was implemented
 
-### 1.1 Notification targeting (friends‑only, per‑event, deduped) — `supabase/migrations/202609100003_notification_targeting.sql`
+### 1.1 Notification targeting (friends‑only, per‑event, deduped) — `supabase/migrations/202609100004_notification_targeting.sql`
 
 One transaction (`begin;` … `commit;`), idempotent (everything is `if not exists` /
 `create or replace` / `drop trigger if exists`).
@@ -40,7 +40,7 @@ optimistic with rollback on failure. `/notifications` now renders
 deep links (only server‑written `metadata.route` values that are same‑origin paths),
 click‑marks‑read as its only write.
 
-### 1.2 Incoming calls — server‑authoritative lifecycle — `supabase/migrations/202609100005_call_lifecycle.sql` + `lib/calls/useVoiceCall.ts`
+### 1.2 Incoming calls — server‑authoritative lifecycle — `supabase/migrations/202609100006_call_lifecycle.sql` + `lib/calls/useVoiceCall.ts`
 
 The old flow kept the whole call in component state: refresh, background or a dead
 tab lost the state machine, and “missed” never existed as a fact. Now:
@@ -68,9 +68,10 @@ tab lost the state machine, and “missed” never existed as a fact. Now:
   the caller's own row never flips to answered.
 * **`expire_stale_calls()`** (service‑role only): sweeps ringing > 60 s → `expired`
   (+missed flag), posts the missed notice and the cancel. Wired as Vercel Cron
-  (`vercel.json`: `/api/calls/sweep` every minute, `CRON_SECRET`‑authorized) — but it
-  is an *accelerator*: the lazy sweep inside `start_call_log` already guarantees honesty
-  even if cron never runs.
+  (`vercel.json`: `/api/calls/sweep` **daily** — Vercel Hobby rejects denser cron
+  schedules and fails the deploy — `CRON_SECRET`‑authorized). It is only an
+  *accelerator*: the lazy sweep inside `start_call_log` guarantees honesty even if cron
+  never runs at all. Move to `* * * * *` if the project upgrades to Pro.
 * Realtime: `call_logs` added to `supabase_realtime` (DO‑wrapped), and a policy on
   `realtime.messages` restricts `whisper-call:<conversation>` broadcast topics to
   conversation participants (UUID‑regex‑guarded so a malformed topic can't error every
@@ -116,7 +117,7 @@ never lies “still calling” about a dead call.
 
 ### 1.5 Security closure (the other half of the request)
 
-* **Durable rate limiting** (`202609100004`): `rate_limit_windows` + atomic
+* **Durable rate limiting** (`202609100005`): `rate_limit_windows` + atomic
   `rate_limit_consume()` RPC (`insert … on conflict … returning` in one statement,
   fixed window, service‑role only, no client writes). `lib/apiGuard.ts` now awaits it,
   **fails closed** on real DB faults for sensitive buckets, and only degrades to the
@@ -124,7 +125,7 @@ never lies “still calling” about a dead call.
   into every sensitive route: recovery, admin verify‑pin, paystack verify (IP+user,
   `consumeMulti`), coin posting (feed‑post/reply), creator posting, TURN credentials,
   and the view‑once/photo‑view endpoints (40–60 views/min per user).
-* **Payments/ownership** (`202609100004`): `ensure_coin_wallet`, `credit_verified_payment`
+* **Payments/ownership** (`202609100005`): `ensure_coin_wallet`, `credit_verified_payment`
   (advisory xact‑lock on the reference → replay returns the existing balance, missing
   wallet created, single UPDATE→ledger pair, `P0002` if the row moved under it),
   `revoke_user_sessions`, and feed‑photo ownership enforcement for the friends feed.
@@ -167,11 +168,18 @@ in the output — they are the degradation reports (e.g. `T3: duplicate notifica
 still exist…` means dedup is skipped until you prune legacy rows; everything else still
 works).
 
-1. `supabase/migrations/202609100003_notification_targeting.sql`
-2. `supabase/migrations/202609100004_durable_guards_and_payments.sql`
-3. `supabase/migrations/202609100005_call_lifecycle.sql`
+1. `supabase/migrations/202609100003_repair_messages_select_grants.sql` — **already on `main` via PR #46**; confirm it has been applied to the project (it is independent of the three below, but its number sorts first).
+2. `supabase/migrations/202609100004_notification_targeting.sql`
+3. `supabase/migrations/202609100005_durable_guards_and_payments.sql`
+4. `supabase/migrations/202609100006_call_lifecycle.sql`
 
 If you deploy via CLI instead: `supabase db push` (same order, same scripts).
+
+> **Why the renumbering:** the first cut of this pass shipped these three as
+> `202609100003/4/5`, colliding with PR #46's `202609100003_repair_messages_select_grants.sql`
+> (duplicate version prefix). The targeting file must also sort BEFORE the call-lifecycle
+> file, because `start_call_log` inserts `notifications` rows of type `call` — a type whose
+> admission by the T2 CHECK-constraint change is what makes that insert legal.
 
 ### 2.2 Edge functions (dashboard → Edge Functions → Deploy, from `supabase/functions/`)
 
@@ -382,12 +390,19 @@ and the Cloudinary upload hosts are already in the policy; if you embed anything
   reply/transfer gates read; feed gates its row for a different reason (bell/push
   single source) — the settings copy spells this out rather than pretending uniformity.
 
-## 7. File map (what to review, by area)
+## 7. Post-review corrections (this push, after PR #47 checks)
+
+Two failures on the PR's checks, both fixed and re-verified here (suite, `tsc`, lint and production build all re-run green after the merge):
+
+1. **`vercel` — “Deployment failed: Hobby accounts are limited to daily cron jobs.”** The first cut scheduled the sweep `* * * * *`; Hobby rejects anything denser than daily at deploy time. `vercel.json` is now `0 0 * * *`. Safe because the sweep was always designed as an accelerator — `start_call_log` lazy-expires stale ringing rows on every call start, the chat UI renders stale ringing entries as a miss after 75 s, and only the DB row's terminal status would wait for the next call or the daily sweep.
+2. **Merge conflict with `main` (PR #46)** in `tests/security-hardening.test.mjs` — resolved keeping both sides (main's messages-grant repair block, then this branch's hardening block). `app/chat/[conversationId]/page.tsx` and `app/notifications/page.tsx` auto-merged cleanly against #46's changes; `tsc`, the tests and the build confirm the merged chat page still carries the call-timeline wiring. Renumbering the migrations (§2.1) is part of the same reconciliation: PR #46 had taken `202609100003`.
+
+## 8. File map (what to review, by area)
 
 ```
-supabase/migrations/202609100003_notification_targeting.sql   (T1–T7 + push path)
-supabase/migrations/202609100004_durable_guards_and_payments.sql (limiter, wallet, revocation)
-supabase/migrations/202609100005_call_lifecycle.sql            (state machine, sweep, realtime)
+supabase/migrations/202609100004_notification_targeting.sql   (T1–T7 + push path)
+supabase/migrations/202609100005_durable_guards_and_payments.sql (limiter, wallet, revocation)
+supabase/migrations/202609100006_call_lifecycle.sql            (state machine, sweep, realtime)
 supabase/functions/notify-on-notification/index.ts             (channels, prefs, ttl/collapse, cancel)
 supabase/functions/notify-new-feed-post/index.ts               (recipients-only fan-out)
 supabase/functions/notify-new-whisper/index.ts                 (retired stub)
