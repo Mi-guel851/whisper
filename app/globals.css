@@ -1423,6 +1423,10 @@ html.viewport-locked body {
 /* The one scroller inside a frame. */
 .frame-scroll {
   overflow-y: auto;
+  /* Belt and braces: a scroll container's automatic minimum size is already
+     zero, but stating it keeps the list from ever sizing to its content and
+     shoving the composer below the fold on engines with flex quirks. */
+  min-height: 0;
   /* Nothing above this element scrolls, so a flick that reaches the end has
      nowhere to hand the gesture on to — without this it chains to the document
      and drags the whole frame. */
