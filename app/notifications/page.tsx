@@ -46,6 +46,10 @@ export default function NotificationsPage() {
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  /* A failed fetch must never read as "no whispers": the empty state is only
+     true when the query succeeds and returns zero rows. */
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [viewing, setViewing] = useState<{ message: string; imageUrl: string | null } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -76,7 +80,9 @@ export default function NotificationsPage() {
 
       if (error) {
         console.error("Fetch error:", error);
+        setLoadError(error.message || "Couldn't load your whispers.");
       } else {
+        setLoadError(null);
         setNotifications(data || []);
       }
 
@@ -126,7 +132,9 @@ export default function NotificationsPage() {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+    /* `reloadToken` is the retry button's handle: bumping it re-runs the whole
+       load (session, query, unlocks, realtime) from a clean slate. */
+  }, [reloadToken]);
 
   function hintUnlocked(messageId: string) {
     return hintUnlocks.some((unlock) => unlock.message_id === messageId);
@@ -344,6 +352,24 @@ export default function NotificationsPage() {
 
         {loading ? (
           <p className="mt-8 text-gray-400">Loading...</p>
+        ) : loadError && notifications.length === 0 ? (
+          <GlassPanel className="mt-8 rounded-3xl p-8 text-center">
+            <h2 className="text-xl font-bold">Couldn&apos;t load your whispers</h2>
+            <p className="mt-2 text-sm text-gray-400">
+              {loadError} Check your connection and try again — your messages are safe.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadError(null);
+                setLoading(true);
+                setReloadToken((token) => token + 1);
+              }}
+              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-500 py-3.5 font-bold text-white shadow-lg shadow-fuchsia-500/20 transition active:scale-[0.98] hover:opacity-95"
+            >
+              Try again
+            </button>
+          </GlassPanel>
         ) : notifications.length === 0 ? (
           <GlassPanel className="mt-8 rounded-3xl p-8 text-center">
             <h2 className="text-xl font-bold">No notifications yet</h2>

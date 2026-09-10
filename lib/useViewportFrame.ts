@@ -47,7 +47,15 @@ let lockCount = 0;
 
 function measure(): number {
   const viewport = window.visualViewport;
-  const available = viewport ? viewport.height : window.innerHeight;
+  /* The layout viewport is the ceiling. On some Android builds the visual
+     viewport outlives a URL-bar/keyboard transition and reports a stale
+     tall value; sizing the frame from it alone would run the frame past the
+     visible screen and push the composer below the fold. `innerHeight` is
+     never taller than what is actually on screen, so capping at it keeps
+     the composer reachable in every state (it equals the visual height in
+     the normal case, so healthy devices see no change). */
+  const visual = viewport ? viewport.height : window.innerHeight;
+  const available = Math.min(visual, window.innerHeight);
   /* The insets resolve to pixels here, so there is no need to guess at whether
      `env(safe-area-inset-bottom)` is still 34px with a keyboard over it. */
   const bodyStyle = getComputedStyle(document.body);
@@ -87,12 +95,16 @@ export default function useViewportFrame(onResize?: () => void) {
        rotation that happens to leave the height unchanged. */
     window.addEventListener("orientationchange", sync);
     window.addEventListener("resize", sync);
+    /* Back/forward-cache restores can hand back a frame measured for a different
+       viewport state without firing resize — re-sync on reveal. */
+    window.addEventListener("pageshow", sync);
 
     return () => {
       viewport?.removeEventListener("resize", sync);
       viewport?.removeEventListener("scroll", sync);
       window.removeEventListener("orientationchange", sync);
       window.removeEventListener("resize", sync);
+      window.removeEventListener("pageshow", sync);
       lockCount = Math.max(0, lockCount - 1);
       if (lockCount === 0) {
         root.classList.remove(LOCK_CLASS);
