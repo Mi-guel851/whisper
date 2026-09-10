@@ -31,10 +31,27 @@ begin
     if secret_columns is null then continue; end if;
 
     foreach operation in array spec.operations loop
-      -- Capture effective table permissions BEFORE revoking PUBLIC inheritance.
+      -- Capture effective permissions BEFORE revoking PUBLIC inheritance.
+      -- `has_table_privilege` does not report a role whose existing access is
+      -- made up only of column grants. Check those too, or this migration can
+      -- revoke the table grant and leave a legitimate browser role with no
+      -- SELECT/INSERT/UPDATE access at all.
       roles_with_table_access := array[]::text[];
       foreach role_name in array array['anon','authenticated'] loop
-        if has_table_privilege(role_name, 'public.' || spec.table_name, operation) then
+        if has_table_privilege(role_name, 'public.' || spec.table_name, operation)
+           or exists (
+             select 1
+             from information_schema.columns c
+             where c.table_schema = 'public'
+               and c.table_name = spec.table_name
+               and not (c.column_name = any(spec.secrets))
+               and has_column_privilege(
+                 role_name,
+                 'public.' || spec.table_name,
+                 c.column_name,
+                 operation
+               )
+           ) then
           roles_with_table_access := array_append(roles_with_table_access, role_name);
         end if;
       end loop;

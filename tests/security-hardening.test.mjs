@@ -68,4 +68,16 @@ assert.match(privateColumns, /revoke %s on table public\.%I from public, anon, a
 assert.match(privateColumns, /revoke %s \(%s\) on table/);
 assert.match(privateColumns, /recovery_phrase_hash/);
 assert.match(privateColumns, /has_table_privilege/);
+assert.match(privateColumns, /has_column_privilege/);
 console.log('PASS private-column grant repair source guards (live DB tests still required)');
+const messageGrantRepair = await read('supabase/migrations/202609100003_repair_messages_select_grants.sql');
+assert.match(messageGrantRepair, /revoke select on table public\.messages from public, anon, authenticated/);
+assert.match(messageGrantRepair, /revoke select \(%s\) on table public\.messages/);
+assert.match(messageGrantRepair, /grant select \(%s\) on table public\.messages to anon, authenticated/);
+for (const column of ['id', 'recipient_id', 'message', 'image_url', 'created_at', 'is_read']) {
+  assert.match(messageGrantRepair, new RegExp(`'${column}'`));
+}
+for (const column of ['sender_country', 'sender_state', 'sender_city', 'sender_device', 'sender_username', 'sender_email_name', 'sender_user_id']) {
+  assert.match(messageGrantRepair, new RegExp(`'${column}'`));
+}
+console.log('PASS messages safe SELECT grant repair covers notification projections and keeps private columns denied');
