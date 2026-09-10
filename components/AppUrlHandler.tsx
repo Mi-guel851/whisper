@@ -16,7 +16,7 @@ export default function AppUrlHandler() {
       const { Browser } = await import("@capacitor/browser");
 
       async function handleUrl(urlStr: string) {
-        console.log("[deeplink] Handling URL:", urlStr);
+        // Never log callback URLs: fragments may contain access/refresh tokens.
 
         // Force close any in-app browser
         try { await Browser.close(); } catch {}

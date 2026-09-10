@@ -26,7 +26,7 @@
  * still shares the account bucket.
  */
 
-type Bucket = { hits: number; windowStart: number };
+type Bucket = { hits: number; expiresAt: number };
 
 /** Above this many tracked keys, drop the stale entries. */
 const SWEEP_THRESHOLD = 50_000;
@@ -35,7 +35,7 @@ const buckets = new Map<string, Bucket>();
 
 function sweep(now: number) {
   for (const [key, bucket] of buckets) {
-    if (now - bucket.windowStart > 10 * 60_000) buckets.delete(key);
+    if (now >= bucket.expiresAt) buckets.delete(key);
   }
 }
 
@@ -62,20 +62,22 @@ export type Guard = {
  */
 export function consume(name: string, identifier: string, limit: number, windowMs: number): Guard | null {
   const now = Date.now();
-  if (buckets.size > SWEEP_THRESHOLD) sweep(now);
+  if (buckets.size >= SWEEP_THRESHOLD) sweep(now);
 
   const key = `${name}:${identifier}`;
   const bucket = buckets.get(key);
 
-  if (!bucket || now - bucket.windowStart >= windowMs) {
-    buckets.set(key, { hits: 1, windowStart: now });
+  if (!bucket || now >= bucket.expiresAt) {
+    // Fail closed for new identities when full; never evict an active limit.
+    if (!bucket && buckets.size >= SWEEP_THRESHOLD) return { retryAfterSeconds: 60 };
+    buckets.set(key, { hits: 1, expiresAt: now + windowMs });
     return null;
   }
 
   bucket.hits += 1;
   if (bucket.hits <= limit) return null;
 
-  const retryAfterMs = bucket.windowStart + windowMs - now;
+  const retryAfterMs = bucket.expiresAt - now;
   return { retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)) };
 }
 

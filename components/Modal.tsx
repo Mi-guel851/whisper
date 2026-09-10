@@ -178,11 +178,11 @@ export default function Modal({
               // Flick down, or drag past a third of the sheet, to dismiss.
               if (info.offset.y > 120 || info.velocity.y > 600) onClose();
             }}
-            className={`relative w-full outline-none ${
+            className={`overlay-surface relative w-full max-h-[90dvh] overflow-y-auto outline-none ${
               isSheet ? "rounded-t-[1.75rem]" : `${sizeClasses[size]} rounded-[1.5rem]`
             } ${className}`}
             style={{
-              background: "var(--theme-glass-strong)",
+              background: "var(--theme-surface-solid)",
               border: "1px solid var(--theme-glass-border)",
               boxShadow: "var(--elev-5), var(--elev-rim)",
               backdropFilter: "blur(36px) saturate(190%)",

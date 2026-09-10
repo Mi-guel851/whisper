@@ -1,63 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useState } from "react";
+import { motion } from "framer-motion";
 import { Flame } from "lucide-react";
 
 import useWhisperStreak from "@/lib/useWhisperStreak";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
-import { spring } from "@/lib/motion";
-import GlassPanel from "./GlassPanel";
+import Modal from "./Modal";
 import StreakCard from "./StreakCard";
 import StreakRewardDialog from "./StreakRewardDialog";
 
-/**
- * The streak indicator in the dashboard header.
- *
- * A streak belongs in the chrome, not in the content column: it is status, it is
- * checked at a glance, and the dashboard column is already dense enough without a
- * full card competing with the link, the prompt and the chart. So it reads as a
- * flame and a number, with the detail — and the check-in button — one tap away.
- *
- * The chip is a real control, not decoration. Tapping it opens the panel where the
- * day is actually claimed, which is the whole reason the panel exists now: the
- * streak no longer advances just because the dashboard mounted.
- *
- * It renders nothing only while the first read is in flight or if that read
- * failed (an unapplied migration, most likely) — never for a user with a streak of
- * zero. Someone who has never checked in needs the chip more than anyone, because
- * it is the only way to reach the button.
- */
+/** Daily check-in opens in a portal, never inside the hero clipping boundary. */
 export default function StreakChip() {
   const { streak, checkIn, checkingIn, reward, dismissReward } = useWhisperStreak();
   const reduced = useSafeReducedMotion();
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const close = useCallback(() => setOpen(false), []);
 
-  /* Dismissal: outside pointer or Escape. Bound only while open, so a closed
-     chip costs no document listeners — there are several of these header
-     controls and they all mount on every dashboard visit. */
-  useEffect(() => {
-    if (!open) return;
-
-    function onPointerDown(event: PointerEvent) {
-      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  /* The popover closes on a payout so the celebration is not competing with a
-     272px panel behind it — and because the panel's own numbers have just
-     changed, showing a restarted cycle underneath a "cycle complete" dialog. */
   const handleCheckIn = useCallback(async () => {
     const earned = await checkIn();
     if (earned) setOpen(false);
@@ -73,7 +32,7 @@ export default function StreakChip() {
 
   return (
     <>
-      <div ref={wrapRef} className="relative">
+      <div className="relative">
         <button
           type="button"
           /* No vibrate() call here on purpose: ClickHaptics already buzzes every
@@ -81,12 +40,13 @@ export default function StreakChip() {
              local call would drive the motor twice for a single press. */
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
+          aria-haspopup="dialog"
           aria-label={
             pending
               ? `Day ${streak.cycleDay} of ${streak.cycleLength}. Check in`
               : `Day ${streak.cycleDay} of ${streak.cycleLength}. Show progress`
           }
-          className="relative inline-flex h-10 items-center gap-1.5 rounded-2xl border border-white/10 bg-white/5 px-2.5 text-white transition hover:bg-white/10"
+          className="relative inline-flex min-h-11 items-center gap-1.5 rounded-2xl border border-white/10 bg-white/5 px-2.5 text-white transition hover:bg-white/10"
         >
           <motion.span
             className="flex items-center"
@@ -109,6 +69,7 @@ export default function StreakChip() {
           <span className="text-sm font-black tabular-nums leading-none">
             {streak.cycleDay}
           </span>
+          <span className="text-xs font-semibold">{pending ? "Check in" : "Day streak"}</span>
 
           {pending && (
             <motion.span
@@ -119,34 +80,13 @@ export default function StreakChip() {
           )}
         </button>
 
-        <AnimatePresence>
-          {open && (
-            <motion.div
-              initial={reduced ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
-              transition={spring.snappy}
-              /* Anchored to the chip's right edge so it grows out of its trigger
-                 rather than from nowhere, and `origin-top-right` keeps the scale
-                 reading as the same object opening. */
-              className="absolute right-0 top-12 z-50 w-[272px] origin-top-right"
-            >
-              {/* `surface-solid` is what stops the dashboard card behind this
-                  panel from reading through it. A popover that opens *directly*
-                  over content is the one place translucency stops meaning depth
-                  and starts meaning a smear — two overlapping paragraphs at 20%
-                  are not legible at any blur radius. */}
-              <GlassPanel strong className="surface-solid rounded-2xl p-4" elevation={5}>
-                <StreakCard
-                  streak={streak}
-                  onCheckIn={handleCheckIn}
-                  checkingIn={checkingIn}
-                />
-              </GlassPanel>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
+
+      <Modal open={open} onClose={close} title="Your daily streak" size="sm" className="max-h-[85dvh] overflow-y-auto">
+        <div className="p-6 pt-3">
+          <StreakCard streak={streak} onCheckIn={handleCheckIn} checkingIn={checkingIn} />
+        </div>
+      </Modal>
 
       {/* Portalled by Modal, so it is not clipped by the header's stacking
           context or by the popover's transform. */}

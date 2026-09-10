@@ -20,54 +20,8 @@ import FeedImageWhisper from "./FeedImageWhisper";
 import FeedPoll from "./FeedPoll";
 import type { FeedController } from "./types";
 
-/**
- * A post and its thread, laid out the way X lays out a post.
- *
- * ANATOMY, TOP TO BOTTOM
- *
- * The header is X's header: who, when, and — at the far right, inside the
- * header rather than at the end of the action row — the overflow "···". On X
- * that button is where delete/report/save live, and moving it up out of the
- * engagement row is what frees that row to be four evenly spaced counts. Under
- * it, the body, then media, then the action row spread across the full width.
- *
- * The structural idea worth naming: the avatar column is a *rail*, not just a
- * slot. When a post has visible replies, a vertical line runs down that column
- * from under the avatar to the next avatar in the thread, so the eye follows
- * one continuous stroke instead of hunting indentation levels. That is what
- * makes an X thread readable at depth where a Facebook-style nested-and-indented
- * comment list collapses into a wedge on a phone.
- *
- * So indentation stops after the first level. Depth 1 steps in; everything
- * below reuses the same rail and is distinguished by the "replying to" line
- * instead. Threads stay legible however deep they run.
- *
- * THE COMMENT SECTION, X'S ARRANGEMENT
- *
- * One tap on the reply icon is one gesture with one meaning — take me to the
- * conversation — and on X that always means both halves: the replies *and* a
- * composer waiting under the post. Splitting those between two controls (the
- * count opening the thread, a second text button opening the box) is the
- * arrangement this used to have; it matched nothing people know. Here the tap
- * opens the thread when there is one, and the composer comes up with it — with
- * a cancel control to put it away, the way X's composer has one.
- *
- * Threads start closed. The reply count beside the reply icon is the
- * affordance. Once open, X's "Showing replies" marker separates the post from
- * its comments, and "Hide N replies" closes the group from the bottom, so a
- * long thread doesn't have to be scrolled back to its head to be folded away.
- *
- * WHERE THE REPLY COUNT COMES FROM
- *
- * Two sources, and which one is right depends on whether the thread is loaded.
- * On the RPC path a root post arrives with `reply_count` and no children at all
- * — its replies are one `public_feed_thread` call away — so the server count is
- * the only count there is. Once those children are in hand, `countDescendants`
- * becomes the more current number: it sees the optimistic reply that was added a
- * frame ago and the server count does not. Hence the switch on `children.length`
- * rather than a `Math.max`, which would keep showing a stale server total after
- * a reply is deleted.
- */
+/** Each reply branch expands independently; an open ancestor never opens siblings
+ * or grandchildren. Indentation is capped for narrow screens. */
 
 const AVATAR_ROOT = 42;
 const AVATAR_REPLY = 34;
@@ -82,12 +36,6 @@ type FeedPostCardProps = {
   parentOfficial?: boolean;
   /** Ref callback that registers a root card for impression counting. */
   impressionRef?: (node: HTMLElement | null) => void;
-  /**
-   * An ancestor is open, so this post's replies come with it. Opening a thread
-   * is one action: it would be tedious to expand every level by hand just to
-   * read a conversation the user already asked to see.
-   */
-  threadOpen?: boolean;
   /**
    * The post a `?post=` share link pointed at, pulsed so the reader can find it.
    *
@@ -105,7 +53,6 @@ function FeedPostCardBase({
   parentAuthorId,
   parentOfficial = false,
   impressionRef,
-  threadOpen = false,
   highlightId = null,
 }: FeedPostCardProps) {
   const isRoot = depth === 0;
@@ -124,9 +71,9 @@ function FeedPostCardBase({
 
   const children = node.children;
   const replyCount =
-    children.length > 0 ? countDescendants(node) : node.reply_count ?? 0;
+    children.length > 0 ? (isRoot ? countDescendants(node) : children.length) : node.reply_count ?? 0;
   const isReplyOpen = Boolean(controller.replyOpen[node.id]);
-  const isExpanded = threadOpen || Boolean(controller.expanded[node.id]);
+  const isExpanded = Boolean(controller.expanded[node.id]);
   const isThreadLoading = Boolean(controller.threadLoading[node.id]);
   const visibleChildren = isExpanded ? children : [];
 
@@ -144,12 +91,8 @@ function FeedPostCardBase({
      precedes them. */
   const hasRail = visibleChildren.length > 0 || isReplyOpen || isThreadLoading;
 
-  /* Gated on the count rather than on loaded children: on the RPC path a post
-     with replies has none of them in hand yet, and gating on `children.length`
-     would make its thread unopenable. Never offered on a post whose thread was
-     opened from above — collapsing a branch inside an open conversation would
-     strand the rail. */
-  const canToggleThread = replyCount > 0 && !threadOpen;
+  // Unloaded branches still expose their server-provided reply count.
+  const canToggleThread = replyCount > 0;
 
   /* X's reply gesture: open the thread when there is one, and bring the
      composer up with it. Idempotent on both halves, so a tap on an already-open
@@ -330,7 +273,7 @@ function FeedPostCardBase({
 
       {visibleChildren.length > 0 && (
         /* Indent once, then never again — see the note at the top of the file. */
-        <div className={depth === 0 ? "feed-thread-children" : undefined}>
+        <div className={depth < 2 ? "feed-thread-children" : "feed-thread-branch"}>
           {/* X's marker between a post and its comments. The thread opens from
               the reply icon now, so something has to say where the post ends
               and the conversation begins — without it the first reply reads as
@@ -346,13 +289,12 @@ function FeedPostCardBase({
               parentAuthorId={node.author_id}
               parentOfficial={official}
               highlightId={highlightId}
-              threadOpen
             />
           ))}
 
           {/* Closing from the bottom of a long thread saves scrolling back up
               to the reply icon that opened it. */}
-          {!threadOpen && (
+          {isExpanded && (
             <button
               type="button"
               onClick={() => controller.onToggleThread(node.id)}

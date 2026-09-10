@@ -34,7 +34,7 @@ type PaystackSetupOptions = {
   email: string;
   amount: number;
   currency: "NGN";
-  metadata: { coins: number; region: "ngn" | "usd_via_ngn" };
+  metadata: { coins: number; region: "ngn" | "usd_via_ngn"; user_id: string };
   ref: string;
   callback: (response: { reference: string }) => void;
   onClose: () => void;
@@ -421,7 +421,7 @@ export default function PremiumPage() {
       email: PAYSTACK_MASKED_EMAIL,
       amount: chargeAmountKobo,
       currency: "NGN",
-      metadata: { coins: pkg.coins, region },
+      metadata: { coins: pkg.coins, region, user_id: session.user.id },
       ref: reference,
       callback: (response: { reference: string }) => {
         (async () => {

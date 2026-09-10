@@ -9,6 +9,7 @@
  * is a side effect, not a guarantee. Do not import this from a component.
  */
 
+import { readBoundedImage } from "@/lib/boundedImage";
 import { createHash } from "node:crypto";
 import { CLOUDINARY_CLOUD_NAME, cloudinaryPublicId, isCloudinaryUrl } from "@/lib/cloudinary";
 
@@ -70,7 +71,7 @@ export async function destroyCloudinaryImage(
   try {
     const response = await fetch(
       `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/destroy`,
-      { method: "POST", body: form }
+      { method: "POST", body: form, redirect: "error", signal: AbortSignal.timeout(15_000) }
     );
     const payload = await response.json().catch(() => null);
 
@@ -121,15 +122,12 @@ export async function fetchCloudinaryImage(
   }
 
   try {
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) });
     if (!response.ok) {
       console.error("[cloudinary] image fetch failed:", response.status);
       return null;
     }
-    return {
-      bytes: await response.arrayBuffer(),
-      contentType: response.headers.get("content-type") || "image/jpeg",
-    };
+    return await readBoundedImage(response);
   } catch (error) {
     console.error("[cloudinary] image fetch error:", error);
     return null;
@@ -146,7 +144,7 @@ export async function fetchCloudinaryImage(
 export async function cloudinaryImageExists(url: string): Promise<boolean> {
   if (!isCloudinaryUrl(url)) return false;
   try {
-    const response = await fetch(url, { method: "HEAD", cache: "no-store" });
+    const response = await fetch(url, { method: "HEAD", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10_000) });
     return response.ok;
   } catch {
     return false;

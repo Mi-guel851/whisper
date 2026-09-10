@@ -191,6 +191,7 @@ export function isCloudinaryUrl(value: string | null | undefined): boolean {
     return (
       url.protocol === "https:" &&
       url.hostname === "res.cloudinary.com" &&
+      !url.username && !url.password && (!url.port || url.port === "443") &&
       url.pathname.startsWith(`/${CLOUDINARY_CLOUD_NAME}/`)
     );
   } catch {

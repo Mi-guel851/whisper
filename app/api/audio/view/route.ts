@@ -79,10 +79,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Audio unavailable" }, { status: 404 });
     }
 
-    await supabaseAdmin
+    const claim = await supabaseAdmin
       .from("direct_messages")
       .update({ audio_viewed_at: new Date().toISOString(), audio_path: null })
-      .eq("id", messageId);
+      .eq("id", messageId)
+      .is("audio_viewed_at", null)
+      .eq("audio_path", message.audio_path)
+      .select("id")
+      .maybeSingle();
+
+    if (claim.error) return NextResponse.json({ error: "Could not record playback" }, { status: 500 });
+    if (!claim.data) return NextResponse.json({ error: "Audio already played" }, { status: 410 });
 
     await supabaseAdmin.storage.from(bucket).remove([message.audio_path]);
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
+import { isTrustedPushEndpoint } from "@/lib/pushEndpoint";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 type PushSubscriptionRow = {
@@ -97,7 +98,7 @@ async function getFCMAccessToken(serviceAccount: ServiceAccount): Promise<string
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-webhook-secret");
-  if (secret !== process.env.PUSH_WEBHOOK_SECRET) {
+  if (!process.env.PUSH_WEBHOOK_SECRET || !secret || secret !== process.env.PUSH_WEBHOOK_SECRET) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -206,10 +207,13 @@ export async function POST(req: NextRequest) {
 
     await Promise.all(
       (subs as PushSubscriptionRow[]).map(async (sub) => {
+        // Subscription rows are client-written; never POST to an arbitrary URL.
+        if (!isTrustedPushEndpoint(sub.endpoint)) return;
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            webPayload
+            webPayload,
+            { timeout: 10_000 }
           );
           sent++;
         } catch (err) {

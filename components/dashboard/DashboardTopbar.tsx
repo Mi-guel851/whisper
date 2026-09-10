@@ -37,6 +37,7 @@ function TopbarAction({
 export default function DashboardTopbar({ profile }: { profile: DashboardProfile }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const { resolvedTheme, toggleTheme } = useTheme();
   const badges = useSyncExternalStore(
     subscribeNavBadges,
@@ -56,7 +57,7 @@ export default function DashboardTopbar({ profile }: { profile: DashboardProfile
         <Logo compact showTagline={false} />
       </Link>
 
-      <form className="dashboard-global-search" role="search" onSubmit={submit}>
+      <form id="dashboard-search" className={`dashboard-global-search ${searchOpen ? "is-open" : ""}`} role="search" onSubmit={submit}>
         <Search size={17} aria-hidden />
         <input
           type="search"
@@ -69,7 +70,10 @@ export default function DashboardTopbar({ profile }: { profile: DashboardProfile
       </form>
 
       <div className="dashboard-top-actions">
-        <button type="button" className="dashboard-top-action" onClick={toggleTheme} aria-label={`Use ${resolvedTheme === "dark" ? "light" : "dark"} theme`}>
+        <button type="button" className="dashboard-top-action dashboard-search-toggle" aria-label="Toggle search" aria-expanded={searchOpen} aria-controls="dashboard-search" onClick={() => setSearchOpen((value) => !value)}>
+          <Search size={18} />
+        </button>
+        <button type="button" className="dashboard-top-action dashboard-theme-toggle" onClick={toggleTheme} aria-label={`Use ${resolvedTheme === "dark" ? "light" : "dark"} theme`}>
           {resolvedTheme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
         </button>
         <TopbarAction href="/inbox" label="Open messages" count={badges.chats}>

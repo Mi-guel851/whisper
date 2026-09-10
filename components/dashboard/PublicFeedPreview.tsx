@@ -27,16 +27,14 @@ function Metric({ icon, value, label }: { icon: React.ReactNode; value: number |
 }
 
 export default function PublicFeedPreview({ feed }: { feed: DashboardFeedController }) {
-  const visible = feed.posts.slice(0, 4);
+  const visible = feed.posts.slice(0, 2);
   const nameOf = useAnonNames(visible.map((post) => post.author_id));
 
   return (
     <section className="dashboard-feed-section" aria-labelledby="community-title">
       <div className="dashboard-section-heading">
         <div>
-          <span className="dashboard-section-kicker">Live community</span>
           <h2 id="community-title">Public Whispers</h2>
-          <p>Real thoughts. Zero names. Join the conversation.</p>
         </div>
         <div className="dashboard-heading-actions">
           <button
@@ -71,7 +69,7 @@ export default function PublicFeedPreview({ feed }: { feed: DashboardFeedControl
 
       <div className="dashboard-feed-list" aria-live="polite" aria-busy={feed.loading}>
         {feed.loading ? (
-          Array.from({ length: 3 }).map((_, index) => (
+          Array.from({ length: 2 }).map((_, index) => (
             <div className="dashboard-feed-card dashboard-feed-skeleton" key={index}>
               <i /><div><span /><span /><span /></div>
             </div>
