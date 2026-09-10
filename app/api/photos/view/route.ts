@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isCloudinaryUrl } from "@/lib/cloudinary";
 import { destroyCloudinaryUrl, fetchCloudinaryImage } from "@/lib/cloudinary.server";
+import { consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
  * Serves a chat view-once photo, exactly once.
@@ -46,6 +47,13 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    /* Durable per-user budget. Each open is a Cloudinary round trip + a
+       conditional claim; without a shared counter a flooded loop could burn
+       egress and pin the claim path. 40/min is far past human taps and stops
+       scripts dead. */
+    const viewGuard = await consume("view-once-photo", `u:${user.id}`, 40, 60_000);
+    if (viewGuard) return rateLimitedResponse(viewGuard);
 
     const { data: message, error: msgError } = await supabaseAdmin
       .from("direct_messages")

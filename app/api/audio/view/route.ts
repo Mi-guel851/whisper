@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,6 +28,10 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    /* See photos/view: same durable per-user budget, same rationale. */
+    const viewGuard = await consume("view-once-audio", `u:${user.id}`, 40, 60_000);
+    if (viewGuard) return rateLimitedResponse(viewGuard);
 
     const { data: message, error: msgError } = await supabaseAdmin
       .from("direct_messages")

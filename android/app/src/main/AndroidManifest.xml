@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Incoming-call full-screen intent (FCMMessagingService, "calls"
+         channel). Android 14+ only auto-grants this to apps with a calling
+         role; for a notification-driven ring the system may require the user
+         to allow "full-screen notifications" per app — the call still
+         arrives as a high-priority ringing banner if they do not. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />

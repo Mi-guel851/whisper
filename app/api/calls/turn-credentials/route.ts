@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     /* One call mints at most a handful of credentials (page reloads race
        each other); 10 per 10 minutes per user+IP is generous and kills the
        scripted case. */
-    const limited = consume("turn-credentials", `${clientIp(req.headers)}:${user.id}`, 10, 10 * 60_000);
+    const limited = await consume("turn-credentials", `${clientIp(req.headers)}:${user.id}`, 10, 10 * 60_000);
     if (limited) return rateLimitedResponse(limited);
 
     const restApiUrl = process.env.TURN_REST_API_URL;

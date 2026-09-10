@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
        a scripted client that already has coins can otherwise publish as fast as
        it can fire requests, and every post fans out to the notification triggers.
        Bucketed by user id so rotating IPs does not reset it. */
-    const postGuard = consume("feed-post", `u:${user.id}`, 6, 60_000);
+    const postGuard = await consume("feed-post", `u:${user.id}`, 6, 60_000);
     if (postGuard) return rateLimitedResponse(postGuard);
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {

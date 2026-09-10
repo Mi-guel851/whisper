@@ -490,7 +490,25 @@ self.addEventListener("fetch", (event) => {
 });
 
 /* ------------------------------------------------------------------------- *
- * Web push — unchanged behaviour
+ * Web push
+ *
+ * Three behaviours, one of them new:
+ *
+ *  1. Banner, as always — `data.url` deep-links (chat/<id>, /premium, the
+ *     feed with ?post=…), `tag` lets one event own one notification.
+ *  2. SUPPRESS when the user is already looking at the surface the
+ *     notification describes. A chat message for the thread on screen does
+ *     not need a banner AND a new bubble AND a toast; the row is already
+ *     there. Those pushes become an in-app `whisper:notification` postMessage
+ *     instead — the pages listen, the unread badge still counts, and no
+ *     second banner double-announces what the eye just saw. (Deliberately:
+ *     this only skips the *display*; the notification row in the database —
+ *     history, badge, sound — was created by the server before this ran, and
+ *     being open in a tab must never lose someone their history.)
+ *  3. `dismiss-notifications`: pages (calls, specifically — see
+ *     lib/calls/useVoiceCall) can retire a stale banner by tag when the
+ *     server-side state says the event is over. A "call ringing" banner for a
+ *     call that ended two minutes ago is a prank, not a feature.
  * ------------------------------------------------------------------------- */
 
 self.addEventListener("push", (event) => {
@@ -502,15 +520,54 @@ self.addEventListener("push", (event) => {
   }
 
   const title = data.title || "Whisper";
+  const targetUrl = data.url || "/dashboard";
   const options = {
     body: data.body || "You got a new anonymous message 👻",
     icon: "/ghost.png",
     badge: "/ghost.png",
-    data: { url: data.url || "/dashboard" },
+    data: { url: targetUrl },
     vibrate: [100, 50, 100],
+    tag: data.tag || undefined,
+    renotify: false,
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      const surface = targetUrl.split("?")[0];
+      if (surface && surface !== "/dashboard") {
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        const viewing = windows.find(
+          (client) => client.visibilityState === "visible" && client.url.indexOf(surface) !== -1
+        );
+        if (viewing) {
+          try {
+            viewing.postMessage({ type: "whisper:notification", data });
+          } catch {
+            /* Detached client; the banner path is fine after all. */
+          }
+          return;
+        }
+      }
+      return self.registration.showNotification(title, options);
+    })()
+  );
+});
+
+/* Retire banners by tag (see 3 above). Pages never get to close
+   OTHER notifications — the tag list is exact by construction. */
+self.addEventListener("message", (event) => {
+  const message = event.data;
+  if (message && message.type === "dismiss-notifications" && Array.isArray(message.tags)) {
+    event.waitUntil(
+      self.registration.getNotifications().then((list) => {
+        for (const notification of list) {
+          if (notification.tag && message.tags.indexOf(notification.tag) !== -1) {
+            notification.close();
+          }
+        }
+      })
+    );
+  }
 });
 
 self.addEventListener("notificationclick", (event) => {

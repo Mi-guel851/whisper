@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
        otherwise brute-forceable at network speed, spread across every warm
        serverless instance. This per-instance floor slows one client dramatically;
        Vercel Firewall rules are the distributed ceiling (see audit report). */
-    const limited = consume("admin-verify-pin", clientIp(req.headers), 6, 10 * 60_000);
+    const limited = await consume("admin-verify-pin", clientIp(req.headers), 6, 10 * 60_000);
     if (limited) return rateLimitedResponse(limited);
 
     const { pin } = await req.json();

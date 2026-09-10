@@ -36,16 +36,20 @@ const { consume } = await load('lib/apiGuard.ts');
 const realNow = Date.now;
 let now = 1_000_000;
 Date.now = () => now;
+/* consume() is async (durable layer first, in-memory only after one failed
+   probe or a missing migration). Await each verdict: a Promise is always
+   truthy, so an unawaited assert.ok here would pass even if the limiter said
+   "allow" — exactly the kind of vacuous green the suite exists to prevent. */
 try {
-  assert.equal(consume('test', 'account', 1, 15 * 60_000), null);
-  assert.ok(consume('test', 'account', 1, 15 * 60_000));
+  assert.equal(await consume('test', 'account', 1, 15 * 60_000), null);
+  assert.ok(await consume('test', 'account', 1, 15 * 60_000));
   now += 11 * 60_000;
   // Force a sweep. The old fixed 10-minute expiry silently removed the 15-minute limit.
-  for (let i = 0; i < 50_010; i++) consume('flood', String(i), 1, 60_000);
-  assert.ok(consume('test', 'account', 1, 15 * 60_000));
-  assert.ok(consume('flood', 'new-identity', 1, 60_000));
+  for (let i = 0; i < 50_010; i++) await consume('flood', String(i), 1, 60_000);
+  assert.ok(await consume('test', 'account', 1, 15 * 60_000));
+  assert.ok(await consume('flood', 'new-identity', 1, 60_000)); // bounded: fail CLOSED
   now += 5 * 60_000;
-  assert.equal(consume('test', 'account', 1, 15 * 60_000), null);
+  assert.equal(await consume('test', 'account', 1, 15 * 60_000), null);
 } finally { Date.now = realNow; }
 console.log('PASS limiter expiry preservation and fail-closed bounded capacity');
 
@@ -69,3 +73,56 @@ assert.match(privateColumns, /revoke %s \(%s\) on table/);
 assert.match(privateColumns, /recovery_phrase_hash/);
 assert.match(privateColumns, /has_table_privilege/);
 console.log('PASS private-column grant repair source guards (live DB tests still required)');
+
+// ---------------------------------------------------------------------------
+// 20260910 hardening pass: CSP measurement, signed uploads, durable guards,
+// session revocation, cron sweep auth. (Client-surface behavior — the call
+// timeline, push channels — is covered in notification-targeting.test.mjs.)
+// ---------------------------------------------------------------------------
+
+const middleware = await read('middleware.ts');
+assert.match(middleware, /Content-Security-Policy-Report-Only/, 'CSP ships report-only: enforce nothing until reports are clean');
+assert.match(middleware, /x-nonce/, 'the nonce rides to Next via the request header');
+assert.match(middleware, /'strict-dynamic'/, 'trusted inline bootstrap propagates through strict-dynamic');
+assert.match(middleware, /\/api\/csp-report/, 'reports have a sink');
+const cspSink = await read('app/api/csp-report/route.ts');
+assert.match(cspSink, /export async function POST/, 'sink accepts the beacon POST');
+assert.match(cspSink, /truncat/i, 'reports are bounded — a sink that stores everything is a DoS gift');
+const nextCfg = await read('next.config.ts');
+assert.match(nextCfg, /frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'/, 'the unbreakable directives are already enforced via config headers');
+
+const signRoute = await read('app/api/cloudinary/sign/route.ts');
+assert.match(signRoute, /startsWith\("Bearer "\)/, 'the signer is authenticated by the same Bearer path the app actually uses');
+assert.match(signRoute, /status: 401/, 'no token, no signature');
+const cloudServerPre = await read('lib/cloudinary.server.ts');
+assert.match(cloudServerPre, /process\.env\.CLOUDINARY_API_SECRET/, 'the api secret is read from env, server-side only');
+assert.match(signRoute, /503/, 'unconfigured secret answers 503 (client degrades to the unsigned preset, loudly)');
+assert.match(signRoute, /whisper\//, 'every signed folder is namespace-prefixed');
+assert.match(signRoute, /owner === user\.id/, 'the owner segment must be the caller');
+const cloudClient = await read('lib/cloudinary.ts');
+assert.match(cloudClient, /fetch\("\/api\/cloudinary\/sign"/, 'uploads ask the server for a signature');
+assert.match(cloudClient, /whisper_unsigned/, 'the unsigned fallback is explicit and documented as transitional');
+const cloudServer = await read('lib/cloudinary.server.ts');
+assert.match(cloudServer, /signUploadParams/, 'server-side signer exists');
+
+for (const [route, bucket] of [
+  ['app/api/photos/view/route.ts', 'view-once-photo'],
+  ['app/api/audio/view/route.ts', 'view-once-audio'],
+  ['app/api/feed/photo/route.ts', 'feed-photo-view'],
+  ['app/api/creator/post/route.ts', 'creator-post'],
+]) {
+  const source = await read(route);
+  assert.ok(source.includes(`await consume("${bucket}"`), `${route} must AWAIT the durable bucket '${bucket}' (sync consume became async; unawaited = unenforced)`);
+}
+
+const resetRoute = await read('app/api/reset-with-phrase/route.ts');
+assert.match(resetRoute, /revoke_user_sessions/, 'a phrase reset invalidates every old session');
+
+const sweep = await read('app/api/calls/sweep/route.ts');
+assert.match(sweep, /CRON_SECRET/, 'the cron endpoint is keyed');
+assert.match(sweep, /Bearer \$\{CRON_SECRET\}|header\.startsWith\("Bearer "\)/, 'Vercel-cron auth style');
+assert.match(sweep, /rpc\("expire_stale_calls"\)/, 'it calls the server-side expiry, no client logic');
+const cronCfg = JSON.parse(await read('vercel.json'));
+assert.equal(cronCfg.crons[0].path, '/api/calls/sweep', 'the cron entry exists');
+
+console.log('PASS csp report-only, signed-upload authority, awaited durable guards, revocation and cron auth');

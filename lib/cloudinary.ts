@@ -65,16 +65,102 @@ export type CloudinaryUpload = {
  * format from the bytes, so a nameless Blob uploads fine; the third argument
  * only exists to give it a nicer `original_filename`.
  */
+/** The two ceilings the browser can enforce as UX before bytes leave the
+ *  device. They are NOT the security boundary — the signed policy from
+ *  /api/cloudinary/sign carries the authoritative `max_file_size`, and
+ *  Cloudinary refuses the upload provider-side regardless of what a tampered
+ *  client claims. These checks exist to fail fast with a readable message. */
+export const CLIENT_MAX_UPLOAD_BYTES = 5_242_880;
+const CLIENT_ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+]);
+
+export class CloudinaryValidationError extends CloudinaryUploadError {}
+
+type SignedPolicy = {
+  cloudName: string;
+  apiKey: string;
+  signature: string;
+  folder: string;
+  timestamp: string;
+  resource_type: string;
+  max_file_size: string;
+  unique_filename: string;
+  overwrite: string;
+};
+
+/**
+ * Ask the server for a signed upload policy for `folder`.
+ *
+ * Null means "signing is not available here" — a server that predates the
+ * route, an unconfigured Cloudinary secret, or a rejected folder — and every
+ * caller falls back to the unsigned preset rather than losing the feature.
+ */
+async function getSignedPolicy(folder: string | undefined): Promise<SignedPolicy | null> {
+  if (!folder) return null;
+  try {
+    /* Lazy import keeps the browser session client out of this module's
+       server-side graph — API routes import the folder constants from here,
+       and a top-level client import would drag browser auth into them. */
+    const { supabase } = await import("@/lib/supabase/client");
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    const response = await fetch("/api/cloudinary/sign", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ folder }),
+    });
+    if (!response.ok) return null;
+    const policy = (await response.json()) as SignedPolicy;
+    return policy?.signature && policy?.timestamp && policy?.folder ? policy : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Appends either the signed policy (authoritative limits) or the unsigned
+ *  preset (fallback) to an upload form. */
+async function appendAuthFields(form: FormData, folder: string | undefined): Promise<void> {
+  const policy = await getSignedPolicy(folder);
+  if (policy) {
+    form.append("api_key", policy.apiKey);
+    form.append("timestamp", policy.timestamp);
+    form.append("signature", policy.signature);
+    form.append("folder", policy.folder);
+    form.append("resource_type", policy.resource_type);
+    form.append("max_file_size", policy.max_file_size);
+    form.append("unique_filename", policy.unique_filename);
+    form.append("overwrite", policy.overwrite);
+    return;
+  }
+  form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  if (folder) form.append("folder", folder);
+}
+
 export async function uploadToCloudinary(
   file: File | Blob,
   folder?: string,
   filename?: string
 ): Promise<CloudinaryUpload> {
-  const form = new FormData();
   const name = filename || (file instanceof File ? file.name : "upload");
+  const declaredType = file.type || (file instanceof File ? file.type : "");
+  if (declaredType && !CLIENT_ALLOWED_IMAGE_TYPES.has(declaredType)) {
+    throw new CloudinaryValidationError("Only JPEG, PNG, WebP, GIF or AVIF images can be uploaded.");
+  }
+  if (file.size > CLIENT_MAX_UPLOAD_BYTES) {
+    throw new CloudinaryValidationError("That image is too large (5 MB max).");
+  }
+
+  const form = new FormData();
   form.append("file", file, name);
-  form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  if (folder) form.append("folder", folder);
+  await appendAuthFields(form, folder);
 
   let response: Response;
   try {
@@ -130,10 +216,25 @@ export async function uploadRemoteToCloudinary(
   remoteUrl: string,
   folder: string
 ): Promise<CloudinaryUpload> {
+  /* Only http(s), and nothing with credentials in the URL: Cloudinary fetches
+     this string, so a `file://`, a private-network host, or an attacker-typed
+     `user:pass@` prefix has to fail here, not at the provider. */
+  let parsed: URL;
+  try {
+    parsed = new URL(remoteUrl);
+  } catch {
+    throw new CloudinaryUploadError("Couldn't save that GIF. Please try again.");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new CloudinaryUploadError("Couldn't save that GIF. Please try again.");
+  }
+  if (parsed.username || parsed.password) {
+    throw new CloudinaryUploadError("Couldn't save that GIF. Please try again.");
+  }
+
   const form = new FormData();
-  form.append("file", remoteUrl);
-  form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  if (folder) form.append("folder", folder);
+  form.append("file", parsed.toString());
+  await appendAuthFields(form, folder);
 
   let response: Response;
   try {

@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
 
     /* Official posts bypass the coin charge, so this rate limit is the only
        thing pacing them. Same budget as a normal author's posts. */
-    const postGuard = consume("creator-post", `u:${user.id}`, 6, 60_000);
+    const postGuard = await consume("creator-post", `u:${user.id}`, 6, 60_000);
     if (postGuard) return rateLimitedResponse(postGuard);
 
     /* ------------------------------------------------------------------

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     /* Same budget as the primary feed route — this one is legacy, but it is
        reachable and it spends coins and writes to the feed. */
-    const postGuard = consume("feed-post", `u:${user.id}`, 6, 60_000);
+    const postGuard = await consume("feed-post", `u:${user.id}`, 6, 60_000);
     if (postGuard) return rateLimitedResponse(postGuard);
 
     const supabaseAdmin = createClient(

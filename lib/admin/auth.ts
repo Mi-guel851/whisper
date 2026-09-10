@@ -167,7 +167,7 @@ export async function requireAdmin(req: NextRequest, body?: unknown): Promise<Ad
   /* Rate-limited before any crypto or network work. Generous on purpose: this
      bucket exists to stop a scripted flood, not to pace an admin browsing the
      panel. The credential search is throttled by the failure counter below. */
-  const limited = consumeMulti("admin-panel", [ip], 400, 10 * 60_000);
+  const limited = await consumeMulti("admin-panel", [ip], 400, 10 * 60_000);
   if (limited) throw new RateLimited(limited);
 
   if (tooManyPinFailures([ip])) {

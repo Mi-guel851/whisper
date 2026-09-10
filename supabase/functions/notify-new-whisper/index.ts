@@ -1,89 +1,30 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const FCM_PROJECT_ID = Deno.env.get("FCM_PROJECT_ID")!;
-const FCM_SERVICE_ACCOUNT_JSON = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON")!;
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-async function getAccessToken(): Promise<string> {
-  const serviceAccount = JSON.parse(FCM_SERVICE_ACCOUNT_JSON);
-
-  const header = { alg: "RS256", typ: "JWT" };
-  const now = Math.floor(Date.now() / 1000);
-  const claims = {
-    iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/firebase.messaging",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const encode = (obj: unknown) =>
-    btoa(JSON.stringify(obj)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  const unsigned = `${encode(header)}.${encode(claims)}`;
-
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    pemToArrayBuffer(serviceAccount.private_key),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    new TextEncoder().encode(unsigned)
-  );
-
-  const jwt = `${unsigned}.${btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")}`;
-
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-  });
-
-  const data = await res.json();
-  return data.access_token;
-}
-
-function pemToArrayBuffer(pem: string): ArrayBuffer {
-  const b64 = pem
-    .replace("-----BEGIN PRIVATE KEY-----", "")
-    .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\s/g, "");
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-/* ------------------------------------------------------------------------- *
- * Caller gate: database-only.
+/**
+ * RETIRED (202609100003) — kept deployed so a leftover dashboard webhook
+ * cannot double-notify.
  *
- * Supabase's verify_jwt on a deployed function accepts ANY valid JWT — an
- * ordinary signed-in user's token is one. These functions trust the `record`
- * in the request body to decide WHO gets notified, so an ungated endpoint
- * lets any user forge pushes (attacker-chosen title/body to any recipient,
- * at any rate) and burn the FCM quota. The only legitimate caller is the
- * pg_net trigger / database webhook, which authenticates with the service
- * role key — so require exactly that, compared on SHA-256 digests to keep
- * the check constant-time.
- * ------------------------------------------------------------------------- */
+ * Whispers used to be pushed ONLY here, via a hand-made "Database Webhook"
+ * on public.messages — the one path invisible to the repo, and the reason
+ * whispers buzzed while inbox/friend/feed pushes did not. 202609100003
+ * unified delivery: the trigger that writes the `notifications` row for a
+ * whisper now also feeds `deliver_notification_push`, which calls
+ * `notify-on-notification` for every notification type including whispers.
+ *
+ * With BOTH alive, every whisper would ring twice. So this function stays
+ * service-role-gated and answers a deliberate no-op. The webhook should be
+ * deleted in Dashboard -> Database -> Webhooks; until someone remembers, this
+ * stub is what makes that mistake harmless. If delivery via
+ * notify-on-notification ever proves broken, restoring the previous
+ * implementation here is the documented fallback.
+ */
+
 async function requireServiceRole(req: Request): Promise<boolean> {
+  const expected = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return false;
+  if (!token || !expected) return false;
   const enc = new TextEncoder();
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", enc.encode(token)),
-    crypto.subtle.digest("SHA-256", enc.encode(SUPABASE_SERVICE_ROLE_KEY)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
   ]);
   const ua = new Uint8Array(a), ub = new Uint8Array(b);
   if (ua.length !== ub.length) return false;
@@ -92,117 +33,18 @@ async function requireServiceRole(req: Request): Promise<boolean> {
   return diff === 0;
 }
 
-function unauthorized() {
-  return new Response(JSON.stringify({ error: "unauthorized" }), {
-    status: 401,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
 Deno.serve(async (req) => {
-  try {
-    if (!(await requireServiceRole(req))) return unauthorized();
-    const payload = await req.json();
-    const message = payload.record;
-
-    if (!message) {
-      return new Response(JSON.stringify({ skipped: true }), { status: 200 });
-    }
-
-    const receiverId = message.recipient_id;
-
-    if (!receiverId) {
-      return new Response(JSON.stringify({ error: "no recipient_id on message" }), { status: 200 });
-    }
-
-    // Check if the receiver has push notifications enabled in their profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("push_notifications")
-      .eq("id", receiverId)
-      .single();
-
-    /* `!profile?.push_notifications` was false-y for null, and the column has no
-       default — so every user who has never opened the notification setting was
-       silently skipped. The rest of the app reads null as opted-in, so only an
-       explicit false may stop a push. */
-    if (profile?.push_notifications === false) {
-      return new Response(JSON.stringify({ skipped: "user disabled notifications" }), { status: 200 });
-    }
-
-    const { data: tokens } = await supabase
-      .from("device_tokens")
-      .select("fcm_token")
-      .eq("user_id", receiverId);
-
-    if (!tokens || tokens.length === 0) {
-      return new Response(JSON.stringify({ skipped: "no device tokens" }), { status: 200 });
-    }
-
-    const accessToken = await getAccessToken();
-    const body = message.image_url
-      ? "👻 Sent you a photo"
-      : (message.message || "New whisper").slice(0, 120);
-
-    const results = await Promise.all(
-      tokens.map((t: { fcm_token: string }) =>
-        fetch(
-          `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              message: {
-                token: t.fcm_token,
-                notification: {
-                  title: "New anonymous whisper 👻",
-                  body,
-                },
-                data: {
-                  type: "whisper",
-                  messageId: String(message.id ?? ""),
-                },
-                /* This block is what the other notification paths were missing.
-                   Whispers vibrated anyway because they fell through to FCM's
-                   auto-created fallback channel, which happens to vibrate — so
-                   the behaviour everyone was comparing against was luck, not
-                   configuration. Stating it explicitly makes the buzz survive a
-                   channel actually existing. */
-                android: {
-                  priority: "high",
-                  notification: {
-                    channel_id: "whispers",
-                    default_vibrate_timings: false,
-                    vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
-                  },
-                },
-                apns: {
-                  headers: { "apns-priority": "10" },
-                  payload: { aps: { sound: "default" } },
-                },
-              },
-            }),
-          }
-        )
-      )
-    );
-
-    const failures: string[] = [];
-    for (const response of results) {
-      if (response.ok) continue;
-      failures.push(`${response.status}: ${(await response.text()).slice(0, 300)}`);
-    }
-    if (failures.length) console.error("[notify-new-whisper] FCM rejected:", failures);
-
-    return new Response(
-      JSON.stringify({ sent: results.length - failures.length, failed: failures.length }),
-      { status: 200 }
-    );
-  } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type" } });
   }
+  if (!(await requireServiceRole(req))) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
+  console.warn("[notify-new-whisper] retired; whispers are delivered by notify-on-notification (see supabase/migrations/202609100004_notification_targeting.sql). Safe to delete the database webhook for this path.");
+  return new Response(
+    JSON.stringify({
+      skipped: "retired: unified push path (deliver_notification_push -> notify-on-notification)",
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
 });

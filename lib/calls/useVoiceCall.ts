@@ -93,6 +93,13 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOfferSdpRef = useRef<string | null>(null);
   const callLogIdRef = useRef<string | null>(null);
+  /** call_logs.call_id of the current attempt (mine as caller, the peer's as
+      callee — taken from the offer payload). Server transitions key on this. */
+  const callIdRef = useRef<string | null>(null);
+  /** For the CALLEE: the call_id carried by the live offer. Decline/answer
+      address the caller's row through it; without it (legacy caller) the
+      callee just tears down locally, exactly as before 0005. */
+  const incomingCallIdRef = useRef<string | null>(null);
   const callFinalizedRef = useRef(false);
   const answeredRef = useRef(false);
   const ringingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -136,23 +143,94 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
     vibrationTimerRef.current = setInterval(() => vibrate([300, 250, 300]), 3_000);
   }, [stopIncomingVibration]);
 
-  /** Closes the call_log row exactly once. `missed` is the caller's truth:
-      the call never reached the other side. */
-  const finalizeCallLog = useCallback((missed: boolean) => {
-    if (!callLogIdRef.current || callFinalizedRef.current) return;
-    callFinalizedRef.current = true;
-    /* Promise.resolve: PostgREST builders thenable-resolve to a PromiseLike
-       without .catch — same treatment as presence.ts's activity stamp. */
-    void Promise.resolve(
-      supabase
-        .from("call_logs")
-        .update({ ended_at: new Date().toISOString(), missed })
-        .eq("id", callLogIdRef.current)
-    ).catch(() => {
-      /* The notification rides this row; a failed update is a missing
-         notification, not a broken call. Swallowed, not surfaced. */
-    });
-  }, []);
+  /** A call_id for the current attempt. Minted here and handed to the server
+      as the idempotency key; the caller's uuid is what every transition
+      (`answered`, `declined`, `missed`, …) is addressed by. */
+  function mintCallId(): string {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+    /* Entropy-free fallback for ancient WebViews; uniqueness only needs to be
+       good enough that one person's two attempts differ, and `uuid` type means
+       the shape must parse. */
+    const rand = () => Math.floor((1 + Math.random()) * 0x100000000).toString(16).slice(1);
+    return `${rand()}${rand()}-${rand()}-4${rand().slice(1)}-a${rand().slice(1)}-${rand()}${rand()}${rand()}`;
+  }
+
+  /**
+   * Report an outcome to the server state machine (202609100006).
+   *
+   * `end_call_log` is the ONLY supported transition: it re-checks identity,
+   * rejects illegal moves (a row already answered on another device cannot be
+   * "declined" again) and fires missed-call notification/cancellation from
+   * inside the same transaction. An illegal transition returns
+   * `{ignored:true}` rather than an error — the machine working, not a fault.
+   *
+   * A database without the migration falls back to the legacy direct update
+   * (one-shot, exactly like the old finalizeCallLog) so an un-migrated server
+   * keeps the pre-0005 behavior instead of losing call bookkeeping entirely.
+   */
+  const reportOutcome = useCallback(
+    (outcome: "answered" | "declined" | "busy" | "canceled" | "missed" | "completed") => {
+      const callId = callIdRef.current;
+      if (!callId) return;
+      if (outcome !== "answered") {
+        if (callFinalizedRef.current) return;
+        callFinalizedRef.current = true;
+      }
+      void Promise.resolve(supabase.rpc("end_call_log", { p_call_id: callId, p_outcome: outcome }))
+        .then(({ error }) => {
+          if (!error) return;
+          const missing =
+            error.code === "PGRST202" || error.code === "42883" || /does not exist/i.test(error.message ?? "");
+          if (missing && outcome !== "answered") {
+            void Promise.resolve(
+              supabase
+                .from("call_logs")
+                .update({ ended_at: new Date().toISOString(), missed: outcome === "missed" })
+                .eq("id", callLogIdRef.current)
+            ).catch(() => {});
+            return;
+          }
+          /* Anything else (a rejected transition, a transient error) is not
+             worth the user's attention: the server sweep and the other side's
+             own transition converge the row; a notification that cannot ride a
+             dead network is a missed notification, not a broken call. */
+        })
+        .catch(() => {});
+    },
+    []
+  );
+
+  /** Pre-0005 databases only: a bare update against the row id, kept as the
+      degraded path so an un-migrated server still records call ends the way it
+      always did. With the migration applied, `reportOutcome` never reaches it
+      (the RPC exists), and rows are keyed by call_id instead. */
+  const legacyFinalize = useCallback(
+    (missed: boolean) => {
+      if (!callLogIdRef.current || callFinalizedRef.current) return;
+      callFinalizedRef.current = true;
+      void Promise.resolve(
+        supabase
+          .from("call_logs")
+          .update({ ended_at: new Date().toISOString(), missed })
+          .eq("id", callLogIdRef.current)
+      ).catch(() => {});
+    },
+    []
+  );
+
+  /** The one entry point every end/answer/decline uses: the server transition
+      table when it exists, the legacy update when the RPC is missing. */
+  const settleCall = useCallback(
+    (outcome: "answered" | "declined" | "busy" | "canceled" | "missed" | "completed") => {
+      if (callIdRef.current || outcome !== "answered") {
+        reportOutcome(outcome);
+        if (callIdRef.current) return;
+      }
+      if (outcome === "missed") legacyFinalize(true);
+      else if (outcome === "canceled" || outcome === "completed") legacyFinalize(false);
+    },
+    [legacyFinalize, reportOutcome]
+  );
 
   const clearCallTimers = useCallback(() => {
     if (ringingTimeoutRef.current) {
@@ -188,6 +266,8 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
     }
     pendingOfferSdpRef.current = null;
     callLogIdRef.current = null;
+    callIdRef.current = null;
+    incomingCallIdRef.current = null;
     callFinalizedRef.current = false;
     answeredRef.current = false;
     mutedRef.current = false;
@@ -196,23 +276,55 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
     setStartedAt(null);
   }, [clearCallTimers, stopIncomingVibration]);
 
+  /** Retire any system-level "Incoming call" banner this browser still shows
+      (web push path: the notification is tagged `call-<callId>` by the
+      service worker). The server fires the FCM-side cancel for native
+      devices; this covers the web, where no FCM is involved and the tab that
+      received the push is the only place a stale banner could linger. */
+  const dismissIncomingAlerts = useCallback(() => {
+    const callId = incomingCallIdRef.current;
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.ready
+      .then((registration) => {
+        registration.active?.postMessage({
+          type: "dismiss-notifications",
+          tags: [callId ? `call-${callId}` : null].filter(Boolean),
+        });
+      })
+      .catch(() => {});
+  }, []);
+
   /** The local-side hangup. `notify` is shown to the local user; the peer
-      is told via the "end" signal. */
+      is told via the "end" signal.
+      `reason` distinguishes the two no-answer endings the server needs apart:
+      a 45-second give-up is MISSED (the callee gets the chat entry + alert);
+      hanging up first is CANCELED (chat entry only — a caller who changes
+      their mind is not a missed call). An answered call that ends is always
+      COMPLETED. The callee side never ends on hangUp; decline is its own
+      action, and a bare navigation-away while incoming is reported busy-
+      equivalent by leaving the row for the caller's timeout / server sweep. */
   const hangUp = useCallback(
-    (notify: string | null) => {
+    (notify: string | null, reason: "timeout" | "user" = "user") => {
       if (statusRef.current === "idle") return;
-      /* A call that never answered is missed — the flip fires the
-         missed-call notification for the other side server-side. */
-      finalizeCallLog(!answeredRef.current);
+      const outcome: "completed" | "missed" | "canceled" = answeredRef.current
+        ? "completed"
+        : reason === "timeout" && statusRef.current === "outgoing"
+        ? "missed"
+        : "canceled";
+      /* The transition table in end_call_log ignores anything illegal, so a
+         callee pressing this (or a double hangup) converges on the server
+         instead of fighting it. */
+      settleCall(outcome);
       void callSignaling.broadcast(conversationIdRef.current, {
         event: "end",
         user_id: myIdRef.current,
+        payload: callIdRef.current ? { callId: callIdRef.current } : null,
       });
       teardownMedia();
       setStatus("idle");
       if (notify) onNoticeRef.current(notify);
     },
-    [finalizeCallLog, teardownMedia]
+    [settleCall, teardownMedia]
   );
 
   /* ------------------------------------------------------------------ */
@@ -342,8 +454,63 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
     if (statusRef.current !== "idle") return;
     if (!requireOnline(onNoticeRef.current, "Calling")) return;
 
+    /* ------------------------------------------------------------------
+       Reserve the call with the SERVER first (start_call_log, 0005).
+       ------------------------------------------------------------------
+       Order matters three times over:
+         * identity/friendship/block/ban checks happen before any microphone
+           is opened, so a call that will be refused never blinks the recording
+           indicator;
+         * the row is created BEFORE the offer is broadcast, so the callee's
+           push alert exists for a caller who navigates away one millisecond
+           later — and it exists only for a call the server actually accepted;
+         * the busy verdict comes from the same query, so the "They're busy"
+           path needs no second round trip and no log entry at all.
+       On a pre-0005 database the RPC is missing; fall through to the legacy
+       table insert (same as before this change) so the app never loses calls
+       to a pending migration. */
+    const callId = mintCallId();
+    let serverBusy = false;
+    let legacyInsert = false;
+    try {
+      const { data, error } = await supabase.rpc("start_call_log", {
+        p_call_id: callId,
+        p_conversation_id: conversationIdRef.current,
+      });
+      if (error) {
+        legacyInsert =
+          error.code === "PGRST202" ||
+          error.code === "42883" ||
+          /does not exist/i.test(error.message ?? "");
+        if (!legacyInsert) {
+          onNoticeRef.current(error.message || "Couldn't start the call.");
+          return;
+        }
+      } else {
+        const receipt = (data ?? {}) as { status?: string; id?: string };
+        if (receipt.status === "busy") {
+          serverBusy = true;
+        } else {
+          callIdRef.current = callId;
+          callLogIdRef.current = receipt.id ?? null;
+        }
+      }
+    } catch {
+      legacyInsert = true;
+    }
+    if (serverBusy) {
+      onNoticeRef.current("They're on another call right now.");
+      return;
+    }
+
     const stream = await acquireMedia();
-    if (!stream) return;
+    if (!stream) {
+      /* Mic refused AFTER the server accepted: the ringing row exists, so it
+         has to be closed, not orphaned. */
+      settleCall("canceled");
+      callIdRef.current = null;
+      return;
+    }
 
     const iceServers = await getIceServers();
     const pc = new RTCPeerConnection({ iceServers });
@@ -360,42 +527,47 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
     } catch {
+      settleCall("canceled");
       teardownMedia();
       setStatus("idle");
       onNoticeRef.current("Couldn't start the call.");
       return;
     }
 
+    /* The call_id rides the offer so the callee can finalize THE SAME row on
+       decline/answer instead of guessing by conversation. */
     void callSignaling.broadcast(conversationIdRef.current, {
       event: "offer",
       user_id: myIdRef.current,
-      payload: { sdp: pc.localDescription?.sdp ?? "" },
+      payload: { sdp: pc.localDescription?.sdp ?? "", callId: legacyInsert ? undefined : callId },
     });
 
-    /* The log row exists from the first ring, not from the connect: a call
-       that rings for 40 seconds and goes missed is still a call, and the
-       missed notification needs a row to flip. */
-    void Promise.resolve(
-      supabase
-        .from("call_logs")
-        .insert({
-          conversation_id: conversationIdRef.current,
-          caller_id: myIdRef.current,
-          callee_id: otherUserIdRef.current,
+    if (legacyInsert) {
+      /* Pre-0005 fallback, kept exactly as it behaved before: the row exists
+         from the first ring, not from the connect. */
+      void Promise.resolve(
+        supabase
+          .from("call_logs")
+          .insert({
+            conversation_id: conversationIdRef.current,
+            caller_id: myIdRef.current,
+            callee_id: otherUserIdRef.current,
+          })
+          .select("id")
+      )
+        .then(({ data }) => {
+          callLogIdRef.current = (data?.[0] as { id?: string } | undefined)?.id ?? null;
         })
-        .select("id")
-    )
-      .then(({ data }) => {
-        callLogIdRef.current = (data?.[0] as { id?: string } | undefined)?.id ?? null;
-      })
-      .catch(() => {});
+        .catch(() => {});
+    }
 
     /* A phone gives up eventually. Forty-five unanswered seconds is a
-       missed call, not a dial tone forever. */
+       missed call, not a dial tone forever. The server's sweep is the backstop
+       if THIS timer never fires (tab killed, phone rebooted). */
     ringingTimeoutRef.current = setTimeout(() => {
-      if (statusRef.current === "outgoing") hangUp(null);
+      if (statusRef.current === "outgoing") hangUp(null, "timeout");
     }, OUTGOING_TIMEOUT_MS);
-  }, [acquireMedia, enabled, hangUp, teardownMedia, wirePeerConnection]);
+  }, [acquireMedia, enabled, hangUp, settleCall, teardownMedia, wirePeerConnection]);
 
   /* ------------------------------------------------------------------ */
   /* Inbound call                                                        */
@@ -446,9 +618,25 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
     void callSignaling.broadcast(conversationIdRef.current, {
       event: "answer",
       user_id: myIdRef.current,
-      payload: { sdp: pc.localDescription?.sdp ?? "" },
+      payload: { sdp: pc.localDescription?.sdp ?? "", callId: incomingCallIdRef.current ?? undefined },
     });
-  }, [acquireMedia, stopIncomingVibration, teardownMedia, wirePeerConnection]);
+
+    /* Answering is a server transition, not just a media state: it closes the
+       callee's "ringing" leg (status -> answered), marks the incoming-call
+       notification read, and cancels the ringing banner on every device this
+       person owns. A PUSH NEVER AUTHORIZES THE CALL — this call only lands
+       for the user the row was addressed to (end_call_log re-checks), and it
+       only changes state because they pressed Accept in a live,
+       channel-authorized session. */
+    if (incomingCallIdRef.current) {
+      const prior = callIdRef.current;
+      callIdRef.current = incomingCallIdRef.current;
+      reportOutcome("answered");
+      callIdRef.current = prior ?? incomingCallIdRef.current;
+      callFinalizedRef.current = false; // the call is now LIVE; its end still has to be reported
+      dismissIncomingAlerts();
+    }
+  }, [acquireMedia, dismissIncomingAlerts, reportOutcome, stopIncomingVibration, teardownMedia, wirePeerConnection]);
 
   const declineIncoming = useCallback(() => {
     if (statusRef.current !== "incoming") return;
@@ -457,11 +645,19 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
     void callSignaling.broadcast(conversationIdRef.current, {
       event: "decline",
       user_id: myIdRef.current,
+      payload: incomingCallIdRef.current ? { callId: incomingCallIdRef.current } : null,
     });
+    /* The decline writes the row as `declined` (no missed push — they heard it
+       and said no) and cancels the ringing notification on this device's
+       peers. */
+    if (incomingCallIdRef.current) {
+      callIdRef.current = incomingCallIdRef.current;
+      reportOutcome("declined");
+    }
     teardownMedia();
     setStatus("idle");
     vibrate(HAPTIC.warning);
-  }, [stopIncomingVibration, teardownMedia]);
+  }, [reportOutcome, stopIncomingVibration, teardownMedia]);
 
   /* ------------------------------------------------------------------ */
   /* Controls                                                            */
@@ -540,10 +736,14 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
             void callSignaling.broadcast(conversationIdRef.current, {
               event: "busy",
               user_id: myIdRef.current,
+              payload:
+                typeof signal.payload?.callId === "string" ? { callId: signal.payload.callId } : null,
             });
             return;
           }
           pendingOfferSdpRef.current = signal.payload?.sdp ?? null;
+          incomingCallIdRef.current =
+            typeof signal.payload?.callId === "string" ? signal.payload.callId : null;
           setStatus("incoming");
           startRingTone();
           startIncomingVibration();
@@ -575,10 +775,16 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
         }
 
         case "end": {
-          /* The other side hung up. Close our own log row (if we are the
-             caller and it is still open) as a normal completion — the flip
-             to missed is the caller's own decision, made in hangUp. */
-          finalizeCallLog(false);
+          /* The other side hung up. A live call completes; an unanswered one
+             the peer walked away from is recorded CANCELED by whoever reaches
+             the server first (the transition table drops the loser's write),
+             never MISSED — "they left" is not "they missed it". */
+          settleCall(answeredRef.current ? "completed" : "canceled");
+          /* A callee receiving `end` while still ringing: the system banner is
+             retired from the same place the server retires it (data-only FCM
+             via notify-on-notification), but a browser without a service
+             worker still needs the local close. */
+          if (statusRef.current === "incoming") dismissIncomingAlerts();
           teardownMedia();
           setStatus("idle");
           onNoticeRef.current("Call ended.");
@@ -586,7 +792,11 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
         }
 
         case "busy": {
-          finalizeCallLog(!answeredRef.current);
+          /* Busy is not missed: the callee's device answered the signaling by
+             refusing it. Record the attempt, skip the missed alert — and on a
+             modern database the callee side already wrote `busy`/declined its
+             own way; the table ignores this write in that case. */
+          settleCall("canceled");
           teardownMedia();
           setStatus("idle");
           onNoticeRef.current("They're on another call right now.");
@@ -594,7 +804,11 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
         }
 
         case "decline": {
-          finalizeCallLog(!answeredRef.current);
+          /* Declined ≠ missed. The callee's own `declined` (0005) writes the
+             row when it can; this caller-side call covers legacy peers, and is
+             ignored when the row is already final either way. */
+          settleCall("canceled");
+          if (statusRef.current === "incoming") dismissIncomingAlerts();
           teardownMedia();
           setStatus("idle");
           onNoticeRef.current("Call declined.");
@@ -602,7 +816,7 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
         }
       }
     },
-    [finalizeCallLog, startIncomingVibration, teardownMedia]
+    [dismissIncomingAlerts, settleCall, startIncomingVibration, teardownMedia]
   );
 
   /* The channel subscription, and the unmount tear-down that makes
@@ -621,17 +835,68 @@ export function useVoiceCall({ conversationId, myId, otherUserId, enabled, onNot
       handleSignalRef.current(signal)
     );
 
+    /* Stale-alert convergence (server-side, not timer-side): call_logs is in
+       the realtime publication and readable by participants, so when ANY
+       device of either party settles the row — answered elsewhere, declined,
+       or the expiry sweep closed it — this view tears the ring down too.
+       Without it, the overlay on the other device would offer "Accept" for a
+       call that no longer exists. */
+    const logChannel = supabase
+      .channel(`call-logs-${conversationId}-${myId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "call_logs",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as { status?: string };
+          if (
+            (statusRef.current === "incoming" || statusRef.current === "outgoing") &&
+            row.status &&
+            row.status !== "ringing"
+          ) {
+            dismissIncomingAlerts();
+            /* Only an un-answered leg is torn down by a remote finalization;
+               a live call (answered) keeps running no matter what the log
+               says — its own media/ICE state decides when it ends. */
+            if (!answeredRef.current) {
+              stopRingTone();
+              teardownMedia();
+              setStatus("idle");
+              onNoticeRef.current(
+                row.status === "missed" || row.status === "expired"
+                  ? "The call timed out."
+                  : "Call ended before it connected."
+              );
+            }
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       unsubscribe();
+      supabase.removeChannel(logChannel);
       if (statusRef.current !== "idle") {
         void callSignaling.broadcast(conversationId, { event: "end", user_id: myId });
-        finalizeCallLog(!answeredRef.current);
+        settleCall(answeredRef.current ? "completed" : "canceled");
         teardownMedia();
         statusRef.current = "idle";
         setStatusState("idle");
       }
     };
-  }, [enabled, myId, otherUserId, conversationId, finalizeCallLog, teardownMedia]);
+  }, [
+    enabled,
+    myId,
+    otherUserId,
+    conversationId,
+    settleCall,
+    teardownMedia,
+    dismissIncomingAlerts,
+  ]);
 
   return {
     status,

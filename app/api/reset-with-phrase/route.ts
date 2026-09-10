@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     /* Bucket the *attempt* before any database work, so even requests for
        nonexistent users cost the attacker their quota. */
-    const byIp = consume("reset-phrase:ip", ip, 8, 10 * 60_000);
+    const byIp = await consume("reset-phrase:ip", ip, 8, 10 * 60_000);
     if (byIp) return rateLimitedResponse(byIp);
 
     if (!USERNAME_RE.test(username) || !phrase) {
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(INVALID, { status: 400 });
     }
 
-    const perTarget = consumeMulti("reset-phrase:target", [ip, `u:${username}`], 4, 15 * 60_000);
+    const perTarget = await consumeMulti("reset-phrase:target", [ip, `u:${username}`], 4, 15 * 60_000);
     if (perTarget) return rateLimitedResponse(perTarget);
 
     if (newPassword.length < 8 || newPassword.length > 256) {
@@ -98,14 +98,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Couldn't reset the password. Please try again." }, { status: 500 });
     }
 
-    /* A password change is the moment a stolen session should die. Gotrue's
-       behavior on admin updates varies by version, so say the requirement out
-       loud in the log line: if sessions survive this, the dashboard setting
-       (Auth → "terminate existing sessions on password change" or an equivalent
-       revocation call) has to close the gap. */
-    console.warn(
-      `[reset-with-phrase] password changed for user ${profile.id} — verify existing sessions/refresh tokens were invalidated`
-    );
+    /* A password change is the moment a stolen session should die. GoTrue's
+       behavior on admin updates varies by version, so this does not wait for
+       it: `revoke_user_sessions` (202609100005) deletes the user's
+       auth.sessions / refresh-token rows directly — the same mechanism the
+       dashboard's "sign out" uses — so every device must re-authenticate with
+       the new password at its next refresh. Honest limits: access tokens
+       already issued are stateless JWTs and survive until their ~1h expiry,
+       and on a deployment where the service role cannot write to the `auth`
+       schema the function warns and returns false; the reset itself still
+       succeeds, which is the priority order. */
+    try {
+      const { data: revoked, error: revokeError } = await supabaseAdmin.rpc(
+        "revoke_user_sessions",
+        { p_user: profile.id }
+      );
+      if (revokeError) {
+        console.warn(
+          "[reset-with-phrase] session revocation RPC unavailable — apply supabase/migrations/202609100005_durable_guards_and_payments.sql and enable 'terminate sessions on password change' in Auth settings:",
+          revokeError.message
+        );
+      } else if (!revoked) {
+        console.warn(
+          "[reset-with-phrase] sessions could not be revoked by SQL on this deployment — close the gap via the Supabase dashboard (Auth -> Security)."
+        );
+      }
+    } catch (revokeErr) {
+      console.warn("[reset-with-phrase] session revocation failed:", revokeErr);
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

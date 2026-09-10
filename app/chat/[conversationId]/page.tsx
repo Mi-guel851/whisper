@@ -52,6 +52,8 @@ import Button from "@/components/Button";
 import { useVoiceCall } from "@/lib/calls/useVoiceCall";
 import IncomingCallOverlay from "@/components/calls/IncomingCallOverlay";
 import InCallSheet from "@/components/calls/InCallSheet";
+import CallEntryRow from "@/components/chat/CallEntryRow";
+import type { CallEntryInfo } from "@/lib/calls/callFormat";
 
 interface SecureScreenPlugin {
   enable(): Promise<void>;
@@ -90,6 +92,14 @@ type Message = {
    * same list without a parallel array to keep in sync.
    */
   send_state?: "sending" | "failed";
+  /**
+   * Client-only, and the mirror-image trick of the same idea: a `call_logs`
+   * row (server data, different table) wearing the Message shape long enough
+   * to be interleaved into the timeline by time. `call_entry` is the payload;
+   * every other field on the carrier row is filler the bubble never reads,
+   * because MessageBubble branches to <CallEntryRow> first.
+   */
+  call_entry?: CallEntryInfo;
 };
 
 type Reaction = {
@@ -537,6 +547,12 @@ export default function ChatPage() {
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
+  /* Call outcomes for this conversation, keyed by call_logs.id so an INSERT
+     and the UPDATE that closes the same call can never render two entries.
+     Server state, realtime-refreshed: a missed call recorded while this
+     screen was closed shows up the moment it is opened, and a call answered
+     on the caller's side converges here without a timer. */
+  const [callEntries, setCallEntries] = useState<Record<string, CallEntryInfo>>({});
   const [pinDurationFor, setPinDurationFor] = useState<Message | null>(null);
   const [pinCursor, setPinCursor] = useState(0);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -595,6 +611,94 @@ export default function ChatPage() {
     enabled: Boolean(isFriendConversation) && !loading && Boolean(myId) && Boolean(otherUserId),
     onNotice: showToast,
   });
+
+  /* The timeline of call outcomes. Fetch once the thread is open, then keep
+     it exact via realtime; both write the same id-keyed map, so repeats are
+     structural no-ops rather than duplicate rows. */
+  useEffect(() => {
+    if (!conversationId) return;
+    let active = true;
+
+    async function loadCallLogs() {
+      const { data } = await supabase
+        .from("call_logs")
+        .select("id,caller_id,callee_id,started_at,ended_at,status")
+        .eq("conversation_id", conversationId)
+        .order("started_at", { ascending: true })
+        .limit(120);
+      if (!active || !data) return;
+      const next: Record<string, CallEntryInfo> = {};
+      for (const row of data as unknown as CallEntryInfo[]) {
+        next[row.id] = row;
+      }
+      setCallEntries(next);
+    }
+    void loadCallLogs();
+
+    const channel = supabase
+      .channel(`call-entries-${conversationId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "call_logs", filter: `conversation_id=eq.${conversationId}` },
+        (payload) => {
+          const row = (payload.new ?? {}) as Partial<CallEntryInfo>;
+          const rowId = row.id;
+          if (!rowId) return;
+          if (payload.eventType === "DELETE") {
+            setCallEntries((prev) => {
+              if (!(rowId in prev)) return prev;
+              const copy = { ...prev };
+              delete copy[rowId];
+              return copy;
+            });
+            return;
+          }
+          setCallEntries((prev) => ({ ...prev, [rowId]: row as CallEntryInfo }));
+          /* An outcome that lands while the user is looking: the missed-call
+             banner (if any) is already redundant — the thread is THE view of
+             it. */
+          if ((row.status === "missed" || row.status === "expired") && payload.eventType === "UPDATE") {
+            void loadCallLogs();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId]);
+
+  const visibleTimeline = useMemo(() => {
+    const calls = Object.values(callEntries);
+    if (calls.length === 0) return messages;
+    const carriers: Message[] = calls.map((entry) => ({
+      id: `call:${entry.id}`,
+      sender_id: entry.caller_id,
+      content: null,
+      created_at: entry.started_at,
+      reply_to_id: null,
+      image_path: null,
+      audio_path: null,
+      audio_duration_ms: null,
+      audio_waveform: null,
+      audio_mime: null,
+      is_view_once: false,
+      image_viewed_at: null,
+      audio_viewed_at: null,
+      delivered_at: entry.ended_at,
+      read_at: entry.ended_at,
+      media_url: null,
+      media_kind: null,
+      media_width: null,
+      media_height: null,
+      call_entry: entry,
+    }));
+    return [...messages, ...carriers].sort(
+      (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id)
+    );
+  }, [messages, callEntries]);
   const [actionMenuFor, setActionMenuFor] = useState<string | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -2235,14 +2339,29 @@ export default function ChatPage() {
 
             {loading ? (
               <ChatSkeleton />
-            ) : messages.length === 0 ? (
+            ) : visibleTimeline.length === 0 ? (
               <p className="chat-context-recede chat-meta mt-10 text-center">Say hi 👻 — they won&apos;t know who you are.</p>
             ) : (
-              messages.map((msg, index) => {
-                const previous = index > 0 ? messages[index - 1] : null;
-                const next = index < messages.length - 1 ? messages[index + 1] : null;
+              visibleTimeline.map((msg, index) => {
+                const previous = index > 0 ? visibleTimeline[index - 1] : null;
+                const next = index < visibleTimeline.length - 1 ? visibleTimeline[index + 1] : null;
+                /* Call outcomes are system chips, not bubbles: they break the
+                   run on both sides so nobody's avatar/date grouping gets
+                   swallowed by a neighboring log row. */
+                if (msg.call_entry) {
+                  return (
+                    <CallEntryRow
+                      key={msg.id}
+                      entry={msg.call_entry}
+                      viewerId={myId}
+                      isFriend={Boolean(isFriendConversation)}
+                      onCallBack={isFriendConversation ? () => void call.startCall() : undefined}
+                    />
+                  );
+                }
                 const startsDay = !previous || !sameDay(previous.created_at, msg.created_at);
                 const withinRun = (a: Message, b: Message) =>
+                  !a.call_entry && !b.call_entry &&
                   a.sender_id === b.sender_id &&
                   sameDay(a.created_at, b.created_at) &&
                   Math.abs(new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) < 5 * 60_000;

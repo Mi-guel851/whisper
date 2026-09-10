@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { paymentBelongsToUser } from "@/lib/paymentOwnership";
 import { COIN_PACKAGES } from "@/lib/coins";
 import { getLiveRatesPerUsd } from "@/lib/currency";
-import { consume, rateLimitedResponse } from "@/lib/apiGuard";
+import { clientIp, consumeMulti, rateLimitedResponse } from "@/lib/apiGuard";
 
 const MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
        can't hammer Paystack or re-run verify in a loop. A legitimate double-tap
        of the callback is well inside this; the DB-side reference guard in
        credit_verified_payment is what actually stops a double credit. */
-    const verifyGuard = consume("paystack-verify", `u:${user.id}`, 10, 60_000);
+    const verifyGuard = await consumeMulti("paystack-verify", [`u:${user.id}`, clientIp(req.headers)], 10, 60_000);
     if (verifyGuard) return rateLimitedResponse(verifyGuard);
 
     const paystackRes = await fetch(
