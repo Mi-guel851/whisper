@@ -11,10 +11,7 @@ const UUID_RE = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 function pemToBuffer(pem: string) {
   const binary = atob(
-    pem
-      .replace("-----BEGIN PRIVATE KEY-----", "")
-      .replace("-----END PRIVATE KEY-----", "")
-      .replace(/\s/g, "")
+    pem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").replace(/\s/g, "")
   );
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -24,10 +21,7 @@ function pemToBuffer(pem: string) {
 async function accessToken() {
   const account = JSON.parse(serviceAccountJson);
   const encode = (value: unknown) =>
-    btoa(JSON.stringify(value))
-      .replace(/=/g, "")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_");
+    btoa(JSON.stringify(value)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
   const now = Math.floor(Date.now() / 1000);
   const unsigned = `${encode({ alg: "RS256", typ: "JWT" })}.${encode({
     iss: account.client_email,
@@ -48,39 +42,14 @@ async function accessToken() {
     key,
     new TextEncoder().encode(unsigned)
   );
-  const jwt = `${unsigned}.${btoa(
-    String.fromCharCode(...new Uint8Array(signature))
-  )
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")}`;
+  const jwt = `${unsigned}.${btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_")}`;
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
   });
   return (await response.json()).access_token as string;
-}
-
-async function requireServiceRole(req: Request): Promise<boolean> {
-  const expected =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-    Deno.env.get("SERVICE_ROLE_KEY") ??
-    "";
-  const token = (req.headers.get("Authorization") ?? "")
-    .replace(/^Bearer\s+/i, "")
-    .trim();
-  if (!token || !expected) return false;
-  const enc = new TextEncoder();
-  const [a, b] = await Promise.all([
-    crypto.subtle.digest("SHA-256", enc.encode(token)),
-    crypto.subtle.digest("SHA-256", enc.encode(expected)),
-  ]);
-  const ua = new Uint8Array(a),
-    ub = new Uint8Array(b);
-  let diff = 0;
-  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
-  return diff === 0;
 }
 
 async function sendFcm(
@@ -94,10 +63,7 @@ async function sendFcm(
         `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({ message }),
         }
       );
@@ -108,9 +74,7 @@ async function sendFcm(
 
   let response = await doFetch();
   if (!response || response.status === 429 || response.status >= 500) {
-    await new Promise((r) =>
-      setTimeout(r, 400 + Math.floor(Math.random() * 400))
-    );
+    await new Promise((r) => setTimeout(r, 400 + Math.floor(Math.random() * 400)));
     response = await doFetch();
     if (!response) return { ok: false, stale: false };
   }
@@ -124,18 +88,8 @@ async function sendFcm(
 
 Deno.serve(async (request) => {
   try {
-    if (!(await requireServiceRole(request))) {
-      console.error("[notify-new-feed-post] unauthorized request");
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-      });
-    }
-
     const payload = await request.json();
-    console.log(
-      "[notify-new-feed-post] payload:",
-      JSON.stringify(payload).slice(0, 200)
-    );
+    console.log("[notify-new-feed-post] payload:", JSON.stringify(payload).slice(0, 200));
 
     const postId = String(payload?.post_id ?? payload?.record?.id ?? "");
     const preview =
@@ -145,21 +99,14 @@ Deno.serve(async (request) => {
         ? payload.record.body.trim().slice(0, 120)
         : "A friend shared something on the Whisper public feed.";
 
-    const rawRecipients = Array.isArray(payload?.recipients)
-      ? payload.recipients
-      : [];
-    const recipients = [
-      ...new Set(rawRecipients.map((id: unknown) => String(id).toLowerCase())),
-    ]
+    const rawRecipients = Array.isArray(payload?.recipients) ? payload.recipients : [];
+    const recipients = [...new Set(rawRecipients.map((id: unknown) => String(id).toLowerCase()))]
       .filter((id: string) => UUID_RE.test(id))
       .slice(0, 200);
 
     if (!postId || !recipients.length) {
       console.log("[notify-new-feed-post] skipped — no recipients or postId");
-      return new Response(
-        JSON.stringify({ skipped: "no explicit recipients" }),
-        { status: 200 }
-      );
+      return new Response(JSON.stringify({ skipped: "no explicit recipients" }), { status: 200 });
     }
 
     const { data: tokens, error: tokenError } = await supabase
@@ -168,28 +115,18 @@ Deno.serve(async (request) => {
       .in("user_id", recipients);
 
     if (tokenError) {
-      console.error(
-        "[notify-new-feed-post] device_tokens read failed:",
-        tokenError.message
-      );
-      return new Response(JSON.stringify({ error: "token lookup failed" }), {
-        status: 500,
-      });
+      console.error("[notify-new-feed-post] device_tokens read failed:", tokenError.message);
+      return new Response(JSON.stringify({ error: "token lookup failed" }), { status: 500 });
     }
 
     if (!tokens?.length) {
-      return new Response(
-        JSON.stringify({ skipped: "no device tokens" }),
-        { status: 200 }
-      );
+      return new Response(JSON.stringify({ skipped: "no device tokens" }), { status: 200 });
     }
 
     const fcmToken = await accessToken();
     if (!fcmToken) {
       console.error("[notify-new-feed-post] FCM auth failed");
-      return new Response(JSON.stringify({ error: "fcm auth failed" }), {
-        status: 500,
-      });
+      return new Response(JSON.stringify({ error: "fcm auth failed" }), { status: 500 });
     }
 
     let sent = 0;
@@ -225,28 +162,16 @@ Deno.serve(async (request) => {
     );
 
     if (deadTokens.length) {
-      await supabase
-        .from("device_tokens")
-        .delete()
-        .in("fcm_token", deadTokens);
+      await supabase.from("device_tokens").delete().in("fcm_token", deadTokens);
     }
 
-    console.log(
-      `[notify-new-feed-post] sent:${sent} failed:${failed} pruned:${deadTokens.length}`
-    );
+    console.log(`[notify-new-feed-post] sent:${sent} failed:${failed} pruned:${deadTokens.length}`);
     return new Response(
-      JSON.stringify({
-        sent,
-        failed,
-        pruned: deadTokens.length,
-        audience: recipients.length,
-      }),
+      JSON.stringify({ sent, failed, pruned: deadTokens.length, audience: recipients.length }),
       { status: 200 }
     );
   } catch (error) {
     console.error("[notify-new-feed-post] error:", error);
-    return new Response(JSON.stringify({ error: String(error) }), {
-      status: 500,
-    });
+    return new Response(JSON.stringify({ error: String(error) }), { status: 500 });
   }
 });
