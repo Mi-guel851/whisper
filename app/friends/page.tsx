@@ -6,6 +6,7 @@ import { Check, Clock, Compass, Ghost, MessageCircle, Radar, UserPlus, Users, X 
 import { motion } from "framer-motion";
 
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { presenceManager } from "@/lib/realtime/presence";
 import { requireOnline } from "@/lib/offline";
 import { COUNTRIES } from "@/lib/countries";
@@ -571,7 +572,7 @@ function FriendsPageContent() {
       if (error.code === "PGRST202" || /could not find the function/i.test(error.message)) {
         showToast("Pending threads aren't available on this server yet.");
       } else {
-        showToast(error.message || "Couldn't open the pending thread.");
+        showToast(safeErrorMessage(error, "Couldn't open the pending thread."));
       }
       setBusyId(null);
       return;

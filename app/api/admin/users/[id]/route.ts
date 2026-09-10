@@ -31,11 +31,16 @@ export async function GET(
 
     const { data, error } = await admin.db.rpc("admin_user_detail", { p_user_id: id });
     if (error) {
-      const message =
-        error.code === "42883"
-          ? "The admin read model is missing. Apply supabase/migrations/202609080001_admin_control_center.sql."
-          : error.message;
-      return Response.json({ error: message }, { status: 400 });
+      if (error.code === "42883") {
+        return Response.json(
+          { error: "The admin read model is missing. Apply supabase/migrations/202609080001_admin_control_center.sql." },
+          { status: 400 }
+        );
+      }
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/users/[id]] detail failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     /* Audited before the response is built, not after: a route that returns and

@@ -51,13 +51,21 @@ export async function GET(req: NextRequest) {
     ]);
 
     if (rowsError) {
-      const message =
-        rowsError.code === "42883"
-          ? "The admin read model is missing. Apply supabase/migrations/202609080001_admin_control_center.sql."
-          : rowsError.message;
-      return Response.json({ error: message }, { status: 400 });
+      if (rowsError.code === "42883") {
+        return Response.json(
+          { error: "The admin read model is missing. Apply supabase/migrations/202609080001_admin_control_center.sql." },
+          { status: 400 }
+        );
+      }
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/users] list failed:", rowsError.code, rowsError.message);
+      return Response.json({ error: rowsError.message }, { status: 500 });
     }
-    if (countError) return Response.json({ error: countError.message }, { status: 400 });
+    if (countError) {
+      console.error("[admin/users] count failed:", countError.code, countError.message);
+      return Response.json({ error: countError.message }, { status: 500 });
+    }
 
     /* Masked here rather than in the component, so the panel cannot be made to
        show a full phone number by editing React state. The detail view is the

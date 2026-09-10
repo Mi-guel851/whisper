@@ -164,20 +164,33 @@ export default function InboxPage() {
           return;
         }
 
-        // One windowed query instead of one per conversation. Newest first, so the
-        // first row seen for a conversation is its latest message.
-        const { data: recent, error: recentError } = await supabase
-          .from("direct_messages")
-          .select("conversation_id, content, sender_id, is_view_once, image_path, image_viewed_at, audio_path, audio_viewed_at, media_url, media_kind, created_at, delivered_at, read_at")
-          .in("conversation_id", ids)
-          .order("created_at", { ascending: false })
-          .limit(600);
+        /* One exact row per conversation, straight from the database
+           (202609100004). The old windowed query — 600 newest rows across
+           every conversation, first row per conversation wins — is correct
+           unless one heavy thread fills the whole window, in which case the
+           quieter threads get no preview at all and their rows read "Tap to
+           open the conversation" instead of their last message. The windowed
+           query stays as the fallback for an unmigrated database. */
+        const { data: rpcPreviews, error: rpcError } = await supabase.rpc("inbox_message_previews", {
+          p_conversation_ids: ids,
+        });
 
-        if (recentError) console.error("Inbox preview fetch error:", recentError);
+        let recent: MessagePreview[] | null = rpcPreviews ?? null;
+        if (rpcError || recent === null) {
+          if (rpcError) console.warn("inbox_message_previews unavailable, using the windowed query:", rpcError.message);
+          const { data: windowed, error: recentError } = await supabase
+            .from("direct_messages")
+            .select("conversation_id, content, sender_id, is_view_once, image_path, image_viewed_at, audio_path, audio_viewed_at, media_url, media_kind, created_at, delivered_at, read_at")
+            .in("conversation_id", ids)
+            .order("created_at", { ascending: false })
+            .limit(600);
+          if (recentError) console.error("Inbox preview fetch error:", recentError);
+          recent = windowed;
+        }
 
         const latest: Record<string, MessagePreview> = {};
         for (const message of recent || []) {
-          if (!latest[message.conversation_id]) latest[message.conversation_id] = message as MessagePreview;
+          if (!latest[message.conversation_id]) latest[message.conversation_id] = message;
         }
 
         /* Unread counts come from a single GROUP BY on the database. The old

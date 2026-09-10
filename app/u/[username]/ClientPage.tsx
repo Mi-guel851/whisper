@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion, type Variants } from "framer-motion";
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { useToast } from "@/components/ToastProvider";
 import AmbientFloaters from "@/components/AmbientFloaters";
 import PaperPlaneFlight from "@/components/PaperPlaneFlight";
@@ -268,7 +269,7 @@ export default function PublicProfile() {
     setLoading(false);
 
     if (error) {
-      showToast(error.message);
+      showToast(safeErrorMessage(error, "Couldn't send that message."));
       return;
     }
 

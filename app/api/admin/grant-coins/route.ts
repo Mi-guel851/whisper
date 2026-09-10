@@ -61,11 +61,16 @@ export async function POST(req: NextRequest) {
       /* 42883 is "function does not exist" — 202608190004 has not been applied,
          or only the old three-argument signature is present. Worth naming, because
          the generic message reads as a permissions problem. */
-      const message =
-        error.code === "42883"
-          ? "The grant function is missing or out of date. Apply supabase/migrations/202608190004_admin_pin_grants.sql."
-          : error.message;
-      return NextResponse.json({ error: message }, { status: 400 });
+      if (error.code === "42883") {
+        return NextResponse.json(
+          { error: "The grant function is missing or out of date. Apply supabase/migrations/202608190004_admin_pin_grants.sql." },
+          { status: 400 }
+        );
+      }
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/grant-coins] grant failed:", error.code, error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     await logAdmin(admin.db, admin.adminId, "coin.granted", null, {

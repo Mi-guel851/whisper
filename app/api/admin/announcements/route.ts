@@ -21,11 +21,18 @@ export async function GET(req: NextRequest) {
     });
 
     if (error) {
-      const message =
-        error.code === "42883"
-          ? "The announcement system is missing. Apply supabase/migrations/202609080002_announcements.sql."
-          : error.message;
-      return Response.json({ error: message }, { status: 400 });
+      if (error.code === "42883") {
+        return Response.json(
+          { error: "The announcement system is missing. Apply supabase/migrations/202609080002_announcements.sql." },
+          { status: 400 }
+        );
+      }
+      /* Only the two allowlisted admin accounts can reach this route
+         (requireAdmin above), so they get the real text — a SQLSTATE or a
+         missing-function error is what makes a broken migration findable.
+         The same detail goes to the deployment log. */
+      console.error("[admin/announcements] list failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     return Response.json({ announcements: data ?? [] });
@@ -50,7 +57,12 @@ export async function POST(req: NextRequest) {
       p_by: admin.adminId,
     });
 
-    if (error) return Response.json({ error: error.message }, { status: 400 });
+    if (error) {
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/announcements] create failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
+    }
 
     /* `admin_create_announcement` logs 'announcement.created'; publishing is a
        separate decision and gets its own entry, so the log can answer "was this

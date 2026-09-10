@@ -248,9 +248,10 @@ export async function uploadRemoteToCloudinary(
 
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.secure_url) {
-    const detail =
-      typeof payload?.error?.message === "string" ? payload.error.message : null;
-    throw new CloudinaryUploadError(detail || "Couldn't save that GIF. Please try again.");
+    /* The provider's error text is for the console, not the toast: it is
+       Cloudinary's own wording about its own internals. */
+    console.error("[cloudinary] remote upload failed:", payload?.error);
+    throw new CloudinaryUploadError("Couldn't save that GIF. Please try again.");
   }
 
   return {

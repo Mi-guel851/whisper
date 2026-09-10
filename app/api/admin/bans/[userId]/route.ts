@@ -34,9 +34,14 @@ export async function DELETE(
       const { error: authError } = await admin.db.auth.admin.updateUserById(userId, {
         ban_duration: "0s",
       });
-      if (authError) restoreError = authError.message;
-      else sessionsRestored = true;
+      if (authError) {
+        /* Admin-only route: the panel gets the real GoTrue wording so the
+           failure is diagnosable; the same detail goes to the log. */
+        console.error("[admin/bans/[userId]] session restore failed:", authError);
+        restoreError = authError.message;
+      } else sessionsRestored = true;
     } catch (err) {
+      console.error("[admin/bans/[userId]] session restore failed:", err);
       restoreError = err instanceof Error ? err.message : String(err);
     }
 
@@ -46,7 +51,10 @@ export async function DELETE(
     });
 
     if (error) {
-      return Response.json({ error: error.message }, { status: 400 });
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/bans/[userId]] unban failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     /* `admin_unban_user` writes its own audit row (it is the one place that

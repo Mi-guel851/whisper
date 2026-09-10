@@ -73,7 +73,12 @@ export async function PATCH(
       p_by: admin.adminId,
     });
 
-    if (error) return Response.json({ error: error.message }, { status: 400 });
+    if (error) {
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/announcements/[id]] update failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
+    }
 
     if (validation.value.active) {
       await logAdmin(admin.db, admin.adminId, "announcement.published", null, {
@@ -104,7 +109,12 @@ export async function DELETE(
       p_by: admin.adminId,
     });
 
-    if (error) return Response.json({ error: error.message }, { status: 400 });
+    if (error) {
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/announcements/[id]] delete failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
+    }
 
     /* `admin_delete_announcement` writes the audit entry before the delete,
        because afterwards there is nothing left to describe. */

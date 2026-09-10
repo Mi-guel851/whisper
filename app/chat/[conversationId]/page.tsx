@@ -7,6 +7,7 @@ import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { getCachedSession } from "@/lib/supabase/session";
 import GlassPanel from "@/components/GlassPanel";
 import { UNLOCK_CHAT_COST, SEND_IMAGE_COST, SEND_VOICE_COST } from "@/lib/coins";
@@ -1640,17 +1641,16 @@ export default function ChatPage() {
           media_height: height,
         });
         if (error) {
-          showToast(error.message);
+          showToast(safeErrorMessage(error, "Couldn't send that message."));
           return;
         }
 
         if (kind === "sticker") pushRecentSticker(url);
         setReplyingTo(null);
 
-        await supabase.from("conversations").update({
-          last_message_at: new Date().toISOString(),
-          last_message_sender_id: myId,
-        }).eq("id", conversationId);
+        /* Guarded: a no-op whenever the 202609100004 trigger has stamped the
+           row with fresh server time; the ordering keeper on unmigrated DBs. */
+        stampConversationFallback(myId);
       } finally {
         setMediaSending(null);
       }
@@ -1722,6 +1722,39 @@ export default function ChatPage() {
    * behaviour being removed. The composer stays usable while this is in flight,
    * so several of these can be running at once.
    */
+  /**
+   * Fallback write for the conversation's activity stamp.
+   *
+   * The authoritative stamp is the database's: the direct_messages_touch
+   * trigger (202609100004) sets last_message_at / last_message_sender_id from
+   * the inserted row's server-side created_at, atomically with the insert.
+   * This write exists for an UNMIGRATED database, where nothing else keeps
+   * the column current — deploy order must not freeze the inbox.
+   *
+   * The guard is what makes it safe to keep: it only fires when the row has
+   * no stamp or the stamp is more than five minutes older than "now". When the
+   * trigger is present its stamp is seconds old, so this is a no-op and a
+   * skewed device clock (the old failure mode — a fast phone stamping "now"
+   * into the future, a slow one stamping the past) can no longer overwrite
+   * the server's value.
+   */
+  const stampConversationFallback = useCallback(
+    (senderId: string) => {
+      /* Millis stripped: PostgREST's or() syntax is dot-delimited, and an ISO
+         timestamp's ".000Z" would otherwise be parsed as filter structure. */
+      const cutoff = new Date(Date.now() - 5 * 60_000).toISOString().replace(".000Z", "Z");
+      void supabase
+        .from("conversations")
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_message_sender_id: senderId,
+        })
+        .eq("id", conversationId)
+        .or(`last_message_at.is.null,last_message_at.lt.${cutoff}`);
+    },
+    [conversationId]
+  );
+
   const deliverMessage = useCallback(async (pending: Message) => {
     const { data, error } = await supabase
       .from("direct_messages")
@@ -1767,14 +1800,12 @@ export default function ChatPage() {
       setFlightId((n) => n + 1);
     }
 
-    void supabase
-      .from("conversations")
-      .update({
-        last_message_at: new Date().toISOString(),
-        last_message_sender_id: pending.sender_id,
-      })
-      .eq("id", conversationId);
-  }, [conversationId]);
+    /* Guarded: a no-op whenever the 202609100004 trigger has stamped the row
+       with fresh server time (the old unguarded write is what let a skewed
+       device clock reorder the inbox); on an unmigrated database it keeps the
+       list ordered the way it always was. */
+    stampConversationFallback(pending.sender_id);
+  }, [conversationId, stampConversationFallback]);
 
   /** Re-sends a row whose insert failed. The row itself is reused, so the retry
       replaces it in place rather than appending a second copy. */
@@ -1876,7 +1907,7 @@ export default function ChatPage() {
       return;
     }
     const { error } = await supabase.from("pinned_messages").delete().eq("conversation_id", conversationId).eq("message_id", msg.id);
-    if (error) { showToast(error.message); return; }
+    if (error) { showToast(safeErrorMessage(error, "Couldn't unpin that message.")); return; }
     setPinnedMessageIds((prev) => { const s = new Set(prev); s.delete(msg.id); return s; });
     showToast("Unpinned", { variant: "subtle" });
   });
@@ -1891,7 +1922,7 @@ export default function ChatPage() {
       pinned_by: myId,
       expires_at: expiresAt,
     });
-    if (error) { showToast(error.message); return; }
+    if (error) { showToast(safeErrorMessage(error, "Couldn't pin that message.")); return; }
     setPinnedMessageIds((prev) => new Set([...prev, msg.id]));
     showToast(durationHours === null ? "Pinned" : `Pinned for ${PIN_DURATIONS.find((d) => d.hours === durationHours)?.label ?? "a while"}`, { variant: "subtle" });
   });
@@ -2000,10 +2031,8 @@ export default function ChatPage() {
         setFlightId((n) => n + 1);
       }
 
-      await supabase.from("conversations").update({
-        last_message_at: new Date().toISOString(),
-        last_message_sender_id: myId,
-      }).eq("id", conversationId);
+      /* Guarded fallback, same as the text and media paths above. */
+      stampConversationFallback(myId);
 
       URL.revokeObjectURL(pendingPhoto.previewUrl);
       setPendingPhoto(null);
@@ -2124,7 +2153,7 @@ export default function ChatPage() {
   async function unlockChat() {
     setUnlocking(true);
     const { error } = await supabase.rpc("unlock_chat_with_coins", { target_conversation_id: conversationId });
-    if (error) showToast(error.message);
+    if (error) showToast(safeErrorMessage(error));
     else { setChatUnlocked(true); showToast("Chat unlocked permanently."); }
     setUnlocking(false);
   }

@@ -5,6 +5,7 @@ import { FEED_POST_COST, FEED_REPLY_COST } from "@/lib/coins";
 import { CLOUDINARY_FOLDERS, cloudinaryPublicId } from "@/lib/cloudinary";
 import { cloudinaryImageExists, destroyCloudinaryUrl } from "@/lib/cloudinary.server";
 import { consume, rateLimitedResponse } from "@/lib/apiGuard";
+import { errorTextFor } from "@/lib/errorTextFor";
 import { BANNED_MESSAGE } from "@/lib/admin/auth";
 
 /**
@@ -448,11 +449,17 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      /* Allowlisted admins (verified above via GoTrue) get the real insert
+         failure; everyone else gets the one sentence. */
       return NextResponse.json(
         {
-          error: isReply
-            ? "Couldn't post your reply. Please try again."
-            : "Couldn't post that. You have not been charged.",
+          error: errorTextFor(
+            user,
+            postFailure,
+            isReply
+              ? "Couldn't post your reply. Please try again."
+              : "Couldn't post that. You have not been charged."
+          ),
         },
         { status: 500 }
       );

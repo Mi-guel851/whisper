@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { getCachedSession } from "@/lib/supabase/session";
 import { isAdminEmail } from "@/lib/admin/emails";
 import {
@@ -207,7 +208,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           return;
         }
         setError({
-          message: err instanceof Error ? err.message : "Couldn't verify that PIN.",
+          /* API failures arrive as AdminRequestError carrying the route's own
+             wording; anything else (a dead network) gets the gate's sentence
+             instead of the browser's "Failed to fetch". */
+          message:
+            err instanceof AdminRequestError
+              ? err.message
+              : safeErrorMessage(err, "Couldn't verify that PIN."),
           misconfigured: err instanceof AdminRequestError && err.misconfigured,
         });
       } finally {

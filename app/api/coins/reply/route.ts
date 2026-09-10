@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { consume, rateLimitedResponse } from "@/lib/apiGuard";
+import { errorTextFor } from "@/lib/errorTextFor";
 
 export async function POST(req: NextRequest) {
   try {
@@ -167,8 +168,16 @@ export async function POST(req: NextRequest) {
           { status: 500 }
         );
       }
+      /* Allowlisted admins (verified above via GoTrue) get the real insert
+         failure; everyone else gets the one sentence. */
       return NextResponse.json(
-        { error: "Couldn't post your reply. You have not been charged." },
+        {
+          error: errorTextFor(
+            user,
+            postFailure,
+            "Couldn't post your reply. You have not been charged."
+          ),
+        },
         { status: 500 }
       );
     }

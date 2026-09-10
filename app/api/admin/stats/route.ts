@@ -27,11 +27,16 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await admin.db.rpc("admin_platform_stats", { p_force: force });
     if (error) {
-      const message =
-        error.code === "42883"
-          ? "The statistics function is missing. Apply supabase/migrations/202609080001_admin_control_center.sql."
-          : error.message;
-      return Response.json({ error: message }, { status: 400 });
+      if (error.code === "42883") {
+        return Response.json(
+          { error: "The statistics function is missing. Apply supabase/migrations/202609080001_admin_control_center.sql." },
+          { status: 400 }
+        );
+      }
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/stats] query failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     /* Read-only, so it is not audited per view: an admin opening the panel

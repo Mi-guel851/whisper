@@ -258,8 +258,13 @@ export function handleAdminError(err: unknown, scope: string): Response {
     return Response.json({ error: err.message, misconfigured: err.misconfigured }, { status: err.status });
   }
 
+  /* Unforeseen throw on an admin-only route. The caller is one of the two
+     allowlisted accounts (requireAdmin runs before any route body), so the
+     real text is what they need to diagnose it; every other caller never
+     gets past requireAdmin and only ever sees its curated 401/403. */
+  const message = err instanceof Error && err.message ? err.message : "Server error.";
   console.error(`[${scope}]`, err);
-  return Response.json({ error: "Server error." }, { status: 500 });
+  return Response.json({ error: message }, { status: 500 });
 }
 
 /**
