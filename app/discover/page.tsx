@@ -11,6 +11,7 @@ import {
   Shield,
   Lock,
   FileText,
+  Newspaper,
   ChevronRight,
 } from "lucide-react";
 
@@ -228,6 +229,48 @@ export default function DiscoverPage() {
               </Link>
             );
           })}
+        </section>
+
+        {/* Public Feed — the full-width entry point back into the feed, resting
+            at the bottom middle so it feels like the hub the other cards orbit. */}
+        <section className="mt-4 sm:mt-5">
+          <Link href="/public-feed" className="group block no-press">
+            <EdgeLitCard
+              intensity={0.92}
+              speed={9}
+              radius="2xl"
+              className="rounded-[22px] transition-transform duration-300 ease-out group-hover:-translate-y-[1px] group-active:translate-y-0 group-active:scale-[0.99]"
+              innerClassName="discover-card-inner rounded-[21px] flex items-center gap-4 p-[18px] sm:p-6"
+            >
+              <div className="flex w-full items-center gap-4">
+                {/* Icon box */}
+                <div className="relative flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[14px] border border-white/[0.08] bg-[#191922] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_20px_rgba(0,0,0,0.4)] sm:h-[56px] sm:w-[56px] sm:rounded-[16px]">
+                  <Newspaper size={24} strokeWidth={2} className="text-white" />
+                </div>
+
+                {/* Text */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate text-[16px] font-bold leading-tight tracking-[-0.01em] text-[var(--theme-text)] sm:text-[18px]">
+                      Public Feed
+                    </h2>
+                    <span className="hidden items-center gap-1 rounded-full bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-bold text-purple-300 ring-1 ring-[#7C3AED]/25 sm:inline-flex">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#a78bfa]" />
+                      LIVE
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[1.4] text-[var(--theme-text-muted)] sm:text-[14px]">
+                    Whispers from across Whisper — jump back into the feed.
+                  </p>
+                </div>
+
+                {/* Chevron */}
+                <div className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[#7a7a8e] ring-1 ring-white/[0.06] transition-all duration-300 group-hover:bg-white/[0.10] group-hover:text-white group-hover:ring-white/10 sm:h-9 sm:w-9">
+                  <ChevronRight size={18} strokeWidth={2.5} />
+                </div>
+              </div>
+            </EdgeLitCard>
+          </Link>
         </section>
 
         {/* Subtle footer hint - keeps page feeling finished */}
