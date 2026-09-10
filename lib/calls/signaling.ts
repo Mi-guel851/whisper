@@ -37,6 +37,14 @@ export type CallSignalEvent = "offer" | "answer" | "ice" | "end" | "busy" | "dec
 export type CallSignalPayload = {
   /** SDP for offer/answer. */
   sdp?: string;
+  /**
+   * The server-generated identity of the call this signal belongs to
+   * (call_logs.call_id, minted by start_call_log — 20260909/0005). Carried on
+   * the FIRST offer so the callee can finalize that exact row (answered /
+   * declined / busy) instead of guessing by conversation; absent from legacy
+   * callers, which just means the callee skips the end_call_log call.
+   */
+  callId?: string;
   /** ICE candidate for "ice" signals. */
   candidate?: RTCIceCandidateInit;
   /**

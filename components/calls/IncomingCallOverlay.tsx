@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Phone, PhoneOff } from "lucide-react";
 
@@ -12,17 +13,54 @@ type IncomingCallOverlayProps = {
   onDecline: () => void;
 };
 
-/** WhatsApp-style incoming-call screen: full-screen, green accept, red decline. */
+/**
+ * WhatsApp-style incoming-call screen: full-screen, opaque (never a panel
+ * that lets the page behind answer for you), green accept, red decline.
+ *
+ * Keyboard contract: Escape declines — a ring is a modal interruption and the
+ * universal "make it stop" key must work, but it deliberately CANNOT dismiss
+ * without an outcome: there is no backdrop-tap close, because a call has
+ * three real endings (accept, decline, expiry) and "closed it somehow" is not
+ * one of them. Initial focus lands on Accept; focus is restored by the page
+ * when the overlay unmounts. Screen readers get a polite live region with the
+ * caller's name so the ring is announced even while the visual pulse is
+ * disabled by reduced-motion.
+ */
 export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecline }: IncomingCallOverlayProps) {
   const reduced = useSafeReducedMotion();
+  const acceptRef = useRef<HTMLButtonElement | null>(null);
+  const previouslyFocused = useRef<Element | null>(null);
+
+  useEffect(() => {
+    previouslyFocused.current = document.activeElement;
+    acceptRef.current?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onDecline();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      const el = previouslyFocused.current as HTMLElement | null;
+      if (el && typeof el.focus === "function") el.focus();
+    };
+  }, [onDecline]);
 
   return (
     <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Incoming voice call from ${name}`}
       className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[#07130f] px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))] text-white"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={reduced ? { duration: 0 } : { duration: 0.25 }}
     >
+      <span className="sr-only" role="status" aria-live="polite">
+        Incoming voice call from {name}
+      </span>
       <div
         className="absolute inset-0 opacity-95"
         style={{
@@ -71,7 +109,7 @@ export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecli
                 type="button"
                 onClick={onDecline}
                 whileTap={reduced ? undefined : { scale: 0.92 }}
-                className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-[#ef4444] text-white shadow-2xl shadow-red-950/50"
+                className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-[#ef4444] text-white shadow-2xl shadow-red-950/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
                 aria-label="Decline call"
               >
                 <PhoneOff size={28} />
@@ -81,6 +119,7 @@ export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecli
 
             <div className="flex flex-col items-center gap-2">
               <motion.button
+                ref={acceptRef}
                 type="button"
                 onClick={onAccept}
                 animate={reduced ? undefined : { scale: [1, 1.06, 1] }}

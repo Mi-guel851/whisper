@@ -6,8 +6,8 @@ import BackButton from "@/components/BackButton";
 import LogoutButton from "@/components/LogoutButton";
 import HapticsSettingRow from "@/components/HapticsSettingRow";
 import FindAMatchSettingRow from "@/components/FindAMatchSettingRow";
+import NotificationSettingsCard from "@/components/NotificationSettingsCard";
 import {
-  Bell,
   ChevronRight,
   Newspaper,
   Coins,
@@ -70,15 +70,15 @@ export default function SettingsPage() {
           <h2 className="text-xs font-bold uppercase tracking-wider theme-text-subtle mb-1 px-1">
             Preferences
           </h2>
-          <div className="flex items-center justify-between gap-3 py-3.5 px-1">
-            <span className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-purple-300">
-                <Bell size={17} />
-              </span>
-              <span className="text-sm font-medium text-white">Push Notifications</span>
-            </span>
+          {/* The real switches live here (components/NotificationSettingsCard):
+              one global, five categories, all read server-side by the
+              notification triggers themselves — an off switch that only the UI
+              honored was never a switch. The link below goes to the inbox of
+              alerts, not to a second settings screen. */}
+          <NotificationSettingsCard />
+          <div className="flex items-center justify-end gap-3 py-2 px-1">
             <Link href="/notifications" className="text-xs font-semibold text-purple-300">
-              Manage
+              View recent alerts
             </Link>
           </div>
           {/* Given a home here rather than buried in a debug screen because the

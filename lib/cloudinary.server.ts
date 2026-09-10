@@ -150,3 +150,23 @@ export async function cloudinaryImageExists(url: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Signs a Cloudinary *upload* policy for one caller.
+ *
+ * The unsigned preset can only say "these settings apply to everyone"; a
+ * signature can say "these settings apply to THIS upload": the folder is
+ * pinned to the owner's subtree, `max_file_size` is enforced by the provider
+ * rather than by the browser that can be opened in devtools, `overwrite:false`
+ * and `unique_filename:true` stop an asset being swapped out from under its
+ * row, and `resource_type:image` refuses anything Cloudinary cannot raster-decode.
+ * That is the difference between "checks live in the frontend" and a boundary.
+ *
+ * Uses the same canonicalization as destroy: sorted `k=v` pairs, secret
+ * appended, SHA-1.
+ */
+export function signUploadParams(params: Record<string, string>): { signature: string; apiKey: string } | null {
+  const creds = credentials();
+  if (!creds) return null;
+  return { apiKey: creds.apiKey, signature: sign(params, creds.apiSecret) };
+}

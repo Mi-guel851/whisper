@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   try {
     /* One hash per attempt costs ~210k PBKDF2 rounds. Without this guard a
        scripted caller turns that into a free CPU burn on every instance. */
-    const limited = consume("set-recovery-phrase", clientIp(req.headers), 5, 10 * 60_000);
+    const limited = await consume("set-recovery-phrase", clientIp(req.headers), 5, 10 * 60_000);
     if (limited) return rateLimitedResponse(limited);
 
     const authHeader = req.headers.get("authorization");

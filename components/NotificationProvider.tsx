@@ -93,9 +93,34 @@ export default function NotificationProvider({ children }: { children: React.Rea
             filter: `user_id=eq.${userId}`,
           },
           (payload) => {
-            const record = payload.new as { title: string; body: string | null; type: string };
+            const record = payload.new as {
+              title: string;
+              body: string | null;
+              type: string;
+              metadata?: { route?: string } | null;
+            };
             setUnreadCount((current) => current + 1);
-            showToast(record.title || "New notification", { variant: "info" });
+
+            /* Duplicate-banner suppression, in-app half. The chat page renders
+               the arriving bubble itself; the feed highlights posts via its own
+               listener; a second announcement (toast over the thread that just
+               updated) is the noise the task calls out. The unread COUNT never
+               depends on this branch — muting the toast must not lose the
+               badge. */
+            const route = record.metadata?.route;
+            const foreground =
+              typeof document !== "undefined" && document.visibilityState === "visible";
+            const onSurface =
+              foreground &&
+              typeof window !== "undefined" &&
+              Boolean(route) &&
+              (window.location.pathname === route ||
+                (route ? window.location.pathname.startsWith(route + "/") : false) ||
+                (route === "/public-feed" && window.location.pathname === "/public-feed"));
+
+            if (!onSurface) {
+              showToast(record.title || "New notification", { variant: "info" });
+            }
           }
         )
         .subscribe((status) => {

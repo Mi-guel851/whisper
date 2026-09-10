@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isCloudinaryUrl } from "@/lib/cloudinary";
 import { fetchCloudinaryImage } from "@/lib/cloudinary.server";
+import { consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
  * Serves a feed photo, once per viewer.
@@ -68,6 +69,12 @@ export async function POST(req: NextRequest) {
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    /* One download per view is the whole design, so pace the endpoint itself:
+       a script cycling messageIds could otherwise pull the proxy through
+       every photo the account can see. Durable bucket, per user. */
+    const photoGuard = await consume("feed-photo-view", `u:${user.id}`, 60, 60_000);
+    if (photoGuard) return rateLimitedResponse(photoGuard);
 
     const { data: post, error: postError } = await supabaseAdmin
       .from("public_feed_posts")

@@ -135,6 +135,11 @@ export async function POST(req: NextRequest) {
       : "You received an anonymous image";
     notificationUrl = "/dashboard";
     notificationType = "whisper";
+    /* Lock-screen privacy: an anonymous whisper's TEXT does not belong on a
+       shared screen — the sender is by design not identified, and the content
+       is the sensitive part. The in-app row keeps the body; the banner does
+       not. Same reasoning as the missed-call copy in 202609100006. */
+    notificationBody = "A new anonymous whisper arrived. Open Whisper to read it.";
   }
 
   // ── Direct message (inbox chat) ──
@@ -199,10 +204,17 @@ export async function POST(req: NextRequest) {
     .eq("user_id", recipientId);
 
   if (subs && subs.length > 0) {
+    /* `tag` gives one event one notification — a burst replaces rather than
+       stacks — and is the handle the service worker uses to retire a stale
+       banner when the underlying event ends. */
     const webPayload = JSON.stringify({
       title: notificationTitle,
       body: notificationBody,
       url: notificationUrl,
+      type: notificationType,
+      tag: notificationType === "message" && notificationConversationId
+        ? `chat-${notificationConversationId}`
+        : notificationType,
     });
 
     await Promise.all(
@@ -213,7 +225,7 @@ export async function POST(req: NextRequest) {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             webPayload,
-            { timeout: 10_000 }
+            { timeout: 10_000, TTL: 600 }
           );
           sent++;
         } catch (err) {

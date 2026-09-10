@@ -6,6 +6,7 @@ import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import { refreshUnreadWhispers } from "@/lib/nav/navBadges";
 import ShareMessageCard from "@/components/ShareMessageCard";
+import NotificationActivityList from "@/components/NotificationActivityList";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import GlassPanel from "@/components/GlassPanel";
 import { HINT_UNLOCK_COST } from "@/lib/coins";
@@ -343,6 +344,11 @@ export default function NotificationsPage() {
       <div className="p-6">
         <BackButton />
         <h1 className="page-title mt-4">📡 Activity</h1>
+
+        {/* Everything the server told you — replies, transfers, calls, friend
+            events — persistent and deep-linked. The whispers below are the
+            anonymous inbox; this is the rest of the story. */}
+        <NotificationActivityList />
 
         {loading ? (
           <p className="mt-8 text-gray-400">Loading...</p>
