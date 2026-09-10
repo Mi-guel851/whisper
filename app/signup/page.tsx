@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
 import ComingSoonGate from "@/components/auth/ComingSoonGate";
@@ -93,7 +94,7 @@ export default function SignupPage() {
         });
 
         if (error) {
-          showToast(error.message);
+          showToast(safeErrorMessage(error));
           setLoading(false);
           return;
         }
@@ -146,7 +147,7 @@ export default function SignupPage() {
     });
 
     if (error) {
-      showToast(error.message);
+      showToast(safeErrorMessage(error));
       setLoading(false);
     }
   }

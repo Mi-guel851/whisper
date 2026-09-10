@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/ToastProvider";
 import BottomNavigation from "@/components/BottomNavigation";
@@ -199,7 +200,7 @@ export default function ProfilePage() {
       // actually act on, so it gets a message they can act on.
       const duplicate =
         error.code === "23505" || /duplicate|unique/i.test(error.message);
-      showToast(duplicate ? "That username is already taken." : error.message, {
+      showToast(duplicate ? "That username is already taken." : safeErrorMessage(error), {
         variant: "error",
       });
       return;

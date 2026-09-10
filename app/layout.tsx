@@ -17,6 +17,7 @@ import WhispersAiAssistant from "@/components/ai/WhispersAiAssistant";
 import SocialFollowPrompt from "@/components/SocialFollowPrompt";
 import AnnouncementPrompt from "@/components/AnnouncementPrompt";
 import BanGate from "@/components/BanGate";
+import AdminDebugGate from "@/components/AdminDebugGate";
 
 /* Typography intentionally uses the native UI stack declared in globals.css.
    Pulling Inter from Google during `next build` made otherwise valid production
@@ -145,6 +146,11 @@ export default function RootLayout({
             </NotificationProvider>
           </ToastProvider>
         </ThemeProvider>
+        {/* Sets lib/safeErrorMessage's debug flag from the session: the two
+            allowlisted admin accounts read real error text in toasts, error
+            states and the error boundary; every other visitor gets the gated
+            sentence. Renders nothing. */}
+        <AdminDebugGate />
         {/* Outside the providers, last in the tree, and above everything they
             render: a banned account must not be able to interact with the app
             behind this, and must not see a toast claiming an action succeeded

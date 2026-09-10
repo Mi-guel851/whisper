@@ -18,7 +18,13 @@ export type AdminError = {
 };
 
 function toAdminError(cause: unknown): AdminError {
-  const message = cause instanceof Error ? cause.message : "Request failed.";
+  let message = cause instanceof Error ? cause.message : "Request failed.";
+  /* A dead network surfaces as the browser's own "Failed to fetch" — a
+     system string. The operator sees the real cause in the request log; the
+     panel gets words that point at the thing to check. */
+  if (/failed to fetch|network request failed|load failed/i.test(message)) {
+    message = "Couldn't reach the server. Check your connection and try again.";
+  }
   return {
     message,
     misconfigured: /ADMIN_GRANT_PIN|server configuration/i.test(message),

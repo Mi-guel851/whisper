@@ -61,11 +61,16 @@ export async function GET(req: NextRequest) {
     });
 
     if (error) {
-      const message =
-        error.code === "42883"
-          ? "The ban system is missing. Apply supabase/migrations/202609080001_admin_control_center.sql."
-          : error.message;
-      return Response.json({ error: message }, { status: 400 });
+      if (error.code === "42883") {
+        return Response.json(
+          { error: "The ban system is missing. Apply supabase/migrations/202609080001_admin_control_center.sql." },
+          { status: 400 }
+        );
+      }
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/bans] list failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     return Response.json({ bans: data ?? [] });
@@ -113,7 +118,10 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      return Response.json({ error: error.message }, { status: 400 });
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/bans] create failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     /* Session revocation. Best-effort and reported honestly: if GoTrue rejects
@@ -127,12 +135,16 @@ export async function POST(req: NextRequest) {
         ban_duration: duration.go,
       });
       if (authError) {
+        /* Admin-only route: the panel gets the real GoTrue wording so the
+           failure is diagnosable; the same detail goes to the log. */
+        console.error("[admin/bans] session revoke failed:", authError);
         revokeError = authError.message;
       } else {
         sessionsRevoked = true;
         await admin.db.rpc("admin_mark_sessions_revoked", { p_ban_id: (ban as { id?: string })?.id ?? null });
       }
     } catch (err) {
+      console.error("[admin/bans] session revoke failed:", err);
       revokeError = err instanceof Error ? err.message : String(err);
     }
 

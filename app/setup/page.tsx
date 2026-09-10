@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
 import AuthField from "@/components/auth/AuthField";
@@ -57,7 +58,7 @@ export default function SetupPage() {
     setLoading(false);
 
     if (error) {
-      showToast(error.message);
+      showToast(safeErrorMessage(error));
       return;
     }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { hashRecoveryPhrase } from "@/lib/recoveryPhrase";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { errorTextFor } from "@/lib/errorTextFor";
 import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
 
 /**
@@ -74,8 +75,13 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id);
 
     if (error) {
+      /* Allowlisted admins (verified above via GoTrue) get the real update
+         error; everyone else gets the one sentence. */
       console.error("[set-recovery-phrase] update failed:", error.message);
-      return NextResponse.json({ error: "Couldn't save your recovery phrase. Please try again." }, { status: 500 });
+      return NextResponse.json(
+        { error: errorTextFor(user, error, "Couldn't save your recovery phrase. Please try again.") },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { CLOUDINARY_FOLDERS, cloudinaryPublicId } from "@/lib/cloudinary";
 import { destroyCloudinaryImage } from "@/lib/cloudinary.server";
+import { errorTextFor } from "@/lib/errorTextFor";
 
 /**
  * Deletes an image the caller uploaded.
@@ -89,7 +90,21 @@ export async function POST(req: NextRequest) {
 
     const result = await destroyCloudinaryImage(publicId);
     if (!result.ok) {
-      return NextResponse.json({ error: result.reason }, { status: 502 });
+      /* The reason is the image server's own wording (its error text, its
+         payload result) — server detail. Already logged by
+         destroyCloudinaryImage. The two allowlisted admin accounts get the
+         real text; every other caller gets the one sentence. */
+      console.error("[cloudinary/destroy] destroy failed:", result.reason);
+      return NextResponse.json(
+        {
+          error: errorTextFor(
+            user,
+            result.reason,
+            "Couldn't delete that image. Please try again."
+          ),
+        },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({ success: true });

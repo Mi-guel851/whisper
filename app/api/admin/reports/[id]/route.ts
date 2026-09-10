@@ -43,7 +43,12 @@ export async function PATCH(
       p_by: admin.adminId,
     });
 
-    if (error) return Response.json({ error: error.message }, { status: 400 });
+    if (error) {
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/reports/[id]] status update failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
+    }
 
     await logAdmin(admin.db, admin.adminId, `report.${status}`, null, {
       report_id: id,

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { CLOUDINARY_FOLDERS, cloudinaryPublicId } from "@/lib/cloudinary";
 import { cloudinaryImageExists, destroyCloudinaryUrl } from "@/lib/cloudinary.server";
 import { consume, rateLimitedResponse } from "@/lib/apiGuard";
+import { errorTextFor } from "@/lib/errorTextFor";
 
 /**
  * Publishing an official Whisper creator post.
@@ -177,8 +178,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: insertError.message }, { status: 400 });
       }
 
+      /* Allowlisted admins (verified above via GoTrue) get the real insert
+         error; everyone else gets the one sentence. */
       console.error("[creator/post] insert failed:", insertError?.message);
-      return NextResponse.json({ error: "Couldn't publish that. Please try again." }, { status: 500 });
+      return NextResponse.json(
+        { error: errorTextFor(user, insertError, "Couldn't publish that. Please try again.") },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true, post });

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { useToast } from "@/components/ToastProvider";
 import AuthShell, { AuthBrand } from "@/components/auth/AuthShell";
 import AuthField from "@/components/auth/AuthField";
@@ -94,7 +95,7 @@ export default function LoginPage() {
         });
 
         if (error) {
-          showToast(error.message);
+          showToast(safeErrorMessage(error));
           setLoadingGoogle(false);
           return;
         }
@@ -127,7 +128,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      showToast(error.message);
+      showToast(safeErrorMessage(error));
       setLoadingGoogle(false);
     }
   }
@@ -141,7 +142,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      showToast(error.message);
+      showToast(safeErrorMessage(error));
       return;
     }
 

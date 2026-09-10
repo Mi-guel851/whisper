@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import { refreshUnreadWhispers } from "@/lib/nav/navBadges";
@@ -79,7 +80,7 @@ export default function NotificationsPage() {
 
       if (error) {
         console.error("Fetch error:", error);
-        setLoadError(error.message || "Couldn't load your whispers.");
+        setLoadError(safeErrorMessage(error, "Couldn't load your whispers."));
       } else {
         setLoadError(null);
         setNotifications(data || []);
@@ -171,7 +172,7 @@ export default function NotificationsPage() {
     const { data, error } = await supabase.rpc("unlock_hint_with_coins", { target_message_id: messageId });
 
     if (error) {
-      showToast(error.message);
+      showToast(safeErrorMessage(error));
     } else {
       setHintUnlocks((prev) =>
         prev.some((unlock) => unlock.message_id === messageId)

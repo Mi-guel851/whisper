@@ -35,11 +35,16 @@ export async function GET(req: NextRequest) {
     });
 
     if (error) {
-      const message =
-        error.code === "42883"
-          ? "The moderation read model is missing. Apply supabase/migrations/202609080001_admin_control_center.sql."
-          : error.message;
-      return Response.json({ error: message }, { status: 400 });
+      if (error.code === "42883") {
+        return Response.json(
+          { error: "The moderation read model is missing. Apply supabase/migrations/202609080001_admin_control_center.sql." },
+          { status: 400 }
+        );
+      }
+      /* Admin-only route (requireAdmin above): the allowlisted accounts get
+         the real text; the same detail goes to the deployment log. */
+      console.error("[admin/reports] list failed:", error.code, error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     return Response.json(data);

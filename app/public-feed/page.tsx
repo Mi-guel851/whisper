@@ -22,6 +22,7 @@ import FeedShareSheet, { feedPostUrl } from "@/components/feed/FeedShareSheet";
 import FeedReportSheet from "@/components/feed/FeedReportSheet";
 import type { FeedController, FeedImageState } from "@/components/feed/types";
 import { supabase } from "@/lib/supabase/client";
+import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import { useToast } from "@/components/ToastProvider";
 import {
   CLOUDINARY_FOLDERS,
@@ -1277,7 +1278,7 @@ export default function PublicFeedPage() {
       .eq("author_id", myId);
 
     if (error) {
-      showToast(error.message);
+      showToast(safeErrorMessage(error, "Couldn't delete that post."));
     } else {
       const removed = postsRef.current.find((post) => post.id === postId);
       setPosts((current) => current.filter((post) => post.id !== postId));
@@ -1325,7 +1326,7 @@ export default function PublicFeedPage() {
         : await supabase.from("public_feed_likes").insert({ post_id: postId, user_id: myId });
 
       if (result.error) {
-        showToast(result.error.message);
+        showToast(safeErrorMessage(result.error));
         // Undo in both places, or the button disagrees with the server until reload.
         likedRef.current = { ...likedRef.current, [postId]: wasLiked };
         setLiked(likedRef.current);
