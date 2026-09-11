@@ -23,7 +23,7 @@ import { readFile } from "node:fs/promises";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const code = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-const [hero, navbar, logo, download, banner, landing, globals] = await Promise.all([
+const [hero, navbar, logo, download, banner, landing, globals, nextConfig, middleware] = await Promise.all([
   read("components/Hero.tsx"),
   read("components/Navbar.tsx"),
   read("components/Logo.tsx"),
@@ -31,6 +31,8 @@ const [hero, navbar, logo, download, banner, landing, globals] = await Promise.a
   read("components/home/LandingTopDownloadBanner.tsx"),
   read("app/page.tsx"),
   read("app/globals.css"),
+  read("next.config.ts"),
+  read("middleware.ts"),
 ]);
 
 function ok(name, check) {
@@ -138,6 +140,42 @@ ok(
   !/(^|[\s"])h-(screen|\[100[ds]?vh\])/.test(code(landing))
 );
 ok("the hero is not asked to stick on its own", !/className="sticky/.test(code(hero)));
+
+console.log("\nthe preview can actually load the CSS these rules live in");
+
+/* The measurement work above is only visible if the stylesheet arrives. Next
+   answers cross-origin requests to a dev server with a blanket 403 on
+   `/_next/*`, and the preview is served from a different host than the dev
+   server — so without these origins listed, every chunk 403s and the page
+   paints as raw unstyled HTML, which reads as a layout out of room. */
+ok(
+  "the sandbox preview origins may load the dev server's own assets",
+  /allowedDevOrigins: DEV_PREVIEW_ORIGINS/.test(nextConfig) &&
+    /"\*\.arena\.site"/.test(nextConfig) &&
+    /"\*\.e2b\.app"/.test(nextConfig)
+);
+ok(
+  "and the list can be extended per environment without editing the file",
+  /NEXT_ALLOWED_DEV_ORIGINS/.test(nextConfig)
+);
+
+console.log("\nand it can paint, because framing follows the build mode");
+
+ok(
+  "production still refuses every frame",
+  /IS_PRODUCTION\s*\?\s*"frame-ancestors 'none'"/.test(nextConfig) &&
+    /key: "X-Frame-Options", value: "DENY"/.test(nextConfig)
+);
+ok(
+  "development allows the preview ancestors, and nothing else",
+  /frame-ancestors 'self' https:\/\/\*\.e2b\.app https:\/\/\*\.arena\.site/.test(nextConfig) &&
+    !/frame-ancestors \*/.test(nextConfig)
+);
+ok(
+  "the report-only policy agrees with the enforced one, so it stops crying wolf",
+  /process\.env\.NODE_ENV === "production"/.test(middleware) &&
+    /frame-ancestors 'self' https:\/\/\*\.e2b\.app https:\/\/\*\.arena\.site/.test(middleware)
+);
 
 console.log("\nthe type scale the measurements assume is still in force");
 ok(

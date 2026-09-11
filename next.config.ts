@@ -20,6 +20,29 @@ import type { NextConfig } from "next";
  * ------------------------------------------------------------------------- */
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
+/* ------------------------------------------------------------------------- *
+ * DEV-SERVER ORIGINS
+ *
+ * Next refuses cross-origin requests to a running `next dev` unless the origin
+ * is listed here — and the refusal is a blanket 403 on `/_next/*`, not just on
+ * the hot-reload socket. Arena's preview is served from a different host than
+ * the dev server (`*.arena.site` through the shell, `*.e2b.app` directly), so
+ * every stylesheet and every JS chunk was answered 403: the preview painted as
+ * raw, unstyled HTML, which reads exactly like a layout that has run out of
+ * room. Nothing was wrong with the CSS — it never arrived.
+ *
+ * `allowedDevOrigins` is only consulted by the dev server, so this cannot
+ * loosen the production build; extra hosts can be appended per environment
+ * without editing this file.
+ * ------------------------------------------------------------------------- */
+const DEV_PREVIEW_ORIGINS = [
+  "*.arena.site", // the preview shell that frames the dev server
+  "*.e2b.app", // the sandbox host the shell proxies
+  ...(process.env.NEXT_ALLOWED_DEV_ORIGINS?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? []),
+];
+
 const FRAME_ANCESTORS = IS_PRODUCTION
   ? "frame-ancestors 'none'"
   : "frame-ancestors 'self' https://*.e2b.app https://*.arena.site";
@@ -74,6 +97,10 @@ const nextConfig: NextConfig = {
      bundle so big" answer, and this app ships inside a Capacitor shell where the
      extra download is on the user. */
   productionBrowserSourceMaps: false,
+
+  /* Without this the dev preview cannot load its own CSS or JS. See
+     DEV_PREVIEW_ORIGINS above. */
+  allowedDevOrigins: DEV_PREVIEW_ORIGINS,
 
   /* ------------------------------------------------------------------------- *
    * SECURITY HEADERS (production audit 2026-09). The app previously shipped no
