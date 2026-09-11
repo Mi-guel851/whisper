@@ -146,7 +146,7 @@ Inside a chat: unlocking a conversation costs 30 coins, once, and is permanent �
 
   feed: {
     keywords: ["feed", "public feed", "post", "posting", "like", "community", "24 hours", "expire"],
-    text: `Public Feed: Discover → Public Feed. Write up to 500 characters and post — posting is free, and your Whisper link is attached automatically so readers can send you anonymous whispers. Posts clear after 24 hours. There's a suggestion and an "AI Write" list of ready-made prompts to fill the box. You can like posts, reply (2 coins per reply), share a post, and delete your own. New posts, likes and replies appear live, and the Discover tile shows a badge for unread feed activity.`,
+    text: `Public Feed: Discover → Public Feed. Write up to 500 characters and post — posting is free, and your Whisper link is attached automatically so readers can send you anonymous whispers. Posts clear after 24 hours. The "AI Write" button generates a fresh post idea each time you tap it from a topic-balanced bank of more than 100 public-feed ideas. You can like posts, reply (2 coins per reply), share a post, and delete your own. New posts, likes and replies appear live, and the Discover tile shows a badge for unread feed activity.`,
   },
 
   profile: {
