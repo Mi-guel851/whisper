@@ -20,7 +20,13 @@ import { whisperLane } from "@/lib/whisperWords";
  *    time anyone spends on the dashboard.
  *  * **Right-hand half only, masked toward the copy.** The left edge of the
  *    wall fades out (`mask-image` in globals.css), so the longest word can
- *    drift under the headline's column without ever competing with it.
+ *    drift under the headline's column without ever competing with it. Its top
+ *    edge also starts below the streak chip's row, so no lane ever renders
+ *    underneath the button.
+ *  * **On phones it stops being an overlay.** Below 44rem the card is a single
+ *    column with no spare half, so globals.css reflows this same markup into a
+ *    standalone full-width band at the foot of the card (flex `order`, lanes
+ *    stacked as rows, both edges masked) — the morph keeps running there.
  *
  * Colour comes from `--theme-text` at low alpha rather than a hardcoded white:
  * this card is white in the light theme, where a white wall would simply not
