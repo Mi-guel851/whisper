@@ -112,8 +112,18 @@ const ICE_DISCONNECT_GRACE_MS = 2_500;
 const OFFER_RETRANSMIT_MS = 2_000;
 /** How long an accepted-but-offer-less callee waits for that retransmission. */
 const OFFER_WAIT_MS = 15_000;
-/** How long "Connecting…" may last before ICE is restarted, then abandoned. */
-const CONNECT_TIMEOUT_MS = 15_000;
+/**
+ * How long "Connecting…" may last before ICE is restarted, then abandoned.
+ *
+ * This used to be 15s, which was long enough to be cruel: a callee who picked
+ * up at the far end of the ring window had most of that budget already spent
+ * when the answer was sent, and the watchdog then hung up a call that ICE was
+ * about to finish connecting. The budget is now measured from the answer, with
+ * two restarts inside it.
+ */
+const CONNECT_TIMEOUT_MS = 25_000;
+/** First restart comes early — a stalled pair is usually fixable in one try. */
+const CONNECT_RESTART_MS = 12_000;
 
 const IDLE: CallSnapshot = {
   status: "idle",
@@ -129,6 +139,33 @@ const IDLE: CallSnapshot = {
   peerName: null,
   peerAvatar: null,
 };
+
+/**
+ * Call diagnostics, off by default.
+ *
+ * "It disconnects when they pick up" is a report that names a symptom and no
+ * cause, and this engine's failures are all invisible from the outside: a
+ * signal that should have been ignored, a watchdog that fired, a busy that won
+ * a race against an answer. What is logged here is a bare state transition and
+ * a short reason — never SDP, never ICE candidate contents, never a user id —
+ * so an operator can turn it on (`localStorage.setItem("whisper:call-debug",
+ * "1")`, reload, reproduce) without turning the console into a session dump.
+ */
+function isDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("whisper:call-debug") === "1";
+  } catch {
+    return false;
+  }
+}
+
+const DEBUG = isDebugEnabled();
+
+function callDebug(...args: unknown[]) {
+  if (!DEBUG) return;
+  console.log("[call]", new Date().toISOString().slice(11, 23), ...args);
+}
 
 type Attachment = {
   conversationId: string;
@@ -159,6 +196,9 @@ class CallSession {
   private incomingCallId: string | null = null;
   private finalized = false;
   private answered = false;
+  /** Set while Accept is building the peer connection, so a double-tap
+      cannot open a second one underneath the first. */
+  private answering = false;
   /** Set when Accept was pressed before any offer arrived. */
   private awaitingOffer = false;
   private iceRestarted = false;
@@ -197,6 +237,38 @@ class CallSession {
   };
 
   getSnapshot = (): CallSnapshot => this.snapshot;
+
+  private debug(...args: unknown[]) {
+    callDebug(...args);
+  }
+
+  /**
+   * Does a control signal belong to the call this device is handling?
+   *
+   * A `busy`, a `decline` or an `end` is a sentence about ONE call, and the
+   * receiver has to be able to tell which. Without the call_id a signal is
+   * indistinguishable from a straggler — a `busy` sent by a peer's engine
+   * during an earlier attempt, redelivered a second later, used to be enough to
+   * hang up the call the two people had just successfully connected. A missing
+   * id means "legacy peer, judge by state" (true); a mismatched id means "not
+   * about this call" (false).
+   */
+  private belongsToCurrentCall(callId: string | null | undefined): boolean {
+    if (!callId) return true;
+    const mine = this.incomingCallId ?? this.state.callId;
+    if (!mine) return true;
+    return mine === callId;
+  }
+
+  /**
+   * Read through a method, not the property: WebRTC and realtime callbacks
+   * mutate `this.state` during an `await`, so a narrowing TypeScript took
+   * before that await is stale by the time it is used. Asking again is both
+   * what the compiler needs and what the runtime needs.
+   */
+  private isIdle(): boolean {
+    return this.state.status === "idle";
+  }
 
   /** Toasts. Wired once by the provider to the app's toast host. */
   onNotice = (listener: (message: string) => void) => {
@@ -329,11 +401,23 @@ class CallSession {
             row.status &&
             row.status !== "ringing"
           ) {
+            /* `answered` is not an ending — it is the opposite. The callee's
+               Accept writes the row to `answered` from inside end_call_log
+               before the answer signal reaches this side, and the DB commit can
+               beat the broadcast. Treating that row as a finalization used to
+               hang up the caller on the exact event of the callee picking up:
+               "Call ended before it connected." Only a status that means the
+               call is over may stand this surface down. */
+            if (row.status === "answered") {
+              this.debug("log: peer picked up (row answered)");
+              return;
+            }
             this.dismissIncomingAlerts();
             /* Only an un-answered leg is torn down by a remote finalization;
                a live call (answered) keeps running no matter what the log
                says — its own media/ICE state decides when it ends. */
             if (!this.answered) {
+              this.debug("log: remote finalization, status =", row.status);
               this.notice(
                 row.status === "missed" || row.status === "expired"
                   ? "The call timed out."
@@ -513,10 +597,22 @@ class CallSession {
     this.vibrationTimer = setInterval(() => vibrate([300, 250, 300]), 3_000);
   }
 
-  /** Force-clear phantom ringing/answered rows for the current user — called on unmount and resume. */
+  /**
+   * Force-clear phantom ringing/answered rows for the current user — called on
+   * unmount and resume.
+   *
+   * Only ever when the engine is idle. The RPC cancels EVERY non-terminal row
+   * the user is part of, and the provider calls this from an unmount cleanup:
+   * on Android a backgrounded WebView is unmounted routinely, so without this
+   * guard, backgrounding the app during a live call marked the call `canceled`
+   * server-side — the two people kept talking while their call log said it was
+   * over, and the other side's row watcher saw a finalization arrive mid-call.
+   * Phantom state is, by definition, a call nobody is on.
+   */
   forceClearPhantom = async () => {
     const uid = this.myId;
     if (!uid) return;
+    if (this.state.status !== "idle") return;
     try {
       await supabase.rpc("force_clear_my_calls", { p_user_id: uid } as any);
     } catch {}
@@ -551,6 +647,7 @@ class CallSession {
     this.incomingCallId = null;
     this.finalized = false;
     this.answered = false;
+    this.answering = false;
     this.awaitingOffer = false;
     this.iceRestarted = false;
     this.state.muted = false;
@@ -624,6 +721,7 @@ class CallSession {
   private markConnected() {
     if (this.state.status !== "outgoing" && this.state.status !== "connecting") return;
     this.answered = true;
+    this.debug("connected");
     stopRingTone();
     if (this.connectWatchdog) {
       clearTimeout(this.connectWatchdog);
@@ -639,8 +737,13 @@ class CallSession {
    *
    * ICE fails quietly on symmetric NATs with no usable TURN, and the only
    * symptom is a spinner — which is precisely the bug this replaced. One
-   * restart attempt at the first timeout, and if that does not rescue it the
-   * call ends with a sentence instead of hanging there until the user gives up.
+   * restart attempt early (stalled candidate pairs usually heal on the first
+   * one), one last chance at the deadline, and if neither rescues it the call
+   * ends with a sentence instead of hanging there until the user gives up.
+   *
+   * The budget runs from the ANSWER, not from the dial: a callee who picks up
+   * at the end of the ring window must get the same chance to connect as one
+   * who picks up immediately.
    */
   private armConnectWatchdog() {
     if (this.connectWatchdog) clearTimeout(this.connectWatchdog);
@@ -649,12 +752,19 @@ class CallSession {
       if (this.state.status === "in_call" || this.state.status === "idle") return;
       if (!this.iceRestarted && this.pc) {
         this.iceRestarted = true;
+        this.debug("connecting: first ICE restart");
         this.attemptIceRestart(this.pc);
-        this.armConnectWatchdog();
+        /* The second and final window: the deadline, with no restart left. */
+        this.connectWatchdog = setTimeout(() => {
+          this.connectWatchdog = null;
+          if (this.state.status === "in_call" || this.state.status === "idle") return;
+          this.debug("connecting: gave up after restart", this.pc?.iceConnectionState);
+          this.hangUp("We couldn't connect. Check your connection and try again.");
+        }, Math.max(5_000, CONNECT_TIMEOUT_MS - CONNECT_RESTART_MS));
         return;
       }
       this.hangUp("We couldn't connect. Check your connection and try again.");
-    }, CONNECT_TIMEOUT_MS);
+    }, CONNECT_RESTART_MS);
   }
 
   private attemptIceRestart = (pc: RTCPeerConnection) => {
@@ -666,10 +776,14 @@ class CallSession {
         /* The restart flag is load-bearing: a mid-call offer from a peer
            the receiver sees as "idle" must not hijack the call (see
            signaling). */
+        const restartCallId = this.incomingCallId ?? this.state.callId;
         void callSignaling.broadcast(this.state.conversationId ?? "", {
           event: "offer",
           user_id: this.myId ?? "",
-          payload: { sdp: offer.sdp, restart: true },
+          /* The id travels with the restart too: without it the peer cannot
+             tell a renegotiation of the call in hand from the first offer of a
+             call it is not in. */
+          payload: { sdp: offer.sdp, restart: true, callId: restartCallId ?? undefined },
         });
       } catch {
         this.hangUp("Call ended. Check your connection and try again.");
@@ -714,6 +828,11 @@ class CallSession {
         this.markConnected();
         return;
       }
+      /* A live call that reports "checking" is mid-ICE-restart, not failing:
+         leave it alone. The old code had no case for it and the aggregate
+         connection state could then report `failed` while ICE was recovering,
+         which hung up a call that was two seconds from healing. */
+      if (state === "checking" && this.state.status === "in_call") return;
       if (state === "disconnected" && (this.state.status === "connecting" || this.state.status === "in_call")) {
         /* A momentary "disconnected" usually heals on its own; give it the
            grace, then restart ICE rather than strand the call. */
@@ -728,7 +847,14 @@ class CallSession {
         return;
       }
       if (state === "failed") {
-        this.attemptIceRestart(pc);
+        /* One restart, then the sentence. Restarting on every repeat of the
+           same failed state is how a doomed pair gets retried forever. */
+        if (!this.iceRestarted && this.state.status !== "idle") {
+          this.iceRestarted = true;
+          this.attemptIceRestart(pc);
+        } else if (this.state.status !== "idle") {
+          this.hangUp("Call ended. Check your connection and try again.");
+        }
       }
     };
 
@@ -739,9 +865,14 @@ class CallSession {
         this.markConnected();
         return;
       }
+      /* `disconnected` here is not a verdict — it is the state ICE sits in
+         while a restart is negotiated, and it very often returns to
+         `connected` on its own. The ICE handler owns that grace window; the
+         aggregate state only ends the call when it is truly `failed`. */
       if (pc.connectionState === "failed" && this.state.status !== "idle") {
         /* ICE restart ran and did not save it: end cleanly, with the log
            row closed, instead of leaving both sides ringing forever. */
+        this.debug("connection failed, ending");
         this.hangUp("Call ended. Check your connection and try again.");
       }
     };
@@ -789,10 +920,28 @@ class CallSession {
         const sdp = signal.payload?.sdp ?? null;
         const callId = typeof signal.payload?.callId === "string" ? signal.payload.callId : null;
 
+        /* Answered from the global ring before any offer existed: this IS the
+           offer we were waiting for — even a `restart` one, because a caller
+           that had to re-gather candidates is still the same caller. Checked
+           before the restart branch for exactly that reason: the restart branch
+           answers without completing the accept, and the callee's own
+           offer-wait timer would then end the call they just took. */
+        if (this.awaitingOffer && this.state.status === "connecting") {
+          this.debug("offer: the one we were waiting for");
+          this.pendingOfferSdp = sdp;
+          if (callId) this.incomingCallId = callId;
+          void this.answerPendingOffer();
+          return;
+        }
+
         if (
           signal.payload?.restart &&
           (this.state.status === "connecting" || this.state.status === "in_call")
         ) {
+          /* A restart for a call we are already in. Same call id, or a legacy
+             peer that never sent one — either way it is a renegotiation of the
+             connection in hand, not a second call. */
+          if (!this.belongsToCurrentCall(callId)) return;
           const pc = this.pc;
           if (pc) {
             (async () => {
@@ -810,15 +959,6 @@ class CallSession {
           return;
         }
 
-        /* Answered from the global ring before any offer existed: this IS the
-           offer we were waiting for. */
-        if (this.awaitingOffer && this.state.status === "connecting") {
-          this.pendingOfferSdp = sdp;
-          if (callId) this.incomingCallId = callId;
-          void this.answerPendingOffer();
-          return;
-        }
-
         /* Already ringing for this call: the caller's retransmission. Refresh
            the SDP (the newest one has the fullest candidate list) and keep
            ringing — treating it as a second call would answer "busy" to the
@@ -829,7 +969,34 @@ class CallSession {
           return;
         }
 
+        /* THE PICKUP RACE — the bug that made every answered call hang up.
+         *
+         * The caller re-sends its offer every two seconds for as long as it is
+         * ringing. The instant this side taps Accept, its status becomes
+         * "connecting", so the next retransmission (at most 2,000ms later)
+         * arrives while the answer handshake is still in flight. The old code
+         * fell through to the catch-all below and answered `busy` — to its own
+         * call, on its own channel. The caller took that busy as a verdict,
+         * wrote the row `canceled` and hung up: the callee had just picked up,
+         * and the call died in their hand.
+         *
+         * A retransmission is not a second call. It is recognised three ways:
+         * the call id it carries is the one this device is already handling,
+         * the offer carries no id at all but we have already applied a remote
+         * description for this conversation (the handshake is done), or the
+         * status is "in_call". All are no-ops; the catch-all below is now only
+         * for a genuinely different, concurrent call. */
+        if (this.state.status === "connecting" || this.state.status === "in_call") {
+          const knownCallId = this.incomingCallId ?? this.state.callId;
+          const sameCall = callId && knownCallId ? callId === knownCallId : null;
+          if (sameCall === true || (sameCall === null && this.pc?.remoteDescription)) {
+            this.debug("offer: duplicate retransmission ignored while", this.state.status);
+            return;
+          }
+        }
+
         if (this.state.status !== "idle") {
+          this.debug("offer: busy verdict for", callId ?? "(no id)", "while", this.state.status);
           this.broadcast({
             event: "busy",
             payload: typeof signal.payload?.callId === "string" ? { callId: signal.payload.callId } : null,
@@ -849,6 +1016,13 @@ class CallSession {
 
       case "answer": {
         const pc = this.pc;
+        const answerCallId = typeof signal.payload?.callId === "string" ? signal.payload.callId : null;
+        /* An answer to a call that is already over (or to a previous attempt on
+           this channel) must not resurrect or re-configure anything. */
+        if (!this.belongsToCurrentCall(answerCallId)) {
+          this.debug("answer: ignored, different call");
+          return;
+        }
         if (pc && (this.state.status === "outgoing" || this.state.status === "connecting")) {
           void pc
             .setRemoteDescription({ type: "answer", sdp: signal.payload?.sdp ?? "" })
@@ -858,12 +1032,15 @@ class CallSession {
                 stopRingTone();
                 this.setStatus("connecting");
               }
+              this.debug("answer: remote description applied");
               this.armConnectWatchdog();
               /* They subscribed late, so they missed our gathering. */
               this.replayCandidates();
               await this.flushQueuedCandidates(pc);
             })
-            .catch(() => {});
+            .catch((err) => {
+              this.debug("answer: setRemoteDescription failed", err?.name);
+            });
         }
         return;
       }
@@ -888,6 +1065,15 @@ class CallSession {
            the peer walked away from is recorded CANCELED by whoever reaches
            the server first (the transition table drops the loser's write),
            never MISSED — "they left" is not "they missed it". */
+        const endCallId = typeof signal.payload?.callId === "string" ? signal.payload.callId : null;
+        /* Only THIS call may be ended by this signal. A hang-up from an
+           earlier attempt still in flight used to be able to take down the
+           call the two people had just connected. */
+        if (!this.belongsToCurrentCall(endCallId)) {
+          this.debug("end: ignored, different call");
+          return;
+        }
+        this.debug("end: peer hung up, answered =", this.answered);
         this.settleCall(this.answered ? "completed" : "canceled");
         /* A callee receiving `end` while still ringing: the system banner is
            retired from the same place the server retires it (data-only FCM
@@ -900,8 +1086,18 @@ class CallSession {
       }
 
       case "busy": {
+        /* Busy is a verdict on a DIAL, and only a dial. Once the peer's answer
+           has landed — status "connecting" or a live call — the handshake is
+           past the point where anyone else's busy can be about it, and a
+           stray one used to be enough to hang up the call being set up. */
+        const busyCallId = typeof signal.payload?.callId === "string" ? signal.payload.callId : null;
+        if (this.state.status !== "outgoing" || !this.belongsToCurrentCall(busyCallId)) {
+          this.debug("busy: ignored while", this.state.status);
+          return;
+        }
         /* Busy is not missed: the callee's device answered the signaling by
            refusing it. Record the attempt, skip the missed alert. */
+        this.debug("busy: peer refused the dial");
         this.settleCall("canceled");
         this.endLocalCall(true);
         this.notice("They're on another call right now.");
@@ -912,8 +1108,16 @@ class CallSession {
         /* Declined ≠ missed. The callee's own `declined` (0005) writes the
            row when it can; this caller-side call covers legacy peers, and is
            ignored when the row is already final either way. */
+        const declineCallId = typeof signal.payload?.callId === "string" ? signal.payload.callId : null;
+        /* A decline only means something to a caller who is still ringing —
+           an answered call cannot be declined, and a decline that raced the
+           answer must lose. */
+        if (this.state.status !== "outgoing" || !this.belongsToCurrentCall(declineCallId)) {
+          this.debug("decline: ignored while", this.state.status);
+          return;
+        }
+        this.debug("decline: peer declined");
         this.settleCall("canceled");
-        if (this.state.status === "incoming") this.dismissIncomingAlerts();
         this.endLocalCall(true);
         this.notice("Call declined.");
         return;
@@ -1011,6 +1215,12 @@ class CallSession {
    */
   cancelRing = (callId: string | null) => {
     if (this.state.status !== "incoming") return;
+    /* The user has already pressed Accept and the media is still being set up —
+       the status is still "incoming" through the permission prompt, but this
+       ring is no longer the caller's to withdraw. A row that goes read at that
+       moment (the same account acting on another device) must not tear down the
+       call being built. */
+    if (this.answering) return;
     if (callId && this.state.callId && this.state.callId !== callId) return;
     this.dismissIncomingAlerts();
     this.endLocalCall(true);
@@ -1028,6 +1238,10 @@ class CallSession {
    */
   accept = async () => {
     if (this.state.status !== "incoming") return;
+    /* Double-tap (or a stray ?answer=true alongside a manual tap) must not
+       build a second peer connection under the first. */
+    if (this.answering) return;
+    this.answering = true;
     stopRingTone();
     this.stopIncomingVibration();
     if (this.ringExpiryTimeout) {
@@ -1038,6 +1252,7 @@ class CallSession {
     const stream = await this.acquireMedia();
     if (!stream) {
       /* Decline by failing: tell the caller, and drop back to idle. */
+      this.answering = false;
       this.broadcast({ event: "decline" });
       this.settleCall("declined");
       this.endLocalCall(true);
@@ -1046,7 +1261,19 @@ class CallSession {
 
     const iceServers = await (this.prewarmedIce ?? getIceServers());
     this.prewarmedIce = null;
-    const pc = new RTCPeerConnection({ iceServers });
+
+    /* The waits above are long: the microphone prompt can sit on screen for
+       seconds, and the ring can end under it (caller gave up, ring window
+       closed). Building a peer connection on an engine that has already gone
+       idle is how a call screen used to sit on "Connecting…" for a peer that
+       had hung up — so the answer stops here instead. */
+    if (this.isIdle()) {
+      stream.getTracks().forEach((track) => track.stop());
+      this.answering = false;
+      return;
+    }
+
+    const pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 2 });
     this.pc = pc;
     this.localStream = stream;
     stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
@@ -1056,7 +1283,16 @@ class CallSession {
        screen: the call is live, and the app the user was already in is still
        theirs to use. Expanding is one tap on the pill. */
     this.state.minimized = true;
+    /* ANSWERED, from this instant — not from the moment the peer's `answer`
+       signal comes back through the channel. Two reasons, both of them bugs
+       that were real: (1) if the answer signal is lost, the retransmitted
+       offer's fallback path and the connect watchdog would otherwise record a
+       call the user took as CANCELED; (2) `answering` is what tells the rest of
+       this class "a person is on this call now", so nothing may tear it down
+       on a technicality. */
+    this.answered = true;
     this.setStatus("connecting");
+    this.debug("accept: answering, callId =", this.incomingCallId ?? this.state.callId ?? "(none)");
 
     if (this.pendingOfferSdp) {
       await this.answerPendingOffer();
@@ -1212,25 +1448,48 @@ class CallSession {
     this.state.minimized = false;
     this.attachForCall(conversationId, peerId);
 
+    /* Ringing starts BEFORE the microphone is opened. The permission prompt is
+       a tap the user may take seconds to make, and every one of those seconds
+       used to be spent behind a blank screen with the ring not started and the
+       45-second clock not running: the callee was not being called yet, and the
+       caller could not tell. The row already exists server-side (start_call_log
+       ran first), so this is the honest state. */
+    this.answered = false;
+    this.setStatus("outgoing");
+    startRingTone();
+    this.debug("startCall: ringing", callId);
+
     const stream = await this.acquireMedia();
     if (!stream) {
       /* Mic refused AFTER the server accepted: the ringing row exists, so it
          has to be closed, not orphaned. */
+      stopRingTone();
       this.settleCall("canceled");
       this.endLocalCall(true);
       return;
     }
 
     const iceServers = await getIceServers();
-    const pc = new RTCPeerConnection({ iceServers });
+
+    /* The sheet is on screen from the first ring, so End is tappable while the
+       microphone prompt is up; if it was tapped, this call is over and the
+       stream that just arrived must not be wired into a fresh connection. */
+    if (this.isIdle()) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    const pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 2 });
     this.pc = pc;
     this.localStream = stream;
     stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
     this.wirePeerConnection(pc);
 
-    this.answered = false;
-    this.setStatus("outgoing");
-    startRingTone();
+    /* The clock runs from the first ring, not from the permission tap. */
+    if (this.ringingTimeout) clearTimeout(this.ringingTimeout);
+    this.ringingTimeout = setTimeout(() => {
+      if (this.state.status === "outgoing") this.hangUp(null, "timeout");
+    }, OUTGOING_TIMEOUT_MS);
 
     let offerSdp = "";
     try {
@@ -1256,7 +1515,16 @@ class CallSession {
        the whole call for them — re-sent every two seconds, the newest copy is
        waiting whenever they tap Accept. */
     this.retransmitTimer = setInterval(() => {
-      if (this.state.status !== "outgoing") {
+      if (this.retransmitTimer && this.state.status !== "outgoing") {
+        clearInterval(this.retransmitTimer);
+        this.retransmitTimer = null;
+        return;
+      }
+      /* Second guard on the same race: as soon as the peer's answer is applied
+         the signaling state leaves `have-local-offer`, and re-sending the offer
+         after that is what used to reach a callee who had just accepted and
+         make it answer "busy" to the call it was already in. */
+      if (pc.signalingState !== "have-local-offer") {
         if (this.retransmitTimer) clearInterval(this.retransmitTimer);
         this.retransmitTimer = null;
         return;
@@ -1286,12 +1554,9 @@ class CallSession {
         .catch(() => {});
     }
 
-    /* A phone gives up eventually. Forty-five unanswered seconds is a
-       missed call, not a dial tone forever. The server's sweep is the backstop
-       if THIS timer never fires (tab killed, phone rebooted). */
-    this.ringingTimeout = setTimeout(() => {
-      if (this.state.status === "outgoing") this.hangUp(null, "timeout");
-    }, OUTGOING_TIMEOUT_MS);
+    /* The 45-second give-up was armed above, before the microphone opened —
+       a phone gives up eventually, and the sweep server-side is the backstop
+       if this timer never fires at all (tab killed, phone rebooted). */
   };
 
   /* ------------------------------------------------------------------ */

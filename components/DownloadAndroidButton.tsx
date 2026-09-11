@@ -3,6 +3,14 @@
 import PlayStoreIcon from "./PlayStoreIcon";
 import { PLAY_STORE_URL, PLAY_STORE_READY } from "@/lib/appConfig";
 
+/**
+ * "Download app" — one button, every surface that offers the Android build.
+ *
+ * The mark is the official four-colour Google Play glyph (components/
+ * PlayStoreIcon.tsx), not a tinted mono triangle: on a white primary button it
+ * has to look like the store, and a `currentColor` glyph there was one more
+ * anonymous play triangle. It sits at the button's own scale via `iconSizes`.
+ */
 type Variant = "primary" | "secondary" | "ghost" | "pill";
 
 export default function DownloadAndroidButton({
@@ -29,6 +37,11 @@ export default function DownloadAndroidButton({
     lg: "h-11 px-6 text-sm rounded-full",
   };
 
+  /* The store mark is drawn at the button's own scale — a 20px four-colour
+     glyph inside an 11rem-wide pill reads as a real store button, where a
+     16px one reads as decoration. Sized by height; the mark's width follows. */
+  const iconSizes: Record<string, number> = { sm: 18, md: 20, lg: 22 };
+
   const variants: Record<Variant, string> = {
     primary:
       "bg-white text-[#0a0a0f] shadow-[0_8px_24px_rgba(0,0,0,0.18)] hover:bg-white/90 border border-white/10",
@@ -54,7 +67,7 @@ export default function DownloadAndroidButton({
         className={`${base} ${sizes[size]} ${variants[variant]} opacity-70 ${className}`}
         aria-disabled="true"
       >
-        <PlayStoreIcon />
+        <PlayStoreIcon size={iconSizes[size]} />
         {label}
       </a>
     );
@@ -68,7 +81,7 @@ export default function DownloadAndroidButton({
       onClick={onClick}
       className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}
     >
-      <PlayStoreIcon />
+      <PlayStoreIcon size={iconSizes[size]} />
       {label}
     </a>
   );

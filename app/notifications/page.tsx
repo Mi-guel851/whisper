@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { safeErrorMessage } from "@/lib/safeErrorMessage";
 import BottomNavigation from "@/components/BottomNavigation";
@@ -12,7 +12,8 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import GlassPanel from "@/components/GlassPanel";
 import { HINT_UNLOCK_COST } from "@/lib/coins";
 import { useToast } from "@/components/ToastProvider";
-import { Heart, Download, Trash2, Lightbulb, LockKeyhole, Loader2, ChevronDown } from "lucide-react";
+import { HAPTIC, vibrate } from "@/lib/haptics";
+import { Heart, Download, Trash2, Lightbulb, LockKeyhole, Loader2, ChevronDown, Check, X } from "lucide-react";
 
 type Notification = {
   id: string;
@@ -43,6 +44,13 @@ type WhisperHint = {
 
 type HintUnlock = { message_id: string };
 
+/**
+ * How long a press has to stay down before it becomes a selection, matching
+ * the chat list's row menu (components/inbox/ChatRow.tsx) — one press-and-hold
+ * vocabulary for the whole app, not a different number per screen.
+ */
+const LONG_PRESS_MS = 420;
+
 export default function NotificationsPage() {
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -53,8 +61,18 @@ export default function NotificationsPage() {
   const [reloadToken, setReloadToken] = useState(0);
   const [viewing, setViewing] = useState<{ message: string; imageUrl: string | null } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<Notification | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  /* Delete is one flow for one row and for twenty: the pending list is what the
+     confirmation is about, so a long-press selection and the row's own bin
+     button land on the same dialog and the same request. */
+  const [pendingDelete, setPendingDelete] = useState<Notification[] | null>(null);
+  /* Multi-select. A press-and-hold is the way in (and the only way in: an
+     inbox where a plain tap can start selecting is an inbox where a tap meant
+     to open a whisper instead starts deleting things). */
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressed = useRef(false);
   const [hintUnlocks, setHintUnlocks] = useState<HintUnlock[]>([]);
   const [hints, setHints] = useState<WhisperHint[]>([]);
   const [expandedHintId, setExpandedHintId] = useState<string | null>(null);
@@ -136,6 +154,91 @@ export default function NotificationsPage() {
     /* `reloadToken` is the retry button's handle: bumping it re-runs the whole
        load (session, query, unlocks, realtime) from a clean slate. */
   }, [reloadToken]);
+
+  /* ------------------------------------------------------------------ */
+  /* Selection                                                            */
+  /* ------------------------------------------------------------------ */
+
+  const cancelPress = useCallback(() => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }, []);
+
+  /** A held press on a whisper enters selection mode with that row ticked. */
+  function startPress(id: string, event: React.PointerEvent<HTMLDivElement>) {
+    if (selectionMode) return;
+    /* The card's own controls (bin, hint, save image) keep their own press
+       meanings — holding the bin must not start selecting the row it deletes. */
+    if ((event.target as HTMLElement).closest("[data-no-longpress]")) return;
+    longPressed.current = false;
+    cancelPress();
+    pressTimer.current = setTimeout(() => {
+      longPressed.current = true;
+      vibrate(HAPTIC.select);
+      setSelectionMode(true);
+      setSelectedIds(new Set([id]));
+    }, LONG_PRESS_MS);
+  }
+
+  function handleRowTap(item: Notification) {
+    /* The pointerup that ended a successful hold also fires a click; without
+       this the row would be selected and immediately opened. */
+    if (longPressed.current) {
+      longPressed.current = false;
+      return;
+    }
+    if (selectionMode) {
+      toggleSelected(item.id);
+      return;
+    }
+    void openNotification(item);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    vibrate(HAPTIC.tap);
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(notifications.map((item) => item.id)));
+    vibrate(HAPTIC.select);
+  }
+
+  /** Drop every tick but stay in selection mode — "Clear all" is not "leave". */
+  function clearSelected() {
+    setSelectedIds(new Set());
+    vibrate(HAPTIC.tap);
+  }
+
+  function exitSelection() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }
+
+  const allSelected = notifications.length > 0 && selectedIds.size === notifications.length;
+
+  /* Escape is the universal "back out of this mode" key, and the selection bar
+     is a mode. Only bound while it is on, so the key keeps its other meanings
+     on this page the rest of the time. */
+  useEffect(() => {
+    if (!selectionMode) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectionMode]);
 
   function hintUnlocked(messageId: string) {
     return hintUnlocks.some((unlock) => unlock.message_id === messageId);
@@ -293,15 +396,17 @@ export default function NotificationsPage() {
   }
 
   async function confirmDelete() {
-    if (!pendingDelete) return;
-    const item = pendingDelete;
+    if (!pendingDelete || pendingDelete.length === 0) return;
+    const items = pendingDelete;
 
-    setDeleting(item.id);
+    setDeleting(true);
 
-    /* Complete delete on the server: the route destroys the Cloudinary image
-       (or the legacy bucket object) AND removes the database row in one
+    /* Complete delete on the server: the route destroys the Cloudinary images
+       (or the legacy bucket objects) AND removes the database rows in one
        authorized call, so a failure in one half can't leave an orphaned asset
-       or a row pointing at nothing. */
+       or a row pointing at nothing. One request for the whole selection — a
+       "select all" on a phone is dozens of rows, and dozens of authenticated
+       round trips is how a bulk delete turns into a spinner that half-fails. */
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -315,36 +420,92 @@ export default function NotificationsPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ messageId: item.id }),
+          body: JSON.stringify(
+            items.length === 1 ? { messageId: items[0].id } : { messageIds: items.map((item) => item.id) }
+          ),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          console.error("Couldn't delete message:", data.error);
+          console.error("Couldn't delete messages:", data.error);
           failed = true;
         }
       } catch (err) {
-        console.error("Couldn't delete message:", err);
+        console.error("Couldn't delete messages:", err);
         failed = true;
       }
     } else {
       failed = true;
     }
 
-    setDeleting(null);
-    setPendingDelete(null);
+    setDeleting(false);
 
-    if (!failed) {
-      setNotifications((prev) => prev.filter((n) => n.id !== item.id));
-      /* A deleted unread whisper is no longer something to be read. */
-      void refreshUnreadWhispers();
+    if (failed) {
+      showToast("Couldn't delete those whispers. Check your connection and try again.");
+      return;
     }
+
+    const removed = new Set(items.map((item) => item.id));
+    setPendingDelete(null);
+    setNotifications((prev) => prev.filter((item) => !removed.has(item.id)));
+    /* The selection was chosen from rows that no longer exist. */
+    exitSelection();
+    /* A deleted unread whisper is no longer something to be read. */
+    void refreshUnreadWhispers();
+    vibrate(HAPTIC.warning);
+    showToast(items.length > 1 ? `${items.length} whispers deleted.` : "Whisper deleted.", { variant: "subtle" });
   }
 
   return (
     <main className="min-h-screen theme-bg-gradient pb-28 text-white">
       <div className="p-6">
         <BackButton />
-        <h1 className="page-title mt-4">📡 Activity</h1>
+
+        {selectionMode ? (
+          /* The selection bar takes the heading's place: what the screen is
+             about right now is the selection, and the count is the one fact
+             that matters. Select all / Clear sits next to the count because
+             that is the gesture's second half ("a select all feature then
+             delete"), and the bin is disabled at zero so it can never be
+             pressed into a no-op dialog. */
+          <div className="mt-4 flex items-center gap-2" role="toolbar" aria-label="Whisper selection">
+            <button
+              type="button"
+              onClick={exitSelection}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/5 text-gray-200 transition hover:bg-white/10 active:scale-95"
+              aria-label="Cancel selection"
+            >
+              <X size={18} />
+            </button>
+            <p className="min-w-0 flex-1 truncate text-lg font-black" aria-live="polite">
+              {selectedIds.size} selected
+            </p>
+            <button
+              type="button"
+              onClick={allSelected ? clearSelected : selectAll}
+              className="shrink-0 rounded-full bg-white/10 px-3.5 py-2 text-xs font-black text-cyan-100 transition hover:bg-white/15 active:scale-95"
+            >
+              {allSelected ? "Clear all" : "Select all"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingDelete(notifications.filter((item) => selectedIds.has(item.id)))}
+              disabled={selectedIds.size === 0 || deleting}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-500/20 text-red-300 transition hover:bg-red-500/30 active:scale-95 disabled:opacity-40"
+              aria-label={`Delete ${selectedIds.size} selected whisper${selectedIds.size === 1 ? "" : "s"}`}
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <h1 className="page-title mt-4">📡 Activity</h1>
+            {notifications.length > 0 && (
+              <p className="mt-1 text-xs text-gray-400">
+                Press and hold a whisper to select several, then delete them together.
+              </p>
+            )}
+          </>
+        )}
 
         {/* Everything the server told you — replies, transfers, calls, friend
             events — persistent and deep-linked. The whispers below are the
@@ -383,18 +544,51 @@ export default function NotificationsPage() {
             {notifications.map((item) => {
               const unread = !item.is_read;
 
+              const selected = selectedIds.has(item.id);
+
               return (
                 <GlassPanel
                   key={item.id}
-                  className={`rounded-2xl p-4 transition-all duration-300 ${
-                    unread
-                      ? "bg-white/5 ring-1 ring-white/10 shadow-lg shadow-black/20"
-                      : "bg-white/[0.03] opacity-60"
+                  onPointerDown={(event) => startPress(item.id, event)}
+                  onPointerUp={cancelPress}
+                  onPointerLeave={cancelPress}
+                  onPointerCancel={cancelPress}
+                  onContextMenu={(event) => {
+                    /* Desktop: right-click selects, matching the row menu in
+                       the chat list. The native menu is always suppressed —
+                       on Android a long press without this summons the text
+                       selection handles on top of the selection UI. */
+                    event.preventDefault();
+                    if (selectionMode || (event.target as HTMLElement).closest("[data-no-longpress]")) return;
+                    vibrate(HAPTIC.select);
+                    setSelectionMode(true);
+                    setSelectedIds(new Set([item.id]));
+                  }}
+                  className={`select-none rounded-2xl p-4 transition-all duration-300 ${
+                    selected
+                      ? "bg-emerald-400/10 ring-2 ring-emerald-400/40"
+                      : unread
+                        ? "bg-white/5 ring-1 ring-white/10 shadow-lg shadow-black/20"
+                        : "bg-white/[0.03] opacity-60"
                   }`}
                 >
                   <div className="flex w-full items-center gap-4">
+                    {selectionMode && (
+                      <span
+                        aria-hidden
+                        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border transition ${
+                          selected
+                            ? "border-emerald-300 bg-emerald-400 text-black"
+                            : "border-white/30 text-transparent"
+                        }`}
+                      >
+                        <Check size={14} strokeWidth={3.5} />
+                      </span>
+                    )}
                     <button
-                      onClick={() => openNotification(item)}
+                      onClick={() => handleRowTap(item)}
+                      aria-pressed={selectionMode ? selected : undefined}
+                      aria-label={selectionMode ? `Select whisper from ${new Date(item.created_at).toLocaleDateString()}` : undefined}
                       className="flex min-w-0 flex-1 items-center gap-4 text-left"
                     >
                       <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${unread ? "bg-gradient-to-br from-pink-500 to-red-500" : "bg-gradient-to-br from-pink-500/45 to-red-500/45"}`}>
@@ -420,14 +614,17 @@ export default function NotificationsPage() {
                       {new Date(item.created_at).toLocaleDateString()}
                     </span>
 
-                    <button
-                      onClick={() => setPendingDelete(item)}
-                      disabled={deleting === item.id}
-                      className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
-                      aria-label="Delete message"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {!selectionMode && (
+                      <button
+                        data-no-longpress
+                        onClick={() => setPendingDelete([item])}
+                        disabled={deleting}
+                        className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-gray-400 transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
+                        aria-label="Delete message"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
 
                   {item.image_url && (
@@ -438,6 +635,7 @@ export default function NotificationsPage() {
                         className="w-full max-h-72 rounded-2xl object-cover"
                       />
                       <button
+                        data-no-longpress
                         onClick={() => downloadImage(item.image_url!, item.id)}
                         disabled={downloading === item.id}
                         className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-black/70 backdrop-blur-md px-3 py-2 text-xs font-semibold text-white hover:bg-black/90 transition disabled:opacity-60"
@@ -448,8 +646,9 @@ export default function NotificationsPage() {
                     </div>
                   )}
 
-                  <div className="mt-3">
+                  <div className={`mt-3 ${selectionMode ? "pointer-events-none opacity-40" : ""}`}>
                     <button
+                      data-no-longpress
                       onClick={() => setExpandedHintId((current) => (current === item.id ? null : item.id))}
                       className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-white/15 active:scale-95"
                     >
@@ -515,13 +714,17 @@ export default function NotificationsPage() {
         />
       )}
 
-      {pendingDelete && (
+      {pendingDelete && pendingDelete.length > 0 && (
         <ConfirmDialog
-          title="Delete this message?"
-          description="This can't be undone. The message and any attached image will be permanently removed."
+          title={pendingDelete.length > 1 ? `Delete ${pendingDelete.length} whispers?` : "Delete this whisper?"}
+          description={
+            pendingDelete.length > 1
+              ? "This can't be undone. Every selected whisper and its attached image will be permanently removed."
+              : "This can't be undone. The whisper and any attached image will be permanently removed."
+          }
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
-          loading={deleting === pendingDelete.id}
+          loading={deleting}
         />
       )}
 
