@@ -1,0 +1,170 @@
+/**
+ * Guards for two changes that are easy to undo by accident:
+ *
+ *   1. the ambient word wall on the dashboard welcome card (three morphing
+ *      lanes drawn from a ~100-word vocabulary, in both themes), and
+ *   2. the call moving out of the chat page into an app-wide session — ring
+ *      enforced everywhere, answering collapsing into a floating pill, and the
+ *      two signaling fixes that stop a call parking itself on "Connecting…".
+ *
+ * Static source guards, in the style of every other test here: these files are
+ * the contract, and each assertion names the behaviour that would silently
+ * disappear if the line were removed.
+ */
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+
+const [
+  words,
+  wall,
+  cloud,
+  hero,
+  morph,
+  css,
+  engine,
+  provider,
+  pill,
+  sheet,
+  overlay,
+  chat,
+  layout,
+] = await Promise.all([
+  read("lib/whisperWords.ts"),
+  read("components/dashboard/WordWall.tsx"),
+  read("components/WhisperWordCloud.tsx"),
+  read("components/dashboard/DashboardHero.tsx"),
+  read("components/ui/MorphingText.tsx"),
+  read("app/globals.css"),
+  read("lib/calls/callSession.ts"),
+  read("components/calls/CallSessionProvider.tsx"),
+  read("components/calls/InCallPill.tsx"),
+  read("components/calls/InCallSheet.tsx"),
+  read("components/calls/IncomingCallOverlay.tsx"),
+  read("app/chat/[conversationId]/page.tsx"),
+  read("app/layout.tsx"),
+]);
+
+function ok(name, check) {
+  assert.ok(check, name);
+  console.log(`  ok   ${name}`);
+}
+
+/* ------------------------------------------------------------------------- */
+console.log("ambient word wall");
+/* ------------------------------------------------------------------------- */
+
+const dictionary = [...words.slice(words.indexOf("export const WHISPER_WORDS"), words.indexOf("];"))
+  .matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+
+ok("the vocabulary carries about a hundred words", dictionary.length >= 100);
+ok("no word appears twice in the vocabulary", new Set(dictionary).size === dictionary.length);
+ok("lanes are interleaved, so simultaneous lanes cannot collide", /position % count === index/.test(words));
+ok("the dashboard wall runs exactly three lanes", /const LANE_COUNT = 3;/.test(wall) && (wall.match(/whisperLane\(index, LANE_COUNT/g) || []).length === 1);
+ok("the wall uses the same morph component and timing as the send page", /from "@\/components\/ui\/MorphingText"/.test(wall)
+  && /holdSeconds={2\.6}/.test(wall) && /morphSeconds={1\.2}/.test(wall) && /blurPx=\{8\}/.test(wall)
+  && /holdSeconds={2\.6}/.test(cloud) && /morphSeconds={1\.2}/.test(cloud));
+ok("the send page wall draws on the same vocabulary", /whisperLane\(index, BRAND_LINES\.length/.test(cloud));
+ok("the wall is decorative and unclickable", /aria-hidden/.test(wall) && /\.dashboard-word-wall \{[\s\S]{0,240}pointer-events:none/.test(css));
+/* The theme's text colour held back with `opacity`, NOT a colour-mix alpha:
+   this build's minifier strips the percentage out of
+   `color-mix(in srgb, var(--x) 15%, transparent)` and emits the variable at
+   full strength (verified in .next/static/chunks/*.css), which would turn the
+   wall into a block of solid text. */
+const wallRuleRaw = css.slice(css.indexOf(".dashboard-word-wall-word {"), css.indexOf("}", css.indexOf(".dashboard-word-wall-word {")));
+const wallRule = wallRuleRaw.replace(/\/\*[\s\S]*?\*\//g, ""); // declarations only, not the note explaining them
+ok("the wall is legible in both themes (theme token, not hardcoded white)", /color:var\(--theme-text\)/.test(wallRule) && /opacity:\.16/.test(wallRule));
+ok("the wall does not depend on a construct the minifier mangles", !/color-mix/.test(wallRule));
+ok("the wall stays out of the mobile card, where there is no spare half", /@media \(max-width:44rem\) \{ \.dashboard-word-wall \{ display:none; \} \}/.test(css));
+ok("reduced motion gets a static word instead of a loop", /if \(reduced \|\| texts\.length < 2\) \{/.test(morph));
+ok("the welcome card renders the wall", /<WordWall \/>/.test(hero) && /\.dashboard-welcome-card \{ position:relative; overflow:hidden; \}/.test(css));
+
+/* ------------------------------------------------------------------------- */
+console.log("one call engine, owned by the app");
+/* ------------------------------------------------------------------------- */
+
+ok("the engine is a singleton, not a hook", /export const callSession = new CallSession\(\);/.test(engine) && !/from "react"/.test(engine));
+ok("the root layout mounts it", /<CallSessionProvider \/>/.test(layout) && !/GlobalCallListener/.test(layout));
+ok("the chat page no longer owns the call or its surfaces", !/useVoiceCall|IncomingCallOverlay|InCallSheet/.test(chat));
+ok("the chat page registers the thread so it can ring live", /call\.attachThread\(\{/.test(chat) && /enabled: Boolean\(isFriendConversation\)/.test(chat));
+ok("the chat page places calls through the shared engine", /call\.startCall\(\{ conversationId, peerId: otherUserId \}\)/.test(chat));
+ok("the ring has no route exception — it is enforced everywhere", !/usePathname/.test(provider) && /call\.status === "incoming" && \(/.test(provider));
+ok("every ring path converges on the engine", ["postgres_changes", "INCOMING_CALL_EVENT", "PENDING_CALL_KEY", "beginIncomingRing"].every((needle) => provider.includes(needle)));
+ok("the ring stands down when its row is read or deleted", /cancelRing\(/.test(provider) && /cancelRing = \(callId/.test(engine));
+
+/* ------------------------------------------------------------------------- */
+console.log("answering works from anywhere");
+/* ------------------------------------------------------------------------- */
+
+ok("a ringing caller re-broadcasts its offer", /OFFER_RETRANSMIT_MS/.test(engine) && /this\.retransmitTimer = setInterval\(/.test(engine));
+ok("a late callee waits for that offer instead of failing", /OFFER_WAIT_MS/.test(engine) && /this\.awaitingOffer = true;/.test(engine));
+ok("a retransmitted offer refreshes the ring instead of answering busy", /if \(this\.state\.status === "incoming"\) \{\s*if \(sdp\) this\.pendingOfferSdp = sdp;/.test(engine));
+ok("our ICE candidates are replayed to a peer who subscribed late", /private replayCandidates\(\)/.test(engine) && (engine.match(/this\.replayCandidates\(\);/g) || []).length >= 2);
+ok("their ICE candidates arriving early are queued, not dropped", /queuedRemoteCandidates/.test(engine) && /flushQueuedCandidates/.test(engine));
+
+/* ------------------------------------------------------------------------- */
+console.log('"Connecting…" always resolves');
+/* ------------------------------------------------------------------------- */
+
+ok('ICE "completed" counts as connected', /state === "connected" \|\| state === "completed"/.test(engine));
+ok("the aggregate connection state is the second opinion", /if \(pc\.connectionState === "connected"\) \{\s*this\.markConnected\(\);/.test(engine));
+ok("a stalled connect restarts ICE, then ends with a sentence", /CONNECT_TIMEOUT_MS/.test(engine) && /We couldn't connect\. Check your connection and try again\./.test(engine));
+ok("a disconnected call gets a grace period before restarting", /ICE_DISCONNECT_GRACE_MS/.test(engine));
+
+/* ------------------------------------------------------------------------- */
+console.log("answered calls minimize to the top pill");
+/* ------------------------------------------------------------------------- */
+
+ok("accepting collapses the call into the pill", /this\.state\.minimized = true;\s*this\.setStatus\("connecting"\);/.test(engine));
+ok("the pill can be expanded again", /onMinimize/.test(sheet) && /onExpand/.test(pill) && /setMinimized/.test(engine));
+ok("the pill carries the call controls", ["onToggleMute", "onHangUp", "call-pill-end", "formatCallDuration"].every((needle) => pill.includes(needle)));
+ok("the pill floats over every route from the provider, not the chat page", /<InCallPill/.test(provider) && /call-pill-layer/.test(css) && /\.call-pill-layer \{[\s\S]{0,200}position: fixed/.test(css));
+ok("the pill sits above page chrome but below an incoming ring", /z-index: 68;/.test(css) && /z-\[70\]/.test(overlay));
+
+/* ------------------------------------------------------------------------- */
+console.log("call surfaces keep their contrast in the light theme");
+/* ------------------------------------------------------------------------- */
+
+ok("the generic dialog surface rule still paints popovers", /\[role="dialog"\], \[role="alertdialog"\] \{\s*background-color:var\(--theme-surface-solid\);/.test(css));
+ok("call surfaces opt out of it by class", /\[role="dialog"\]\.call-surface \{/.test(css) && /\.call-surface,[\s\S]{0,120}background-color: #07130f;/.test(css));
+ok("the opt-out pins a dark palette and colour-scheme", /\.call-surface,[\s\S]{0,200}color-scheme: dark;/.test(css));
+ok("the ring, the sheet and the pill all carry the opt-out", /className="call-surface fixed/.test(overlay) && /className="call-surface fixed/.test(sheet) && /call-pill call-surface/.test(pill));
+/* Every legible label on a call surface is at least 60% white on the dark
+   island — 7:1 or better. The one deliberate exception is the disabled speaker
+   placeholder, which is aria-hidden and meant to read as "not a control". */
+const callTextAlphas = `${overlay}\n${sheet}`
+  .split("\n")
+  .filter((line) => /text-white\/\d+/.test(line) && !line.includes("aria-hidden"))
+  .flatMap((line) => [...line.matchAll(/text-white\/(\d+)/g)].map((match) => Number(match[1])));
+ok("no call text sits below 60% white", callTextAlphas.length > 0 && callTextAlphas.every((alpha) => alpha >= 60));
+
+/* ------------------------------------------------------------------------- */
+console.log("the ring reaches an app that is already open");
+/* ------------------------------------------------------------------------- */
+
+const [ringMigration, lifecycleMigration, pushFn] = await Promise.all([
+  read("supabase/migrations/202609110002_incoming_call_ring_in_app.sql"),
+  read("supabase/migrations/202609100006_call_lifecycle.sql"),
+  read("supabase/functions/notify-on-notification/index.ts"),
+]);
+
+/* The `notifications` row typed 'call' is both the push payload and the event
+   the open app renders the overlay from, so gating it on the global push
+   switch also silenced in-app ringing. The row is now gated on the
+   call-specific preference alone; delivery still re-checks the global one. */
+/* Comments stripped: the block's own note explains the change using the words
+   `push_notifications`, and a guard that matches prose is not a guard. */
+const insertBlock = ringMigration
+  .slice(ringMigration.indexOf("Incoming-call alert for the callee"), ringMigration.indexOf("returning id into v_ring_id;"))
+  .split("\n")
+  .filter((line) => !line.trim().startsWith("--"))
+  .join("\n");
+ok("start_call_log is re-created by the new migration", /create or replace function public\.start_call_log/.test(ringMigration));
+ok("the ring row is no longer gated on the global push switch", !/push_notifications/.test(insertBlock));
+ok("the call-specific preference still removes the ring", /p\.notify_calls is distinct from false/.test(insertBlock));
+ok("the old gate is the one being replaced", /and p\.push_notifications is distinct from false\s*\n\s*and p\.notify_calls/.test(lifecycleMigration));
+ok("push delivery still honours the global switch", /profile\?\.push_notifications === false/.test(pushFn));
+ok("the migration is transactional and re-runnable", /^begin;/m.test(ringMigration) && /^commit;/m.test(ringMigration));
+
+console.log("\nCALL SESSION + WORD WALL GUARDS PASSED");

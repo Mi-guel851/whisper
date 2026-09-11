@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node tests/service-worker-navigation.test.mjs && node tests/whisper-guards.test.mjs && node tests/dashboard-redesign.test.mjs && node tests/security-hardening.test.mjs && node tests/feed-replies.test.mjs && node tests/error-gating.test.mjs && node tests/inbox-ordering.test.mjs && node tests/feed-writing.test.mjs"
+    "test": "node tests/service-worker-navigation.test.mjs && node tests/whisper-guards.test.mjs && node tests/dashboard-redesign.test.mjs && node tests/security-hardening.test.mjs && node tests/feed-replies.test.mjs && node tests/error-gating.test.mjs && node tests/inbox-ordering.test.mjs && node tests/feed-writing.test.mjs && node tests/call-session.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

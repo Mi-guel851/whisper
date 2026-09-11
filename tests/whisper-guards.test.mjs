@@ -142,7 +142,7 @@ check("call log is a log, not media (no audio columns)", !/audio_path|recording|
 check("iOS Info.plist declares microphone usage", infoPlist.includes("NSMicrophoneUsageDescription"));
 check("TURN credentials minted server-side from env", turnRoute.includes("process.env.TURN_REST_API_URL") && turnRoute.includes("process.env.TURN_CREDENTIALS"));
 check("no TURN secret embedded in the client", !/openrelayproject|turn:[a-z]+:[a-z@!]/i.test(iceServers) && !/credential:\s*"/i.test(iceServers));
-check("signaling is realtime broadcast, no polling", read("lib/calls/signaling.ts").includes('type: "broadcast"') && !/setInterval\([\s\S]{0,40}fetch/i.test(read("lib/calls/useVoiceCall.ts")));
+check("signaling is realtime broadcast, no polling", read("lib/calls/signaling.ts").includes('type: "broadcast"') && !/setInterval\([\s\S]{0,40}fetch/i.test(read("lib/calls/callSession.ts")));
 check("call button gated to accepted friendships in the UI", /enabled: Boolean\(isFriendConversation\)/.test(chatPage));
 
 console.log("knowledge base honesty");

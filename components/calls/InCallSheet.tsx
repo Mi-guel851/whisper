@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
+import { ChevronDown, Mic, MicOff, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
 
 import { formatCallDuration } from "@/lib/calls/callFormat";
-import type { CallStatus } from "@/lib/calls/useVoiceCall";
+import type { CallStatus } from "@/lib/calls/callSession";
 import useSafeReducedMotion from "@/lib/useSafeReducedMotion";
 import { spring } from "@/lib/motion";
 
@@ -20,6 +20,10 @@ type InCallSheetProps = {
   onToggleMute: () => void;
   onToggleSpeaker: () => void;
   onHangUp: () => void;
+  /** Collapse into the floating top pill. Absent for a call that cannot be
+      minimized, which today is none of them — the prop stays optional so the
+      sheet can be rendered standalone in a preview without it. */
+  onMinimize?: () => void;
 };
 
 /**
@@ -30,6 +34,12 @@ type InCallSheetProps = {
  * call is ringing/connecting/live, keeps the anonymous identity centered, and
  * puts large round mute/speaker/end controls along the bottom — the mental model
  * users already know from WhatsApp/phone calls.
+ *
+ * It is not a cage: the chevron at the top collapses it into the pill
+ * (components/calls/InCallPill.tsx) and the call carries on behind whatever the
+ * user goes to do. `.call-surface` keeps this a dark island in both themes — the
+ * light theme's dialog surface rule would otherwise paint it white behind white
+ * text.
  */
 export default function InCallSheet({
   name,
@@ -42,6 +52,7 @@ export default function InCallSheet({
   onToggleMute,
   onToggleSpeaker,
   onHangUp,
+  onMinimize,
 }: InCallSheetProps) {
   const reduced = useSafeReducedMotion();
   const [now, setNow] = useState(() => Date.now());
@@ -63,7 +74,7 @@ export default function InCallSheet({
 
   return (
     <motion.div
-      className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-[#07130f] px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))] text-white"
+      className="call-surface fixed inset-0 z-[60] flex flex-col overflow-hidden bg-[#07130f] px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))] text-white"
       initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 1.02 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={reduced ? { duration: 0 } : { duration: 0.22, ease: "easeOut" }}
@@ -77,9 +88,24 @@ export default function InCallSheet({
       />
       <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.06)_0_1px,transparent_1px_28px)] opacity-20" />
 
+      {/* Collapse to the pill. Top-left rather than in the control row below:
+          the row is the three things a call ends with, and minimize is a view
+          change, not a call action. */}
+      {onMinimize && (
+        <motion.button
+          type="button"
+          onClick={onMinimize}
+          whileTap={reduced ? undefined : { scale: 0.9, transition: spring.snappy }}
+          className="call-sheet-minimize"
+          aria-label="Minimize call"
+        >
+          <ChevronDown size={20} />
+        </motion.button>
+      )}
+
       <div className="relative z-10 flex flex-1 flex-col items-center justify-between">
         <div className="flex flex-col items-center text-center">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-white/70">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-white/85">
             <PhoneCall size={13} />
             Whisper voice call
           </div>
@@ -106,7 +132,7 @@ export default function InCallSheet({
           </div>
 
           <h1 className="mt-8 max-w-xs truncate text-3xl font-black text-white">{name}</h1>
-          <p className="mt-2 text-base font-semibold tabular-nums text-white/72">{label}</p>
+          <p className="mt-2 text-base font-semibold tabular-nums text-white/85">{label}</p>
         </div>
 
         <div className="w-full max-w-sm">
@@ -145,7 +171,7 @@ export default function InCallSheet({
               </div>
             )}
           </div>
-          <p className="text-center text-xs font-medium leading-relaxed text-white/45">
+          <p className="text-center text-xs font-medium leading-relaxed text-white/62">
             Audio is end-to-end over WebRTC. Whisper does not record calls.
           </p>
         </div>
@@ -184,7 +210,7 @@ function CallControlButton({
       >
         {children}
       </motion.button>
-      <span className="text-[11px] font-bold text-white/65">{label}</span>
+      <span className="text-[11px] font-bold text-white/80">{label}</span>
     </div>
   );
 }

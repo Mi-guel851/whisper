@@ -7069,12 +7069,44 @@ html.viewport-locked body {
 .dashboard-welcome-card::before { display:none; }
 .dashboard-welcome-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.85rem; }
 .dashboard-welcome-eyebrow { font-size:.65rem; font-weight:700; letter-spacing:.14em; color:var(--theme-text-muted); }
-.dashboard-welcome-copy { min-width:0; }
+.dashboard-welcome-copy { min-width:0; max-width:34rem; }
 .dashboard-welcome-copy h1 { overflow-wrap:anywhere; font-size:clamp(1.65rem,3vw,2.4rem); line-height:1.2; font-weight:800; letter-spacing:-.045em; color:var(--theme-text); }
 .dashboard-welcome-copy h1 > span { color:var(--theme-accent-purple); }
 .dashboard-welcome-copy p { margin-top:.55rem; font-size:.875rem; line-height:1.6; color:var(--theme-text-secondary); }
 .dashboard-welcome-card .dashboard-hero-actions { margin:0; gap:1rem; flex-wrap:wrap; }
 .dashboard-hero-share-link { min-height:44px; }
+
+/* The welcome card's right-hand field: an ambient word wall, the same effect
+   the anonymous send page runs behind its composer (components/dashboard/
+   WordWall.tsx + components/WhisperWordCloud.tsx). Two rules do the work:
+   `overflow:hidden` keeps a long word from escaping the card's rounded corner,
+   and the mask fades the wall's left edge so it can sit UNDER the headline's
+   column instead of arguing with it. Text colour is the theme's own at 15% —
+   a hardcoded white wall would be invisible on the light theme's white card,
+   which is the whole reason this is a token and not a utility class. */
+.dashboard-welcome-card { position:relative; overflow:hidden; }
+.dashboard-welcome-card > *:not(.dashboard-word-wall) { position:relative; z-index:2; }
+.dashboard-word-wall {
+  position:absolute; top:3.25rem; bottom:4.75rem; left:46%; right:0; z-index:1;
+  pointer-events:none; user-select:none; overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 44%);
+  mask-image:linear-gradient(90deg, transparent 0, #000 44%);
+}
+.dashboard-word-wall-word {
+  font-size:clamp(.9rem,1.35vw,1.3rem);
+  font-weight:900; text-transform:uppercase; letter-spacing:-.02em;
+  /* The theme's own text colour, held back with `opacity` rather than a
+     colour-mix alpha: this build's minifier drops the percentage out of
+     `color-mix(in srgb, var(--x) 15%, transparent)` and emits the variable at
+     full strength, which turns texture into a wall of solid text. Opacity on
+     the host also multiplies cleanly with the per-layer opacity MorphingText
+     animates, so the morph reads exactly as it does on the send page. */
+  color:var(--theme-text);
+  opacity:.16;
+}
+/* Below the tablet breakpoint the copy and the two actions fill the card;
+   a wall behind them is clutter, not texture. */
+@media (max-width:44rem) { .dashboard-word-wall { display:none; } }
 .dashboard-personal-grid { grid-template-columns:minmax(0,1fr); }
 .dashboard-overview { padding:.5rem 0; }
 .dashboard-overview .stats-row-grid-compact { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; }
@@ -7545,3 +7577,136 @@ body { scroll-behavior: smooth; }
 .modal-fullscreen .feed-composer-sheet-body textarea {
   min-height: 10rem;
 }
+
+/* --- Voice call surfaces ---------------------------------------------------
+   A call is a dark island in BOTH themes, and it has to say so explicitly.
+
+   The bug this section exists for: `[role="dialog"]` is restyled globally with
+   `background-color: var(--theme-surface-solid)` so popovers are opaque paper in
+   either theme. The incoming-call screen is a `role="dialog"`, and
+   `--theme-surface-solid` is `#ffffff` in the light theme — so the ring turned
+   white behind white text, which is not low contrast, it is nothing.
+
+   Why the utility could not win: in the shipped bundle both rules are unlayered
+   and both have specificity (0,1,0), so source order decides — and this file is
+   concatenated AFTER the generated utilities, so the dialog rule always landed
+   last. (Checked in .next/static/chunks/*.css: `.bg-[#07130f]` at ~41k,
+   `[role=dialog],[role=alertdialog]` at ~274k.) The opt-out below therefore
+   wins on specificity — (0,2,0) for the dialog form — which does not depend on
+   where anything sits in the file.
+
+   `.call-surface` is the opt-out: same specificity trick in reverse (an extra
+   class), one palette, pinned for every call surface — ring, in-call sheet and
+   the minimized pill. `color-scheme: dark` comes with it so scrollbars and form
+   controls inside a call do not render as light-theme widgets.
+   ------------------------------------------------------------------------ */
+.call-surface,
+[role="dialog"].call-surface {
+  background-color: #07130f;
+  color: #f2fbf6;
+  color-scheme: dark;
+  --call-accent: #25d366;
+  --call-text: #f2fbf6;
+  --call-text-dim: rgba(242, 251, 246, 0.85);
+  --call-text-muted: rgba(242, 251, 246, 0.62);
+}
+
+/* Collapse-to-pill, top-left of the in-call sheet. */
+.call-sheet-minimize {
+  position: absolute;
+  left: 1.25rem;
+  top: max(1.15rem, env(safe-area-inset-top, 0px));
+  z-index: 11;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--call-text, #fff);
+  cursor: pointer;
+}
+.call-sheet-minimize:hover { background: rgba(255, 255, 255, 0.22); }
+.call-sheet-minimize:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.8); outline-offset: 3px; }
+
+/* The minimized call: one pill, parked at the top, above page chrome but below
+   the ring (z-70) — an incoming call outranks a call already in progress, which
+   is the same ordering the sheets and overlays already use. The layer is
+   pointer-transparent so the strip of screen beside the pill still scrolls the
+   page underneath; only the pill itself takes taps. */
+.call-pill-layer {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  left: 0;
+  right: 0;
+  z-index: 68;
+  display: flex;
+  justify-content: center;
+  padding: 0 0.75rem;
+  pointer-events: none;
+}
+.call-pill {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(26rem, 100%);
+  padding: 0.3rem 0.35rem 0.3rem 0.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 211, 102, 0.38);
+  box-shadow: 0 12px 34px rgba(2, 12, 9, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+.call-pill-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.2rem 0.35rem 0.2rem 0.2rem;
+  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.call-pill-main:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.75); outline-offset: 2px; }
+.call-pill-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  object-fit: cover;
+  flex: none;
+  border: 2px solid rgba(37, 211, 102, 0.55);
+}
+.call-pill-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.call-pill-text strong {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 9.5rem;
+}
+.call-pill-text small {
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: var(--call-text-dim, rgba(255, 255, 255, 0.85));
+}
+.call-pill-actions { display: flex; align-items: center; gap: 0.25rem; flex: none; }
+.call-pill-button {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--call-text, #fff);
+  cursor: pointer;
+}
+.call-pill-button[data-active="true"] { background: rgba(255, 255, 255, 0.92); color: #07130f; }
+.call-pill-button:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.8); outline-offset: 2px; }
+.call-pill-end { background: #ef4444; border-color: rgba(255, 255, 255, 0.22); }
+.call-pill-end:hover { background: #dc2626; }

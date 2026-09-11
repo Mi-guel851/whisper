@@ -53,7 +53,7 @@ export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecli
       role="dialog"
       aria-modal="true"
       aria-label={`Incoming voice call from ${name}`}
-      className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[#07130f] px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))] text-white"
+      className="call-surface fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[#07130f] px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))] text-white"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={reduced ? { duration: 0 } : { duration: 0.25 }}
@@ -72,7 +72,7 @@ export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecli
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-between text-center">
         <div className="flex flex-col items-center">
-          <div className="inline-flex items-center rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-white/70">
+          <div className="inline-flex items-center rounded-full bg-white/12 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-white/85">
             Incoming voice call
           </div>
 
@@ -99,7 +99,7 @@ export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecli
           </div>
 
           <h1 className="mt-8 max-w-xs truncate text-3xl font-black text-white">{name}</h1>
-          <p className="mt-2 text-base font-semibold text-white/72">Whisper voice call…</p>
+          <p className="mt-2 text-base font-semibold text-white/85">Whisper voice call…</p>
         </div>
 
         <div className="w-full max-w-xs">
@@ -114,7 +114,7 @@ export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecli
               >
                 <PhoneOff size={28} />
               </motion.button>
-              <span className="text-[11px] font-bold text-white/65">Decline</span>
+              <span className="text-[11px] font-bold text-white/80">Decline</span>
             </div>
 
             <div className="flex flex-col items-center gap-2">
@@ -135,7 +135,7 @@ export default function IncomingCallOverlay({ name, avatarUrl, onAccept, onDecli
                   <Phone size={28} />
                 </motion.span>
               </motion.button>
-              <span className="text-[11px] font-bold text-white/65">Accept</span>
+              <span className="text-[11px] font-bold text-white/80">Accept</span>
             </div>
           </div>
         </div>

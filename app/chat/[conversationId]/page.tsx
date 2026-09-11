@@ -50,9 +50,12 @@ import {
   ArrowLeft, Search, ChevronDown, ChevronUp, Smile, Paperclip, Camera, Copy, Handshake, Check, Phone,
 } from "lucide-react";
 import Button from "@/components/Button";
-import { useVoiceCall } from "@/lib/calls/useVoiceCall";
-import IncomingCallOverlay from "@/components/calls/IncomingCallOverlay";
-import InCallSheet from "@/components/calls/InCallSheet";
+/* The call is not this page's any more. `callSession` (a module singleton) owns
+   the peer connection so a call survives leaving the thread, and
+   CallSessionProvider — mounted in the root layout — renders the ring, the sheet
+   and the minimized pill. This page only starts calls, registers the thread so
+   it can ring, and reads state. */
+import { useCallSession } from "@/lib/calls/useCallSession";
 import CallEntryRow from "@/components/chat/CallEntryRow";
 import type { CallEntryInfo } from "@/lib/calls/callFormat";
 
@@ -611,13 +614,29 @@ export default function ChatPage() {
    * pending thread can never ring, because a pending pair is not a friend
    * pair.
    */
-  const call = useVoiceCall({
-    conversationId,
-    myId,
-    otherUserId,
-    enabled: Boolean(isFriendConversation) && !loading && Boolean(myId) && Boolean(otherUserId),
-    onNotice: showToast,
-  });
+  const call = useCallSession();
+
+  /* Register this thread with the engine so an incoming call rings here even
+     when the notification row has not landed yet (the callee's push is opt-in;
+     the offer over broadcast is not). Detaching on unmount closes the channel —
+     unless a call is live on it, in which case the call's own reference holds
+     it open and the call carries on after this page is gone. */
+  useEffect(() => {
+    if (!conversationId || !otherUserId) return;
+    return call.attachThread({
+      conversationId,
+      peerId: otherUserId,
+      enabled: Boolean(isFriendConversation) && !loading && Boolean(myId) && Boolean(otherUserId),
+    });
+  }, [call, conversationId, otherUserId, isFriendConversation, loading, myId]);
+
+  /** The one place a call is placed from: the header button and the chat
+      timeline's "Call back". Both go through the shared engine, so both get the
+      server's busy/friendship checks before a microphone opens. */
+  const startVoiceCall = useCallback(() => {
+    if (!conversationId || !otherUserId) return;
+    void call.startCall({ conversationId, peerId: otherUserId });
+  }, [call, conversationId, otherUserId]);
 
   /* The timeline of call outcomes. Fetch once the thread is open, then keep
      it exact via realtime; both write the same id-keyed map, so repeats are
@@ -2318,11 +2337,12 @@ export default function ChatPage() {
               {/* The call button exists only for accepted friendships — the
                   same relationship the send gate holds, so a pending thread
                   can never ring. While a call is live it stays visible and
-                  inert: the sheet below is where the call is managed. */}
+                  inert: the call surfaces (rendered app-wide) are where the
+                  call is managed. */}
               {!loading && isFriendConversation && (
                 <button
                   type="button"
-                  onClick={() => void call.startCall()}
+                  onClick={startVoiceCall}
                   disabled={call.status !== "idle"}
                   className="chat-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
                   aria-label="Start voice call"
@@ -2427,7 +2447,7 @@ export default function ChatPage() {
                       entry={msg.call_entry}
                       viewerId={myId}
                       isFriend={Boolean(isFriendConversation)}
-                      onCallBack={isFriendConversation ? () => void call.startCall() : undefined}
+                      onCallBack={isFriendConversation ? startVoiceCall : undefined}
                     />
                   );
                 }
@@ -2741,32 +2761,11 @@ export default function ChatPage() {
           while the plane was still in the air. */}
       <PaperPlaneFlight flightId={flightId} origin={flightOrigin} />
 
-      {/* The call surfaces, above every in-app layer (the overlay at z-70
-          beats the pin-duration and delete modals at z-50 — a call arriving
-          over an open dialog wins that screen, the way a phone call beats
-          whatever is on the lock screen). */}
-      {call.status === "incoming" && (
-        <IncomingCallOverlay
-          name={otherLabel || "Anonymous Friend"}
-          avatarUrl={generatedAvatarUrl(otherUserId || "ghost")}
-          onAccept={() => void call.acceptIncoming()}
-          onDecline={call.declineIncoming}
-        />
-      )}
-      {(call.status === "outgoing" || call.status === "connecting" || call.status === "in_call") && (
-        <InCallSheet
-          name={otherLabel || "Anonymous Friend"}
-          avatarUrl={generatedAvatarUrl(otherUserId || "ghost")}
-          status={call.status}
-          startedAt={call.startedAt}
-          muted={call.muted}
-          speakerSupported={call.speakerSupported}
-          speakerOn={call.speakerOn}
-          onToggleMute={call.toggleMute}
-          onToggleSpeaker={() => void call.toggleSpeaker()}
-          onHangUp={call.hangUp}
-        />
-      )}
+      {/* The call surfaces are NOT rendered here. They live in
+          CallSessionProvider, above every route, so answering a call and then
+          leaving this page leaves the call running — and so a call that arrives
+          while the user is somewhere else has a real accept path instead of a
+          navigation and a hope. */}
     </main>
   );
 }
