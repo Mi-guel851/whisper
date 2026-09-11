@@ -78,8 +78,9 @@ ok(
 );
 ok(
   "every download button passes the icon at the button's own scale",
-  (downloadButton.match(/<PlayStoreIcon size=\{iconSizes\[size\]\} \/>/g) || []).length === 2 &&
-    /const iconSizes: Record<string, number> = \{ sm: 18, md: 20, lg: 22 \};/.test(downloadButton)
+  (downloadButton.match(/<PlayStoreIcon size=\{markSize\} \/>/g) || []).length === 2 &&
+    /const iconSizes: Record<string, number> = \{ sm: 18, md: 20, lg: 22 \};/.test(downloadButton) &&
+    /const storeMarkSizes: Record<string, number> = \{ sm: 26, md: 28, lg: 30 \};/.test(downloadButton)
 );
 ok(
   "the disabled (no store URL yet) button shows the same mark, not a placeholder",
