@@ -18,6 +18,7 @@ import SocialFollowPrompt from "@/components/SocialFollowPrompt";
 import AnnouncementPrompt from "@/components/AnnouncementPrompt";
 import BanGate from "@/components/BanGate";
 import AdminDebugGate from "@/components/AdminDebugGate";
+import GlobalCallListener from "@/components/calls/GlobalCallListener";
 
 /* Typography intentionally uses the native UI stack declared in globals.css.
    Pulling Inter from Google during `next build` made otherwise valid production
@@ -142,6 +143,15 @@ export default function RootLayout({
                     route — and it renders nothing until an announcement is
                     actually live for this account. */}
                 <AnnouncementPrompt />
+                {/* The incoming-call ring, heard from every route: it listens
+                    for `call` notification rows and renders the full-screen
+                    overlay wherever the user happens to be. Mounted here rather
+                    than on the chat page because a call is not a chat-page
+                    event — the callee can be on the dashboard, the feed, or
+                    arriving cold from a push tap. Renders nothing without a
+                    live ring, and stays silent on the ringing conversation's
+                    own chat page, where live signaling owns the overlay. */}
+                <GlobalCallListener />
               </PushNotificationsProvider>
             </NotificationProvider>
           </ToastProvider>

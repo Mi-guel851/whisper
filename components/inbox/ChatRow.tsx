@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useRef } from "react";
 import Image from "next/image";
-import { Pin } from "lucide-react";
+import { PhoneMissed, Pin } from "lucide-react";
 import MessageTicks from "@/components/MessageTicks";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 
@@ -22,6 +22,13 @@ export type ChatRowProps = {
   readAt: string | null;
   /** Pinned chats float to the top; the glyph mirrors WhatsApp's. */
   pinned: boolean;
+  /**
+   * The latest activity on this thread is a missed call, not a message.
+   * WhatsApp paints that row red with a missed-call glyph — the icon, the
+   * preview and the stamp all follow, so a glance says "they called" rather
+   * than "they wrote".
+   */
+  missedCall?: boolean;
   /** Held row while its long-press action menu is open. */
   selected: boolean;
   onOpen: (conversationId: string) => void;
@@ -62,6 +69,7 @@ function ChatRowBase({
   deliveredAt,
   readAt,
   pinned,
+  missedCall = false,
   selected,
   onOpen,
   onLongPress,
@@ -185,7 +193,11 @@ function ChatRowBase({
             )}
             <span
               className={`shrink-0 text-[11px] ${
-                unread ? "font-bold text-emerald-400" : "text-gray-500"
+                missedCall
+                  ? "font-bold text-red-400"
+                  : unread
+                    ? "font-bold text-emerald-400"
+                    : "text-gray-500"
               }`}
             >
               {timestamp}
@@ -193,10 +205,19 @@ function ChatRowBase({
           </div>
 
           <div className="mt-0.5 flex items-center gap-1.5">
-            {showTicks && <MessageTicks deliveredAt={deliveredAt} readAt={readAt} />}
+            {showTicks && !missedCall && <MessageTicks deliveredAt={deliveredAt} readAt={readAt} />}
+            {missedCall && !typing && (
+              <PhoneMissed size={14} className="shrink-0 text-red-400" aria-label="Missed call" />
+            )}
             <p
               className={`min-w-0 flex-1 truncate text-[13px] ${
-                typing ? "font-semibold text-emerald-400" : unread ? "text-gray-200" : "text-gray-500"
+                typing
+                  ? "font-semibold text-emerald-400"
+                  : missedCall
+                    ? "font-semibold text-red-400"
+                    : unread
+                      ? "text-gray-200"
+                      : "text-gray-500"
               }`}
             >
               {typing ? "typing..." : previewText}

@@ -172,13 +172,73 @@ public class FCMMessagingService extends FirebaseMessagingService {
         return key != null ? Math.abs(key.hashCode()) | 0x40000000 : 0;
     }
 
+    /**
+     * Translates the server-provided `route` (a web path like `/chat/<id>` or
+     * `/public-feed?post=<id>`) into the matching `whisperapp://` deep link.
+     * The route wins over the per-type fallbacks below: it is the trigger's
+     * own statement of where the tap should land, and it already carries the
+     * exact parameters (conversation id, post id) each surface needs.
+     * Returns null for anything outside the app's own surfaces — a tap
+     * handler that opens an arbitrary string is an open redirect.
+     */
+    private String urlForRoute(String route) {
+        if (route == null || !route.startsWith("/")) return null;
+        String path = route.split("[?#]")[0];
+        if (path.startsWith("/chat/")) {
+            String id = path.substring("/chat/".length());
+            return id.isEmpty() ? "whisperapp://inbox" : "whisperapp://chat/" + id;
+        }
+        if ("/public-feed".equals(path)) {
+            String postId = queryParam(route, "post");
+            // The feed page highlights ?post=<id>; validated as a uuid by the
+            // web-side handler before it is used.
+            return postId != null ? "whisperapp://feed?post=" + postId : "whisperapp://feed";
+        }
+        if ("/friends".equals(path)) return "whisperapp://friends";
+        if ("/premium".equals(path) || "/wallet".equals(path) || "/coins".equals(path)) {
+            // One wallet, reached as /premium on the web.
+            return "whisperapp://wallet";
+        }
+        if ("/notifications".equals(path)) return "whisperapp://notifications";
+        if ("/inbox".equals(path)) return "whisperapp://inbox";
+        if ("/dashboard".equals(path)) return "whisperapp://dashboard";
+        return null;
+    }
+
+    /** Reads one query parameter out of a route without pulling in a URI parser. */
+    private String queryParam(String route, String name) {
+        int q = route.indexOf('?');
+        if (q < 0) return null;
+        for (String pair : route.substring(q + 1).split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && pair.substring(0, eq).equals(name)) {
+                return pair.substring(eq + 1);
+            }
+        }
+        return null;
+    }
+
     private void sendNotification(String title, String body, String type, String conversationId, Map<String, String> data) {
         String channelId = "default";
         String url = "whisperapp://dashboard";
 
-        if ("whisper".equals(type)) {
+        // The payload's own route first (deep link contract: message → its
+        // thread, whisper → /notifications, feed → /public-feed?post=…,
+        // friend_request → /friends, coins → /premium, call → its thread with
+        // the ring overlay). The type switch underneath is the fallback for
+        // payloads that predate the route field.
+        String routedUrl = urlForRoute(data.get("route"));
+        if (routedUrl != null) {
+            url = routedUrl;
+            if ("whisper".equals(type)) channelId = "whispers";
+            else if ("message".equals(type)) channelId = "messages";
+            else if ("friend_request".equals(type)) channelId = "friend_requests";
+            else if ("feed".equals(type)) channelId = "feed";
+            else if ("coins".equals(type)) channelId = "coins";
+            else if ("call".equals(type)) channelId = "calls";
+        } else if ("whisper".equals(type)) {
             channelId = "whispers";
-            url = "whisperapp://inbox";
+            url = "whisperapp://notifications";
         } else if ("message".equals(type)) {
             channelId = "messages";
             url = conversationId != null ? "whisperapp://chat/" + conversationId : "whisperapp://inbox";
@@ -190,6 +250,7 @@ public class FCMMessagingService extends FirebaseMessagingService {
             // The feed page highlights ?post=<id>; a bare whisperapp://feed
             // used to land on a /feed route that does not exist.
             String postId = data.get("postId");
+            if (postId == null) postId = data.get("post_id");
             url = postId != null ? "whisperapp://feed?post=" + postId : "whisperapp://feed";
         } else if ("coins".equals(type)) {
             channelId = "coins";

@@ -90,6 +90,12 @@ export default function InboxPage() {
   const [typingConversationIds, setTypingConversationIds] = useState<string[]>([]);
   const [previews, setPreviews] = useState<Record<string, MessagePreview>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  /* Latest missed call per conversation (conversation_id → row), read from the
+     `notifications` table (`type = 'message'`, title containing "Missed").
+     When the missed call is newer than the latest message, the row advertises
+     the call — red glyph, "Missed Voice Call 📞", call timestamp — instead of
+     a stale message preview, exactly like WhatsApp's call entries. */
+  const [missedCalls, setMissedCalls] = useState<Record<string, { id: string; created_at: string }>>({});
   const [query, setQuery] = useState("");
   const [myId, setMyId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -119,6 +125,7 @@ export default function InboxPage() {
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let missedChannel: ReturnType<typeof supabase.channel> | null = null;
     let unsubscribePresence: (() => void) | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const typingUnsubscribers = new Map<string, () => void>();
@@ -227,6 +234,40 @@ export default function InboxPage() {
         setUnreadCounts(counts);
       }
 
+      /* Missed calls, one row per conversation. The server writes them as
+         `notifications` (`type = 'message'`, title "Missed Voice Call 📞",
+         conversation id in metadata) on every missed/expired transition, so
+         the inbox reads them straight from that table — no new pipeline, no
+         trigger changes, just a second read next to the message previews. */
+      async function loadMissed(uid: string) {
+        const { data: missed, error: missedError } = await supabase
+          .from("notifications")
+          .select("id,created_at,metadata")
+          .eq("user_id", uid)
+          .eq("type", "message")
+          .ilike("title", "%Missed%")
+          .order("created_at", { ascending: false })
+          .limit(300);
+
+        if (missedError) {
+          console.error("Inbox missed-call fetch error:", missedError);
+          return;
+        }
+
+        const latest: Record<string, { id: string; created_at: string }> = {};
+        for (const row of missed || []) {
+          const meta = (row.metadata ?? {}) as {
+            conversation_id?: string;
+            conversationId?: string;
+          };
+          const conversationId = meta.conversation_id ?? meta.conversationId;
+          if (conversationId && !latest[conversationId]) {
+            latest[conversationId] = { id: row.id, created_at: row.created_at };
+          }
+        }
+        if (!cancelled) setMissedCalls(latest);
+      }
+
       function subscribeToTyping(rows: ConversationRow[]) {
         /* One broadcast channel per conversation is realtime-socket state and
            it is open for the whole visit to this page. The list is capped at
@@ -278,6 +319,7 @@ export default function InboxPage() {
         ]);
         setLoading(false);
         void loadPreviews(data || []);
+        void loadMissed(userId);
       }
 
       /* A refresh is three round trips: the conversation list, a 600-row preview
@@ -363,6 +405,39 @@ export default function InboxPage() {
           scheduleRefresh
         )
         .subscribe();
+
+      /* Missed calls arrive as notification rows, not conversation writes, so
+         the channel above never fires for them. This one folds each new
+         missed-call row into the map directly — no full refresh for a single
+         entry. */
+      missedChannel = supabase
+        .channel(uniqueChannelName(`inbox-missed-${userId}`))
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = payload.new as {
+              id: string;
+              type: string;
+              title: string;
+              created_at: string;
+              metadata?: { conversation_id?: string; conversationId?: string } | null;
+            };
+            if (row.type !== "message" || !row.title?.includes("Missed")) return;
+            const conversationId = row.metadata?.conversation_id ?? row.metadata?.conversationId;
+            if (!conversationId || cancelled) return;
+            setMissedCalls((current) => ({
+              ...current,
+              [conversationId]: { id: row.id, created_at: row.created_at },
+            }));
+          }
+        )
+        .subscribe();
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -381,6 +456,7 @@ export default function InboxPage() {
       typingUnsubscribers.forEach((unsubscribe) => unsubscribe());
       typingTimers.forEach((timer) => clearTimeout(timer));
       if (channel) supabase.removeChannel(channel);
+      if (missedChannel) supabase.removeChannel(missedChannel);
     };
   }, []);
 
@@ -405,9 +481,21 @@ export default function InboxPage() {
        this row back to bold, so it stays bold until they open the chat, even
        though `last_read_at` already says read. The override is cleared on open. */
     if (forcedUnread.has(c.id)) return true;
+    const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
+    /* A missed call newer than both the last message and the last read keeps
+       the row bold on its own — the call is activity the user hasn't seen,
+       even when every message is read. Opening the chat (or "mark as read")
+       stamps `last_read_at`, which clears this the same way it clears
+       message unreads. */
+    const missed = missedCalls[c.id];
+    if (missed && (!lastRead || new Date(missed.created_at) > new Date(lastRead))) {
+      const latestMessageAt = previews[c.id]?.created_at ?? c.last_message_at;
+      if (!latestMessageAt || new Date(missed.created_at) > new Date(latestMessageAt)) {
+        return true;
+      }
+    }
     if (!c.last_message_at) return false;
     if (c.last_message_sender_id === myId) return false; // you sent it — not unread for you
-    const lastRead = c.user_a === myId ? c.user_a_last_read_at : c.user_b_last_read_at;
     if (!lastRead) return true;
     return new Date(c.last_message_at) > new Date(lastRead);
   }
@@ -436,10 +524,11 @@ export default function InboxPage() {
       const other = c.user_a === myId ? c.user_b : c.user_a;
       return (
         nameOf(other).toLowerCase().includes(needle) ||
-        (previews[c.id]?.content || "").toLowerCase().includes(needle)
+        (previews[c.id]?.content || "").toLowerCase().includes(needle) ||
+        (missedCalls[c.id] ? "missed voice call 📞".includes(needle) : false)
       );
     });
-  }, [visibleConversations, myId, nameOf, previews, query]);
+  }, [visibleConversations, myId, nameOf, previews, missedCalls, query]);
 
   /* Sets for O(1) lookup inside the map. The arrays come from state and change
      often (presence, typing), but the check `array.includes(id)` is O(n) and
@@ -722,6 +811,14 @@ export default function InboxPage() {
               const typing = typingSet.has(c.id);
               const preview = previews[c.id];
               const sentByMe = preview ? preview.sender_id === myId : false;
+              /* A missed call newer than the latest message takes over the
+                 row: the red entry, its own timestamp, no ticks — the message
+                 preview returns the moment a newer message lands. */
+              const missed = missedCalls[c.id];
+              const missedIsLatest = Boolean(
+                missed &&
+                  (!preview || new Date(missed.created_at) > new Date(preview.created_at))
+              );
 
               /* Everything the row needs is flattened to a primitive here.
                  Passing the conversation object plus the previews map would
@@ -733,8 +830,12 @@ export default function InboxPage() {
                   conversationId={c.id}
                   avatarUserId={other}
                   label={labelFor(c)}
-                  timestamp={chatListTime(c.last_message_at)}
-                  previewText={previewText(c)}
+                  timestamp={
+                    missedIsLatest && missed
+                      ? chatListTime(missed.created_at)
+                      : chatListTime(c.last_message_at)
+                  }
+                  previewText={missedIsLatest ? "Missed Voice Call 📞" : previewText(c)}
                   unread={unread}
                   unreadCount={unreadCount}
                   active={active}
@@ -743,6 +844,7 @@ export default function InboxPage() {
                   deliveredAt={preview?.delivered_at ?? null}
                   readAt={preview?.read_at ?? null}
                   pinned={pinned.has(c.id)}
+                  missedCall={missedIsLatest}
                   selected={menuFor === c.id}
                   onOpen={handleOpenConversation}
                   onLongPress={handleLongPress}
