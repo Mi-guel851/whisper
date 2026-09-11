@@ -7008,7 +7008,24 @@ html.viewport-locked body {
 
 @media (max-width: 60rem) {
   .dashboard-shell { display:block;overflow:visible; }
-  .dashboard-topbar { position:sticky;width:100%; }
+  /* FULL-BLEED TOP CHROME — the Capacitor app draws edge to edge, so the
+     status bar floats over the page and `body` pads the document down by the
+     inset to keep ordinary content clear of the clock. That padding is what
+     broke this screen: the header started *below* the clock (a `--theme-bg`
+     strip above it, visibly a different colour from the bar's solid surface),
+     and because the bar's own mobile padding repeated the same inset, the
+     controls sat a second inset deep — the stretched, shifted header in the
+     app. Pulling the shell back up over the body padding seats the bar's
+     surface at y=0: one continuous header behind the status bar, and the
+     bar's padding below is the single place the controls are kept clear of
+     the clock. Zero effect in a browser tab, where the inset is 0. */
+  .dashboard-shell { margin-top: calc(-1 * env(safe-area-inset-top, 0px)); }
+  /* Pinned at 0, not at the inset: the shell now starts at the very top, so
+     the bar is already at its resting position — it does not jump the inset
+     the moment the page scrolls, and its surface covers the status strip both
+     at rest and pinned. `height:auto` because the base bar's fixed 4.25rem
+     would squeeze its content once the inset padding is inside it. */
+  .dashboard-topbar { position:sticky;top:0;width:100%;height:auto;min-height:4.25rem;padding-top:calc(0.72rem + env(safe-area-inset-top, 0px)); }
   .dashboard-center-column { width:100%;max-width:56rem;margin:0 auto;padding:1rem 1rem 2rem; }
   .dashboard-right-rail { position:relative;top:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:56rem;max-height:none;margin:0 auto;padding:0 1rem 7rem;overflow:visible; }
   .dashboard-right-rail > * { min-width:0; }
