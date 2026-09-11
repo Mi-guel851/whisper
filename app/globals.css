@@ -7098,35 +7098,38 @@ html.viewport-locked body {
 .dashboard-welcome-card .dashboard-hero-actions { margin:0; gap:.7rem; flex-wrap:wrap; }
 .dashboard-hero-share-link { min-height:44px; }
 
-/* The welcome card's right-hand field: an ambient word wall, the same effect
-   the anonymous send page runs behind its composer (components/dashboard/
-   WordWall.tsx + components/WhisperWordCloud.tsx). Two rules do the work:
-   `overflow:hidden` keeps a long word from escaping the card's rounded corner,
-   and the mask fades the wall's left edge so it can sit UNDER the headline's
-   column instead of arguing with it. Text colour is the theme's own at 15% —
-   a hardcoded white wall would be invisible on the light theme's white card,
-   which is the whole reason this is a token and not a utility class. */
+/* The welcome card's ambient word wall, the same effect the anonymous send
+   page runs behind its composer (components/dashboard/WordWall.tsx +
+   components/WhisperWordCloud.tsx). One absolutely positioned layer pinned to
+   the card's own bounds (`inset:0`), clipped by `overflow:hidden` so no word
+   can escape the rounded corner or paint over anything inside the card, and
+   `pointer-events:none` so it stays inert. Text colour is the theme's own at
+   ~10% — a subtle watermark behind the foreground (a hardcoded white wall
+   would be invisible on the light theme's white card, which is the whole
+   reason this is a token and not a utility class). */
 .dashboard-welcome-card { position:relative; overflow:hidden; }
-.dashboard-welcome-card > *:not(.dashboard-word-wall) { position:relative; z-index:2; }
-/* WordWall is ambient, not content — smaller, softer, tucked into the
-   empty right-hand gutter so "Hall" (the morphing word) never collides with
-   the Hey + paragraph column. Reduced font + opacity + narrowed left edge. */
+/* Foreground content — greeting, subtitle and actions — sits one layer above
+   the word wall so the watermark never competes with it. */
+.dashboard-welcome-card > *:not(.dashboard-word-wall) { position:relative; z-index:1; }
+/* The Check In / streak chip is the one control the watermark must never
+   touch, so it gets its own layer above the rest of the foreground. */
+.dashboard-welcome-streak { position:relative; z-index:2; }
 .dashboard-word-wall {
-  position:absolute; top:3.6rem; bottom:1.1rem; left:52%; right:0.6rem; z-index:1;
+  position:absolute; inset:0; z-index:0;
   pointer-events:none; user-select:none; overflow:hidden;
-  -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 38%);
-  mask-image:linear-gradient(90deg, transparent 0, #000 38%);
 }
 .dashboard-word-wall-word {
   font-size:clamp(.78rem,1.05vw,1.05rem);
   font-weight:900; text-transform:uppercase; letter-spacing:-.02em;
   color:var(--theme-text);
-  opacity:.16;
+  opacity:.1;
 }
-/* On phones the card is a single column — there is no spare right half to
-   overlay, so the ambient wall hides entirely on mobile. Keeping it in-flow
-   would crowd the compact welcome card and break the legibility guard. */
-@media (max-width:44rem) { .dashboard-word-wall { display:none; } }
+/* On phones the wall stays — it is a watermark, never hidden — but it thins
+   out: the component renders two lanes instead of three, and the type drops
+   so the texture reads without cluttering the single-column card. */
+@media (max-width:44rem) {
+  .dashboard-word-wall-word { font-size:.62rem; }
+}
 .dashboard-personal-grid { grid-template-columns:minmax(0,1fr); }
 .dashboard-overview { padding:.5rem 0; }
 .dashboard-overview .stats-row-grid-compact { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; }
