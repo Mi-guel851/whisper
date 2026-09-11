@@ -142,6 +142,12 @@ export default function ChoosePlatformPage() {
               </ul>
 
               <a
+                /* Marked for the pre-paint rule in globals.css. Native users are
+                   already bounced to /signup by the effect above and never see
+                   this card, but the marker means that if the redirect is ever
+                   delayed, the store offer is hidden before the first paint
+                   rather than mid-redirect. */
+                data-download-app="true"
                 href={PLAY_STORE_READY ? PLAY_STORE_URL : "#"}
                 target={PLAY_STORE_READY ? "_blank" : undefined}
                 rel={PLAY_STORE_READY ? "noopener noreferrer" : undefined}

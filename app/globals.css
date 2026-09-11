@@ -3068,6 +3068,19 @@ html.viewport-locked body {
   text-wrap: balance;
 }
 
+/* ---------------------------------------------------------------------------
+   NOTHING TO DOWNLOAD INSIDE THE APP
+   The native shell loads this same web build, so the landing page a user sees
+   in the app is the marketing landing page. `is-native-app` is set on <html> by
+   the root layout's pre-paint script (before first paint, so there is no flash
+   of a download offer), and every "get the app" CTA carries
+   `data-download-app`. React removes them from the DOM as well — this rule only
+   has to win the race to the first paint.
+   --------------------------------------------------------------------------- */
+html.is-native-app [data-download-app] {
+  display: none !important;
+}
+
 /* Small capsule used for the hero eyebrow and the CTA's assurance row. */
 .home-pill {
   display: inline-flex;

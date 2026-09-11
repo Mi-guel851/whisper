@@ -2,6 +2,7 @@
 
 import PlayStoreIcon from "./PlayStoreIcon";
 import { PLAY_STORE_URL, PLAY_STORE_READY } from "@/lib/appConfig";
+import { useIsNativeApp } from "@/lib/useIsNativeApp";
 
 /**
  * "Download app" — one button, every surface that offers the Android build.
@@ -26,6 +27,18 @@ import { PLAY_STORE_URL, PLAY_STORE_READY } from "@/lib/appConfig";
  * In `store` mode the visible words are the badge's, but the anchor still
  * carries `label` as its accessible name, so a screen reader hears the full
  * "Download Android App" the inline lockup would have shown.
+ *
+ * NEVER INSIDE THE APP
+ *
+ * This component is the single place every "get the app" CTA in the product
+ * renders through, so the "am I already in the app?" rule lives here rather
+ * than at six call sites: in the Capacitor shell it renders nothing at all. A
+ * download button on the landing page *of the app you are holding* is the one
+ * thing that makes an app feel like a website in a wrapper.
+ *
+ * `data-download-app` marks the root so the pre-paint stylesheet can hide it
+ * before React hydrates (see lib/useIsNativeApp.ts); the hook then removes it
+ * from the DOM for real.
  */
 type Variant = "primary" | "secondary" | "ghost" | "pill";
 type Lockup = "inline" | "store";
@@ -46,7 +59,11 @@ export default function DownloadAndroidButton({
   /** `store` swaps the one-line label for the badge's two-line lockup. */
   lockup?: Lockup;
 }) {
+  const inApp = useIsNativeApp();
   const href = PLAY_STORE_READY ? PLAY_STORE_URL : "#";
+
+  /* Already installed this app — there is nothing to download. */
+  if (inApp) return null;
 
   const base =
     "inline-flex items-center justify-center gap-2 font-bold whitespace-nowrap transition-all active:scale-[0.98]";
@@ -113,6 +130,7 @@ export default function DownloadAndroidButton({
           e.preventDefault();
           onClick?.();
         }}
+        data-download-app="true"
         title="Play Store link coming soon — add NEXT_PUBLIC_PLAY_STORE_URL"
         className={`${base} ${sizeClasses} ${variants[variant]} opacity-70 ${className}`}
         aria-disabled="true"
@@ -130,6 +148,7 @@ export default function DownloadAndroidButton({
       target="_blank"
       rel="noopener noreferrer"
       onClick={onClick}
+      data-download-app="true"
       className={`${base} ${sizeClasses} ${variants[variant]} ${className}`}
       aria-label={isStore ? label : undefined}
     >

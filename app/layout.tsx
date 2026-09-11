@@ -86,6 +86,27 @@ export default function RootLayout({
             document.documentElement.dataset.theme = resolved;
             document.documentElement.style.colorScheme = resolved;
           } catch {}
+
+          /* Inside the Capacitor shell, mark the document before the first
+             paint. The app's landing page is this same web build, so its
+             "download the app" CTAs would otherwise be rendered, hydrated and
+             then removed — a visible flash of an offer to download the thing
+             the user is already holding. globals.css hides
+             [data-download-app] under this class; React (lib/useIsNativeApp.ts)
+             then removes them from the DOM for real. */
+          try {
+            var cap = window.Capacitor;
+            var byBridge = !!(cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform());
+            /* The shell sets this user agent (android/app capacitor.config.ts,
+               overrideUserAgent) and it is readable from the very first tick,
+               while the bridge object depends on injection timing. Either one
+               means the app. */
+            var byUserAgent = (navigator.userAgent || "").indexOf("WhisperApp/") !== -1;
+            if (byBridge || byUserAgent) {
+              document.documentElement.classList.add("is-native-app");
+              document.documentElement.dataset.nativeApp = "true";
+            }
+          } catch {}
         `}</Script>
         {/* Paystack's inline.js is NOT loaded here. `window.PaystackPop` is read
             in exactly one place — app/premium/page.tsx — so mounting the script
