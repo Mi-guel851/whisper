@@ -1,0 +1,429 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { AnimatePresence } from "framer-motion";
+
+import { supabase } from "@/lib/supabase/client";
+import { useToast } from "@/components/ToastProvider";
+import { useAnonNames } from "@/lib/anonNames";
+import { generatedAvatarUrl } from "@/lib/generatedAvatar";
+import { callSession } from "@/lib/calls/callSession";
+import { useCallSession } from "@/lib/calls/useCallSession";
+import IncomingCallOverlay from "./IncomingCallOverlay";
+import InCallSheet from "./InCallSheet";
+import InCallPill from "./InCallPill";
+
+/**
+ * The call, owned by the app rather than by a page.
+ *
+ * Mounted once in the root layout, next to the other "not a route" providers.
+ * Three jobs:
+ *
+ *   1. FINDS the ring. Three paths converge here: a realtime INSERT on
+ *      `public.notifications` typed `call` (the app is open), a cold-start query
+ *      of unread `call` rows still inside the 60s window (the user opened the app
+ *      mid-ring), and a push tap — a live `whisper:incoming-call` event, or the
+ *      `whisper:pending-call` stash left behind by a tap that cold-started the
+ *      WebView. All three hand the same shape to `callSession`.
+ *
+ *   2. ENFORCES the overlay, on every route, with no exceptions. The old split —
+ *      a global listener that stayed silent on the ringing conversation's chat
+ *      page because that page rendered its own — existed only because two things
+ *      owned one call. The engine is the single owner now, so there is exactly
+ *      one overlay and it appears wherever the user is standing.
+ *
+ *   3. RENDERS the surfaces from the engine's state: the full-screen ring, the
+ *      full-screen in-call sheet, or — the moment a call is answered or
+ *      minimized — the pill at the top of the screen. Because this is in the root
+ *      layout, the pill is still there after a navigation, and the call behind it
+ *      is still live.
+ *
+ * EXPIRY
+ *
+ * A ring lives 60 seconds server-side (`expire_stale_calls`). The engine carries
+ * its own timer for the same window, and stands the overlay down the moment the
+ * row is marked read or deleted (answered elsewhere, declined elsewhere, caller
+ * hung up).
+ */
+
+/** Dispatched by lib/push/useRegisterPushNotifications.ts on a call tap. */
+export const INCOMING_CALL_EVENT = "whisper:incoming-call";
+/** Where a tap that cold-started the app stashes its payload. */
+export const PENDING_CALL_KEY = "whisper:pending-call";
+
+/** How long a ring is showable, matching the server's 60s ring window. */
+const RING_WINDOW_MS = 60_000;
+
+type CallNotificationRow = {
+  id: string;
+  created_at: string;
+  is_read: boolean;
+  metadata: {
+    conversation_id?: string;
+    conversationId?: string;
+    caller_id?: string;
+    call_id?: string;
+    callId?: string;
+  } | null;
+};
+
+type Ring = {
+  conversationId: string;
+  callerId: string;
+  callId: string | null;
+  createdAt: number;
+};
+
+function ringFromRow(row: CallNotificationRow): Ring | null {
+  const conversationId = row.metadata?.conversation_id ?? row.metadata?.conversationId;
+  const callerId = row.metadata?.caller_id;
+  if (!conversationId || !callerId) return null;
+  return {
+    conversationId,
+    callerId,
+    callId: row.metadata?.call_id ?? row.metadata?.callId ?? null,
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
+
+function isFresh(ring: Ring): boolean {
+  return Date.now() - ring.createdAt < RING_WINDOW_MS;
+}
+
+export default function CallSessionProvider() {
+  const { showToast } = useToast();
+  const call = useCallSession();
+
+  /** The `notifications` row this overlay came from, if it came from one.
+      `postgres_changes` DELETE payloads carry nothing but the primary key, and
+      an unrelated notification being cleared must not hang up a live ring — so
+      the id is the only honest key to match on. */
+  const ringRowIdRef = useRef<string | null>(null);
+
+  /* One resolved identity per peer, which is all the call surfaces need to
+     draw a person: the anonymous name and the generated face. */
+  const peerIds = useMemo(() => (call.peerId ? [call.peerId] : []), [call.peerId]);
+  const nameOf = useAnonNames(peerIds);
+
+  /* ---------------------------------------------------------------- */
+  /* Notices: the engine has no UI, so its sentences arrive here.      */
+  /* ---------------------------------------------------------------- */
+  useEffect(() => callSession.onNotice((message) => showToast(message)), [showToast]);
+
+  /* ---------------------------------------------------------------- */
+  /* Identity                                                          */
+  /* ---------------------------------------------------------------- */
+  useEffect(() => {
+    let active = true;
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) callSession.setIdentity(data.session?.user?.id ?? null);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      callSession.setIdentity(session?.user?.id ?? null);
+    });
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  /* ---------------------------------------------------------------- */
+  /* Rings, from all three paths                                       */
+  /* ---------------------------------------------------------------- */
+  const showRing = useCallback((ring: Ring, rowId: string | null) => {
+    if (!isFresh(ring)) return;
+    ringRowIdRef.current = rowId;
+    callSession.beginIncomingRing(ring);
+  }, []);
+
+  /** The cold-start query: unread `call` rows still inside the ring window. */
+  const loadPending = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const since = new Date(Date.now() - RING_WINDOW_MS).toISOString();
+    const { data } = await supabase
+      .from("notifications")
+      .select("id,created_at,is_read,metadata")
+      .eq("user_id", userId)
+      .eq("type", "call")
+      .eq("is_read", false)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    const rows = (data ?? []) as unknown as CallNotificationRow[];
+    for (const row of rows) {
+      const parsed = ringFromRow(row);
+      if (parsed && isFresh(parsed)) {
+        showRing(parsed, row.id);
+        return;
+      }
+    }
+  }, [showRing]);
+
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let active = true;
+    let subscribedUserId: string | null = null;
+
+    function subscribe(userId: string) {
+      if (channel) supabase.removeChannel(channel);
+      subscribedUserId = userId;
+      channel = supabase
+        .channel(`global-calls-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = payload.new as unknown as CallNotificationRow & { type?: string };
+            if (row.type !== "call") return;
+            const parsed = ringFromRow(row);
+            if (parsed) showRing(parsed, row.id);
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            /* Answered/declined/retired elsewhere: the row going read (or its
+               call ending server-side) is this overlay's cue to stand down. */
+            const row = payload.new as unknown as CallNotificationRow & { type?: string };
+            if (row.id !== ringRowIdRef.current) return;
+            if (row.type !== "call" || row.is_read) {
+              callSession.cancelRing(row.metadata?.call_id ?? row.metadata?.callId ?? null);
+              ringRowIdRef.current = null;
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = payload.old as { id?: string };
+            if (row.id && row.id === ringRowIdRef.current) {
+              callSession.cancelRing(null);
+              ringRowIdRef.current = null;
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    async function init() {
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+      const userId = data.session?.user?.id ?? null;
+      if (!userId) return;
+      subscribe(userId);
+      void loadPending();
+    }
+
+    void init();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextId = session?.user?.id ?? null;
+      if (nextId === subscribedUserId) return;
+      if (nextId && active) {
+        subscribe(nextId);
+        void loadPending();
+      } else if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+        subscribedUserId = null;
+      }
+    });
+
+    /* A push tap for a call, delivered while the app is already open: show the
+       overlay from the payload immediately, then reconcile against the row. */
+    function onPushCall(event: Event) {
+      const detail = (
+        event as CustomEvent<{
+          conversationId?: string;
+          callerId?: string | null;
+          callId?: string | null;
+        }>
+      ).detail;
+      if (!detail?.conversationId || !detail.callerId) return;
+      showRing(
+        {
+          conversationId: detail.conversationId,
+          callerId: detail.callerId,
+          callId: detail.callId ?? null,
+          createdAt: Date.now(),
+        },
+        null
+      );
+      /* Reconcile: the payload ring carries no row id, so the row query swaps
+         in the durable one the moment it answers. */
+      void loadPending();
+    }
+    window.addEventListener(INCOMING_CALL_EVENT, onPushCall);
+
+    /* A push tap that cold-started the app: the tap handler stashed the
+       payload before the reload, and the reload is this mount. */
+    try {
+      const raw = sessionStorage.getItem(PENDING_CALL_KEY);
+      if (raw) {
+        const pending = JSON.parse(raw) as {
+          conversationId?: string;
+          callerId?: string | null;
+          callId?: string | null;
+          at?: number;
+        };
+        if (
+          pending?.conversationId &&
+          pending.callerId &&
+          typeof pending.at === "number" &&
+          Date.now() - pending.at < RING_WINDOW_MS
+        ) {
+          showRing(
+            {
+              conversationId: pending.conversationId,
+              callerId: pending.callerId,
+              callId: pending.callId ?? null,
+              createdAt: pending.at,
+            },
+            null
+          );
+        } else {
+          sessionStorage.removeItem(PENDING_CALL_KEY);
+        }
+      }
+    } catch {
+      /* Corrupt stash — the row query above is the backstop. */
+    }
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+      window.removeEventListener(INCOMING_CALL_EVENT, onPushCall);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [loadPending, showRing]);
+
+  /* ---------------------------------------------------------------- */
+  /* Actions                                                           */
+  /* ---------------------------------------------------------------- */
+
+  const clearStash = () => {
+    try {
+      sessionStorage.removeItem(PENDING_CALL_KEY);
+    } catch {
+      /* Storage unavailable — the engine's state is what matters. */
+    }
+  };
+
+  const accept = useCallback(() => {
+    clearStash();
+    void callSession.accept();
+  }, []);
+
+  const decline = useCallback(() => {
+    clearStash();
+    const rowId = ringRowIdRef.current;
+    ringRowIdRef.current = null;
+    callSession.decline();
+    /* `end_call_log('declined')` retires the device banner but deliberately
+       leaves the row unread — it is still an entry in the activity list. The
+       ring, though, must not be able to come back: an unread `call` row inside
+       the 60s window is exactly what the cold-start query looks for, so a
+       declined call would re-ring on the next reload. Read it here. */
+    if (rowId) {
+      void supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", rowId)
+        .then(() => {});
+    }
+  }, []);
+
+  const hangUp = useCallback(() => callSession.hangUp("Call ended."), []);
+  const toggleMute = useCallback(() => callSession.toggleMute(), []);
+  const toggleSpeaker = useCallback(() => void callSession.toggleSpeaker(), []);
+  const expand = useCallback(() => callSession.setMinimized(false), []);
+  const minimize = useCallback(() => callSession.setMinimized(true), []);
+
+  /* ---------------------------------------------------------------- */
+  /* Surfaces                                                          */
+  /* ---------------------------------------------------------------- */
+
+  const name = call.peerId ? nameOf(call.peerId) || "Anonymous Friend" : "Anonymous Friend";
+  const avatarUrl = generatedAvatarUrl(call.peerId ?? "ghost");
+  /* Narrowed once, here: `live` as a boolean would leave `call.status` too wide
+      for the two surfaces that cannot render a ring or an idle engine. */
+  const activeStatus =
+    call.status === "outgoing" || call.status === "connecting" || call.status === "in_call"
+      ? call.status
+      : null;
+
+  return (
+    <>
+      {/* The ring. Strictly enforced: no route is exempt, there is no
+          backdrop-tap close, and the only ways out are Accept, Decline or the
+          60 seconds the server allows a call to ring for. */}
+      {call.status === "incoming" && (
+        <IncomingCallOverlay
+          name={name}
+          avatarUrl={avatarUrl}
+          onAccept={accept}
+          onDecline={decline}
+        />
+      )}
+
+      {/* Answered calls collapse to the pill, which is the whole point of the
+          engine living here: it floats over every route, and the call behind it
+          keeps running while the user does something else. */}
+      <AnimatePresence>
+        {activeStatus && call.minimized && (
+          <InCallPill
+            key="call-pill"
+            name={name}
+            avatarUrl={avatarUrl}
+            status={activeStatus}
+            startedAt={call.startedAt}
+            muted={call.muted}
+            onExpand={expand}
+            onToggleMute={toggleMute}
+            onHangUp={hangUp}
+          />
+        )}
+      </AnimatePresence>
+
+      {activeStatus && !call.minimized && (
+        <InCallSheet
+          name={name}
+          avatarUrl={avatarUrl}
+          status={activeStatus}
+          startedAt={call.startedAt}
+          muted={call.muted}
+          speakerSupported={call.speakerSupported}
+          speakerOn={call.speakerOn}
+          onToggleMute={toggleMute}
+          onToggleSpeaker={toggleSpeaker}
+          onHangUp={hangUp}
+          onMinimize={minimize}
+        />
+      )}
+    </>
+  );
+}

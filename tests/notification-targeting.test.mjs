@@ -257,16 +257,16 @@ test("call realtime is membership-gated and the table is published", () => {
 // Call lifecycle — client side (the two halves must speak the same contract).
 // ---------------------------------------------------------------------------
 
-test("the call hook is server-authoritative (no optimistic missed/canceled)", () => {
-  const hook = read("lib/calls/useVoiceCall.ts");
+test("the call engine is server-authoritative (no optimistic missed/canceled)", () => {
+  const hook = read("lib/calls/callSession.ts");
   assert.match(hook, /supabase\.rpc\("start_call_log"/, "reserve the call with the server FIRST");
   assert.match(hook, /supabase\.rpc\("end_call_log"/, "settle via RPC");
   assert.match(hook, /PGRST202|42883/, "legacy fallback until the migration ships");
   assert.match(hook, /legacyFinalize/, "the fallback path is explicit, not implicit");
   assert.match(hook, /hangUp\(null, "timeout"\)/, "client watchdog reports a miss");
-  assert.match(hook, /reason === "timeout" && statusRef\.current === "outgoing"/, "only an unanswered OUTGOING call becomes missed");
+  assert.match(hook, /reason === "timeout" && this\.state\.status === "outgoing"/, "only an unanswered OUTGOING call becomes missed");
   assert.match(hook, /reportOutcome\("declined"\)/, "callee decline is a decline, never a miss");
-  assert.match(hook, /channel\(`call-logs-\$\{conversationId\}-\$\{myId\}`\)/, "realtime teardown subscription, conversation-scoped");
+  assert.match(hook, /channel\(`call-logs-\$\{conversationId\}-\$\{this\.myId/, "realtime teardown subscription, conversation-scoped");
   assert.match(hook, /type: "dismiss-notifications"/, "rings stop locally via the service worker");
   assert.match(hook, /receipt\.status === "busy"/, "the busy verdict comes from the server receipt, not a guess");
 });
