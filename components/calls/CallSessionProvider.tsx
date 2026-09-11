@@ -64,6 +64,10 @@ type CallNotificationRow = {
     caller_id?: string;
     call_id?: string;
     callId?: string;
+    caller_name?: string;
+    callerName?: string;
+    caller_avatar?: string;
+    callerAvatar?: string;
   } | null;
 };
 
@@ -72,6 +76,8 @@ type Ring = {
   callerId: string;
   callId: string | null;
   createdAt: number;
+  callerName?: string | null;
+  callerAvatar?: string | null;
 };
 
 function ringFromRow(row: CallNotificationRow): Ring | null {
@@ -83,6 +89,8 @@ function ringFromRow(row: CallNotificationRow): Ring | null {
     callerId,
     callId: row.metadata?.call_id ?? row.metadata?.callId ?? null,
     createdAt: new Date(row.created_at).getTime(),
+    callerName: (row.metadata?.caller_name as string) ?? (row.metadata?.callerName as string) ?? null,
+    callerAvatar: (row.metadata?.caller_avatar as string) ?? (row.metadata?.callerAvatar as string) ?? null,
   };
 }
 
@@ -261,6 +269,8 @@ export default function CallSessionProvider() {
           conversationId?: string;
           callerId?: string | null;
           callId?: string | null;
+          callerName?: string | null;
+          callerAvatar?: string | null;
         }>
       ).detail;
       if (!detail?.conversationId || !detail.callerId) return;
@@ -270,6 +280,8 @@ export default function CallSessionProvider() {
           callerId: detail.callerId,
           callId: detail.callId ?? null,
           createdAt: Date.now(),
+          callerName: detail.callerName ?? null,
+          callerAvatar: detail.callerAvatar ?? null,
         },
         null
       );
@@ -288,6 +300,8 @@ export default function CallSessionProvider() {
           conversationId?: string;
           callerId?: string | null;
           callId?: string | null;
+          callerName?: string | null;
+          callerAvatar?: string | null;
           at?: number;
         };
         if (
@@ -302,6 +316,8 @@ export default function CallSessionProvider() {
               callerId: pending.callerId,
               callId: pending.callId ?? null,
               createdAt: pending.at,
+              callerName: pending.callerName ?? null,
+              callerAvatar: pending.callerAvatar ?? null,
             },
             null
           );
@@ -320,6 +336,43 @@ export default function CallSessionProvider() {
       if (channel) supabase.removeChannel(channel);
     };
   }, [loadPending, showRing]);
+
+  /* ---------------------------------------------------------------- */
+  /* Phantom clear on unmount / background resume                                */
+  /* ---------------------------------------------------------------- */
+  useEffect(() => {
+    // Cleanup when provider unmounts (app killed, navigation away)
+    return () => {
+      void callSession.forceClearPhantom();
+    };
+  }, []);
+
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === "visible") {
+        // If we were backgrounded during a ringing leg, clear stale rows
+        // so next startCall doesn't see phantom busy
+        if (call.status === "idle") {
+          void callSession.forceClearPhantom();
+        }
+      }
+    }
+    function onResume() {
+      if (call.status === "idle") void callSession.forceClearPhantom();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    // Capacitor resume (native background -> foreground)
+    let appListener: { remove: () => void } | null = null;
+    try {
+      import("@capacitor/app").then(({ App }) => {
+        App.addListener("resume", onResume).then((h) => (appListener = h));
+      });
+    } catch {}
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (appListener) appListener.remove();
+    };
+  }, [call.status]);
 
   /* ---------------------------------------------------------------- */
   /* Actions                                                           */
@@ -367,14 +420,43 @@ export default function CallSessionProvider() {
   /* Surfaces                                                          */
   /* ---------------------------------------------------------------- */
 
-  const name = call.peerId ? nameOf(call.peerId) || "Anonymous Friend" : "Anonymous Friend";
-  const avatarUrl = generatedAvatarUrl(call.peerId ?? "ghost");
+  const prefetchedName = (call as unknown as { peerName?: string | null }).peerName;
+  const prefetchedAvatar = (call as unknown as { peerAvatar?: string | null }).peerAvatar;
+  const name = prefetchedName || (call.peerId ? nameOf(call.peerId) || "Anonymous Friend" : "Anonymous Friend");
+  const avatarUrl = prefetchedAvatar || generatedAvatarUrl(call.peerId ?? "ghost");
+  // Skeleton briefly when incoming ring hasn't yet delivered peer identity via FCM prefetch
+  const isSheetLoading = call.status === "connecting" && !prefetchedName && !prefetchedAvatar;
   /* Narrowed once, here: `live` as a boolean would leave `call.status` too wide
       for the two surfaces that cannot render a ring or an idle engine. */
   const activeStatus =
     call.status === "outgoing" || call.status === "connecting" || call.status === "in_call"
       ? call.status
       : null;
+
+  // Auto-answer / decline when routed via ?answer=true or ?action=decline (FCM action tap)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (call.status !== "incoming") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const answer = params.get("answer");
+      const action = params.get("action");
+      const callIdParam = params.get("callId") ?? params.get("call_id");
+      const matchesCall = !callIdParam || !call.callId || callIdParam === call.callId;
+      if (!matchesCall) return;
+      if (answer === "true") {
+        try { sessionStorage.removeItem(PENDING_CALL_KEY); } catch {}
+        void callSession.accept();
+      } else if (action === "decline") {
+        const rowId = ringRowIdRef.current;
+        ringRowIdRef.current = null;
+        callSession.decline();
+        if (rowId) {
+          void supabase.from("notifications").update({ is_read: true }).eq("id", rowId);
+        }
+      }
+    } catch {}
+  }, [call.status, call.callId]);
 
   return (
     <>
@@ -422,6 +504,7 @@ export default function CallSessionProvider() {
           onToggleSpeaker={toggleSpeaker}
           onHangUp={hangUp}
           onMinimize={minimize}
+          isLoading={isSheetLoading}
         />
       )}
     </>

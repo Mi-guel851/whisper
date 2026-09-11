@@ -90,6 +90,35 @@ function toStringData(source: Record<string, unknown>): Record<string, string> {
   return out;
 }
 
+function buildActions(route: string, meta: Record<string, unknown>, notification: { id: string }): Record<string, unknown>[] | null {
+  const sourceId = String((meta.source_id as string) ?? notification.id);
+  const conversationId = String(meta.conversation_id ?? meta.conversationId ?? "");
+  const callId = String(meta.call_id ?? meta.callId ?? "");
+  if (route === "friend_request") {
+    return [
+      { title: "Accept", action: "whisperapp://friends?action=accept&id=" + sourceId, intent: "ACCEPT_FRIEND_REQUEST" },
+      { title: "Decline", action: "whisperapp://friends?action=decline&id=" + sourceId, intent: "DECLINE_FRIEND_REQUEST" },
+    ];
+  }
+  if (route === "message" && conversationId) {
+    return [
+      { title: "Reply", action: "whisperapp://chat/" + conversationId + "?reply=true", intent: "REPLY_MESSAGE" },
+      { title: "View", action: "whisperapp://chat/" + conversationId, intent: "VIEW_MESSAGE" },
+    ];
+  }
+  if (route === "whisper") {
+    const whisperId = String((meta.whisper_id as string) ?? sourceId);
+    return [{ title: "View", action: "whisperapp://notifications?whisperId=" + whisperId, intent: "VIEW_WHISPER" }];
+  }
+  if (route === "call" && conversationId) {
+    return [
+      { title: "Answer", action: "whisperapp://call/" + conversationId + "?answer=true&callId=" + callId, intent: "ANSWER_CALL" },
+      { title: "Decline", action: "whisperapp://call/" + conversationId + "?action=decline&callId=" + callId, intent: "DECLINE_CALL" },
+    ];
+  }
+  return null;
+}
+
 async function sendOne(
   accessToken: string,
   deviceToken: string,
@@ -162,14 +191,66 @@ Deno.serve(async (req) => {
     const meta = notification.metadata ?? {};
     const isCall = route === "call";
 
+    // Pre-fetch caller info for call screen (pre-fetch so call screen doesn't need Supabase round trip)
+    let callerName: string | null = null;
+    let callerAvatar: string | null = null;
+    if (isCall && (meta.caller_id || meta.callerId)) {
+      const callerId = String(meta.caller_id ?? meta.callerId);
+      try {
+        const { data: caller } = await supabase
+          .from("profiles")
+          .select("display_name, username, avatar_url")
+          .eq("id", callerId)
+          .single();
+        if (caller) {
+          // prefer display_name, fallback to username
+          callerName = (caller.display_name as string) || (caller.username as string) || null;
+          callerAvatar = (caller.avatar_url as string) || null;
+        }
+      } catch (_) {
+        // fetch is best-effort — caller info missing doesn't block the push
+      }
+    }
+
+    const enrichedMeta: Record<string, unknown> = { ...meta };
+    if (callerName) enrichedMeta.caller_name = callerName;
+    if (callerAvatar) enrichedMeta.caller_avatar = callerAvatar;
+    // Ensure conversation_id is present for call screen
+    if (isCall && !enrichedMeta.conversation_id && enrichedMeta.conversationId) {
+      enrichedMeta.conversation_id = enrichedMeta.conversationId;
+    }
+    if (isCall && !enrichedMeta.conversationId && enrichedMeta.conversation_id) {
+      enrichedMeta.conversationId = enrichedMeta.conversation_id;
+    }
+
+    const actions = buildActions(route, enrichedMeta as Record<string, unknown>, notification);
+
     const messageData = toStringData({
-      ...meta,
+      ...enrichedMeta,
       type: route,
       notificationId: notification.id,
+      // Include actions as JSON string for foreground FCMMessagingService to parse into NotificationCompat actions
+      ...(actions ? { actions: JSON.stringify(actions) } : {}),
     });
 
     const results = await Promise.all(
       tokens.map(async (t: { fcm_token: string }) => {
+        const androidNotification: Record<string, unknown> = {
+          channel_id: CHANNELS[route] ?? "default",
+          default_vibrate_timings: false,
+          vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
+        };
+        // Add actions to android.notification for background handling (FCM's notification payload)
+        // The SDK will render them when the app is killed; foreground path also reads data.actions
+        if (actions) {
+          // FCM's android.notification.actions expects {title, click_action} per spec; we include both click_action and our deep link
+          (androidNotification as Record<string, unknown>).actions = actions.map((a) => ({
+            title: a.title,
+            // click_action is the intent action string the manifest will catch
+            click_action: a.intent,
+          }));
+        }
+
         const message: Record<string, unknown> = {
           token: t.fcm_token,
           notification: {
@@ -179,11 +260,7 @@ Deno.serve(async (req) => {
           data: messageData,
           android: {
             priority: "high",
-            notification: {
-              channel_id: CHANNELS[route] ?? "default",
-              default_vibrate_timings: false,
-              vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
-            },
+            notification: androidNotification,
           },
           apns: {
             headers: { "apns-priority": "10" },
@@ -191,11 +268,11 @@ Deno.serve(async (req) => {
           },
         };
 
-        if (isCall && meta.call_id) {
-          (message.android as Record<string, unknown>).collapse_key = `call-${meta.call_id}`;
+        if (isCall && enrichedMeta.call_id) {
+          (message.android as Record<string, unknown>).collapse_key = `call-${enrichedMeta.call_id}`;
           (message.android as Record<string, unknown>).ttl = "60s";
         } else {
-          const collapse = meta.postId ?? meta.conversation_id ?? notification.id;
+          const collapse = enrichedMeta.postId ?? enrichedMeta.conversation_id ?? notification.id;
           if (collapse)
             (message.android as Record<string, unknown>).collapse_key = `${route}-${collapse}`;
         }
@@ -220,7 +297,7 @@ Deno.serve(async (req) => {
       await supabase.from("device_tokens").delete().in("fcm_token", deadTokens);
     }
 
-    console.log(`[notify-on-notification] sent:${sent} failed:${failed} route:${route}`);
+    console.log(`[notify-on-notification] sent:${sent} failed:${failed} route:${route} actions:${actions ? actions.length : 0}`);
     return new Response(
       JSON.stringify({ sent, failed, pruned: deadTokens.length, route }),
       { status: 200 }

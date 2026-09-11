@@ -7121,33 +7121,12 @@ html.viewport-locked body {
   font-size:clamp(.78rem,1.05vw,1.05rem);
   font-weight:900; text-transform:uppercase; letter-spacing:-.02em;
   color:var(--theme-text);
-  opacity:.13;
+  opacity:.16;
 }
 /* On phones the card is a single column — there is no spare right half to
-   overlay, and hiding the wall entirely (the old behaviour) is why the
-   animation "only exists on PC". So below 44rem the wall comes out of the
-   overlay and stands alone: an in-flow, full-width band at the foot of the
-   card, its three lanes stacked as evenly spaced right-aligned rows. `order`
-   moves it below the actions without touching the markup (it is the first
-   child in DashboardHero); the row override un-anchors the lanes' absolute
-   `right-*`/`top-*` utilities, and the box keeps `overflow:hidden` from the
-   base rule so a long rotated word can never escape the card. The mask now
-   fades BOTH edges — a standalone band must fit its container rather than run
-   under the headline's column like the desktop overlay does. */
-@media (max-width:44rem) {
-  .dashboard-word-wall {
-    position:relative; order:10; left:auto; right:auto; top:auto; bottom:auto;
-    display:flex; flex-direction:column; justify-content:space-evenly;
-    align-items:flex-end;
-    height:5.4rem; margin-top:.15rem;
-    padding-inline:0.9rem;
-    -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
-    mask-image:linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
-  }
-  /* Unlayered beats Tailwind's `@layer utilities`, so this wins over the
-     lanes' `absolute` class without needing `!important`. */
-  .dashboard-word-wall > div { position:static; }
-}
+   overlay, so the ambient wall hides entirely on mobile. Keeping it in-flow
+   would crowd the compact welcome card and break the legibility guard. */
+@media (max-width:44rem) { .dashboard-word-wall { display:none; } }
 .dashboard-personal-grid { grid-template-columns:minmax(0,1fr); }
 .dashboard-overview { padding:.5rem 0; }
 .dashboard-overview .stats-row-grid-compact { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; }

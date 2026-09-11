@@ -78,6 +78,9 @@ export type CallSnapshot = {
   speakerOn: boolean;
   /** Collapsed into the floating top pill instead of taking the screen. */
   minimized: boolean;
+  /** Prefetched peer display for instant call screen (FCM caller_name/avatar) */
+  peerName: string | null;
+  peerAvatar: string | null;
 };
 
 /** A ring handed over from a `notifications` row or a push tap. */
@@ -87,6 +90,8 @@ export type IncomingRing = {
   callId: string | null;
   /** ms epoch, from the row. Used to keep a stale ring from taking the screen. */
   createdAt?: number;
+  callerName?: string | null;
+  callerAvatar?: string | null;
 };
 
 /** A conversation the app is currently looking at, so it can hear a ring. */
@@ -121,6 +126,8 @@ const IDLE: CallSnapshot = {
   speakerSupported: false,
   speakerOn: false,
   minimized: false,
+  peerName: null,
+  peerAvatar: null,
 };
 
 type Attachment = {
@@ -155,6 +162,9 @@ class CallSession {
   /** Set when Accept was pressed before any offer arrived. */
   private awaitingOffer = false;
   private iceRestarted = false;
+  private prewarmedIce: Promise<RTCIceServer[]> | null = null;
+  private pendingPeerName: string | null = null;
+  private pendingPeerAvatar: string | null = null;
 
   private ringingTimeout: ReturnType<typeof setTimeout> | null = null;
   private ringExpiryTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -503,6 +513,15 @@ class CallSession {
     this.vibrationTimer = setInterval(() => vibrate([300, 250, 300]), 3_000);
   }
 
+  /** Force-clear phantom ringing/answered rows for the current user — called on unmount and resume. */
+  forceClearPhantom = async () => {
+    const uid = this.myId;
+    if (!uid) return;
+    try {
+      await supabase.rpc("force_clear_my_calls", { p_user_id: uid } as any);
+    } catch {}
+  };
+
   /** Media + peer-connection teardown. No signaling, no state change. */
   private teardownMedia() {
     stopRingTone();
@@ -537,6 +556,11 @@ class CallSession {
     this.state.muted = false;
     this.state.speakerOn = false;
     this.state.startedAt = null;
+    this.state.peerName = null;
+    this.state.peerAvatar = null;
+    this.prewarmedIce = null;
+    this.pendingPeerName = null;
+    this.pendingPeerAvatar = null;
   }
 
   private resetState() {
@@ -545,6 +569,8 @@ class CallSession {
     this.state.peerId = null;
     this.state.callId = null;
     this.state.minimized = false;
+    this.state.peerName = null;
+    this.state.peerAvatar = null;
     this.setStatus("idle");
   }
 
@@ -922,6 +948,14 @@ class CallSession {
   beginIncomingRing(ring: IncomingRing) {
     if (!ring.conversationId || !ring.callerId) return;
     if (typeof ring.createdAt === "number" && Date.now() - ring.createdAt > RING_WINDOW_MS) return;
+    // Store prefetched name/avatar for instant screen (no Supabase round trip)
+    if (ring.callerName) this.pendingPeerName = ring.callerName;
+    if (ring.callerAvatar) this.pendingPeerAvatar = ring.callerAvatar;
+    // Pre-warm ICE servers so accept() doesn't wait on network
+    if (!this.prewarmedIce) {
+      this.prewarmedIce = getIceServers().catch(() => []);
+      // fire-and-forget; accept() will await the same promise
+    }
 
     const current = this.state;
     if (current.status !== "idle") {
@@ -948,6 +982,8 @@ class CallSession {
     this.state.direction = "incoming";
     this.state.callId = ring.callId;
     this.incomingCallId = ring.callId;
+    this.state.peerName = ring.callerName ?? this.pendingPeerName ?? null;
+    this.state.peerAvatar = ring.callerAvatar ?? this.pendingPeerAvatar ?? null;
     this.state.minimized = false;
     this.attachForCall(ring.conversationId, ring.callerId);
     this.setStatus("incoming");
@@ -1008,7 +1044,8 @@ class CallSession {
       return;
     }
 
-    const iceServers = await getIceServers();
+    const iceServers = await (this.prewarmedIce ?? getIceServers());
+    this.prewarmedIce = null;
     const pc = new RTCPeerConnection({ iceServers });
     this.pc = pc;
     this.localStream = stream;
@@ -1141,7 +1178,8 @@ class CallSession {
       const { data, error } = await supabase.rpc("start_call_log", {
         p_call_id: callId,
         p_conversation_id: conversationId,
-      });
+        p_force_clear_stale: true,
+      } as any);
       if (error) {
         legacyInsert =
           error.code === "PGRST202" ||
