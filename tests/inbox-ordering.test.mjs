@@ -6,6 +6,7 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 /* -- The server owns the inbox ordering. ---------------------------------- */
 
 const migration = await read('supabase/migrations/202609100004_inbox_conversation_ordering.sql');
+const exactActivityMigration = await read('supabase/migrations/202609110001_inbox_exact_activity.sql');
 
 // The trigger stamps the conversation from the inserted row's SERVER time,
 // not the device clock.
@@ -30,6 +31,13 @@ assert.match(migration, /c\.user_a = auth\.uid\(\) or c\.user_b = auth\.uid\(\)/
 assert.match(migration, /revoke all on function public\.inbox_message_previews\(uuid\[\]\) from public, anon/);
 assert.match(migration, /grant execute on function public\.inbox_message_previews\(uuid\[\]\) to authenticated/);
 
+// The list itself has an exact, server-ranked read path, so stale denormalized
+// conversation stamps cannot push a recently active person below older chats.
+assert.match(exactActivityMigration, /create or replace function public\.inbox_conversations\(\)/);
+assert.match(exactActivityMigration, /left join lateral/);
+assert.match(exactActivityMigration, /order by coalesce\(latest\.created_at, c\.last_message_at\) desc nulls last/);
+assert.match(exactActivityMigration, /grant execute on function public\.inbox_conversations\(\) to authenticated/);
+
 console.log('PASS inbox ordering: conversation stamp is server-side and existing rows are repaired');
 
 /* -- The client write survives only as a guarded fallback. ---------------
@@ -53,8 +61,10 @@ assert.match(chatPage, /from\("direct_messages"\)\s*\.insert\(/);
    fallback for an unmigrated database. ------------------------------------ */
 
 const inboxPage = await read('app/inbox/page.tsx');
+assert.match(inboxPage, /supabase\.rpc\("inbox_conversations"\)/);
 assert.match(inboxPage, /supabase\.rpc\("inbox_message_previews"/);
 assert.match(inboxPage, /p_conversation_ids: ids/);
+assert.match(inboxPage, /activityAt\(/);
 assert.match(inboxPage, /\.limit\(600\)/);
 
 console.log('PASS inbox ordering: client writes removed, previews exact with windowed fallback');

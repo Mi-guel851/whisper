@@ -25,8 +25,14 @@ type ConversationRow = {
   user_b: string;
   user_a_last_read_at: string | null;
   user_b_last_read_at: string | null;
-  last_message_at: string;
+  /* Legacy conversation rows can be null or stale when the ordering trigger has
+     not been applied yet. The exact preview's `created_at` is preferred whenever
+     it is available; these fields are the first-paint/fallback values. */
+  last_message_at: string | null;
   last_message_sender_id: string | null;
+  /** Supplied by `inbox_conversations`; absent on the legacy fallback. */
+  latest_message_at?: string | null;
+  latest_message_sender_id?: string | null;
 };
 
 type MessagePreview = {
@@ -67,19 +73,53 @@ function uniqueChannelName(prefix: string) {
  */
 const REFRESH_COALESCE_MS = 250;
 
-/** WhatsApp's chat-list stamp: time today, "Yesterday", a weekday, then a date. */
-function chatListTime(value: string) {
+/**
+ * WhatsApp's chat-list stamp, based on the message's timestamp rather than the
+ * device's or the conversation row's possibly stale timestamp.
+ *
+ * Calendar keys are used instead of subtracting 24-hour periods. A daylight-saving
+ * transition can make two adjacent local dates 23 or 25 hours apart, which made the
+ * old `Math.round(milliseconds / 86400000)` label a message "Yesterday" or a
+ * weekday incorrectly. The inbox should show the same date the chat transcript
+ * shows on this device.
+ */
+export function chatListTime(value: string | null | undefined, now = new Date()) {
   if (!value) return "";
-  const date = new Date(value);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const dayDiff = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "";
 
-  if (dayDiff === 0) return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const date = new Date(timestamp);
+  const dateKey = (entry: Date) =>
+    Date.UTC(entry.getFullYear(), entry.getMonth(), entry.getDate());
+  const dayDiff = Math.floor((dateKey(now) - dateKey(date)) / 86_400_000);
+
+  if (dayDiff === 0) {
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
   if (dayDiff === 1) return "Yesterday";
-  if (dayDiff < 7) return date.toLocaleDateString(undefined, { weekday: "short" });
-  return date.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "2-digit" });
+  if (dayDiff >= 2 && dayDiff < 7) {
+    return date.toLocaleDateString(undefined, { weekday: "short" });
+  }
+
+  /* An explicit month is easier to scan than an ambiguous 02/03/26, and the year
+     is included whenever the message is not from the current calendar year. */
+  return date.toLocaleDateString(
+    undefined,
+    date.getFullYear() === now.getFullYear()
+      ? { day: "numeric", month: "short" }
+      : { day: "numeric", month: "short", year: "numeric" }
+  );
+}
+
+function activityAt(
+  conversation: ConversationRow,
+  previews: Record<string, MessagePreview>
+) {
+  return (
+    previews[conversation.id]?.created_at ??
+    conversation.latest_message_at ??
+    conversation.last_message_at
+  );
 }
 
 export default function InboxPage() {
@@ -183,7 +223,11 @@ export default function InboxPage() {
         });
 
         let recent: MessagePreview[] | null = rpcPreviews ?? null;
-        if (rpcError || recent === null) {
+        /* An RPC can be present but return an empty array when an older project
+           has the function's grants out of sync. A conversation list with rows
+           should not then render every preview as missing, so the narrow legacy
+           read gets one chance to recover the messages. */
+        if (rpcError || recent === null || (rows.length > 0 && recent.length === 0)) {
           if (rpcError) console.warn("inbox_message_previews unavailable, using the windowed query:", rpcError.message);
           const { data: windowed, error: recentError } = await supabase
             .from("direct_messages")
@@ -230,6 +274,23 @@ export default function InboxPage() {
         }
 
         if (cancelled) return;
+
+        /* Reconcile the list row with the exact message we just selected. This is
+           client state only — it does not write the conversation back — but it
+           means an older database still immediately sorts and labels the inbox
+           from the same server timestamp as the visible preview. */
+        setConversations((current) =>
+          current.map((row) => {
+            const message = latest[row.id];
+            return message
+              ? {
+                  ...row,
+                  last_message_at: message.created_at,
+                  last_message_sender_id: message.sender_id,
+                }
+              : row;
+          })
+        );
         setPreviews(latest);
         setUnreadCounts(counts);
       }
@@ -297,15 +358,31 @@ export default function InboxPage() {
         });
       }
 
+      /* The new RPC ranks by the true latest direct message before applying the
+         300-row cap. The table query is kept as a deploy-order fallback, so an
+         older production project still opens the inbox while the migration is
+         rolling out. */
+      async function loadConversationRows() {
+        const { data: exact, error: exactError } = await supabase.rpc("inbox_conversations");
+        if (!exactError && exact) {
+          return { data: exact as ConversationRow[], error: null };
+        }
+        if (exactError) {
+          console.warn("inbox_conversations unavailable, using the conversation fallback:", exactError.message);
+        }
+        const fallback = await supabase
+          .from("conversations")
+          .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
+          .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+          .order("last_message_at", { ascending: false, nullsFirst: false })
+          .limit(300);
+        return { data: (fallback.data ?? []) as ConversationRow[], error: fallback.error };
+      }
+
       /* Capped at 300 conversations, newest activity first. An unbounded list
          turns the preview/unread work beneath it into a function of the whole
          social graph, and no inbox is honestly browsed past a few hundred. */
-      const { data, error } = await supabase
-        .from("conversations")
-        .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
-        .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-        .order("last_message_at", { ascending: false })
-        .limit(300);
+      const { data, error } = await loadConversationRows();
 
       if (!cancelled) {
         if (error) console.error("Inbox fetch error:", error);
@@ -344,12 +421,7 @@ export default function InboxPage() {
         refreshRunning = true;
 
         try {
-          const { data: fresh, error: refreshError } = await supabase
-            .from("conversations")
-            .select("id, user_a, user_b, user_a_last_read_at, user_b_last_read_at, last_message_at, last_message_sender_id")
-            .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-            .order("last_message_at", { ascending: false })
-            .limit(300);
+          const { data: fresh, error: refreshError } = await loadConversationRows();
 
           if (refreshError) {
             console.error("Inbox refresh error:", refreshError);
@@ -489,24 +561,36 @@ export default function InboxPage() {
        message unreads. */
     const missed = missedCalls[c.id];
     if (missed && (!lastRead || new Date(missed.created_at) > new Date(lastRead))) {
-      const latestMessageAt = previews[c.id]?.created_at ?? c.last_message_at;
+      const latestMessageAt = activityAt(c, previews);
       if (!latestMessageAt || new Date(missed.created_at) > new Date(latestMessageAt)) {
         return true;
       }
     }
-    if (!c.last_message_at) return false;
-    if (c.last_message_sender_id === myId) return false; // you sent it — not unread for you
+    const latestAt = activityAt(c, previews);
+    const latestSender = previews[c.id]?.sender_id ?? c.latest_message_sender_id ?? c.last_message_sender_id;
+    if (!latestAt) return false;
+    if (latestSender === myId) return false; // you sent it — not unread for you
     if (!lastRead) return true;
-    return new Date(c.last_message_at) > new Date(lastRead);
+    return new Date(latestAt) > new Date(lastRead);
   }
 
-  /* Pinned chats float to the top of the list, WhatsApp-style; within each
-     group the existing newest-activity order is preserved. */
+  /* Pinned chats float to the top of the list, WhatsApp-style. Within each
+     group sort by the exact latest message, not by the order in which the
+     conversation query happened to arrive. This corrects existing rows whose
+     `last_message_at` drifted before the server trigger was installed. */
   const visibleConversations = useMemo(() => {
-    const pinnedRows = conversations.filter((c) => pinned.has(c.id));
-    const restRows = conversations.filter((c) => !pinned.has(c.id));
+    const newestFirst = (left: ConversationRow, right: ConversationRow) => {
+      const leftTime = Date.parse(activityAt(left, previews) ?? "");
+      const rightTime = Date.parse(activityAt(right, previews) ?? "");
+      const safeLeft = Number.isFinite(leftTime) ? leftTime : Number.MIN_SAFE_INTEGER;
+      const safeRight = Number.isFinite(rightTime) ? rightTime : Number.MIN_SAFE_INTEGER;
+      return safeRight - safeLeft || left.id.localeCompare(right.id);
+    };
+    const sorted = [...conversations].sort(newestFirst);
+    const pinnedRows = sorted.filter((c) => pinned.has(c.id));
+    const restRows = sorted.filter((c) => !pinned.has(c.id));
     return [...pinnedRows, ...restRows];
-  }, [conversations, pinned]);
+  }, [conversations, pinned, previews]);
 
   function previewText(c: ConversationRow) {
     const preview = previews[c.id];
@@ -815,9 +899,10 @@ export default function InboxPage() {
                  row: the red entry, its own timestamp, no ticks — the message
                  preview returns the moment a newer message lands. */
               const missed = missedCalls[c.id];
+              const latestMessageAt = activityAt(c, previews);
               const missedIsLatest = Boolean(
                 missed &&
-                  (!preview || new Date(missed.created_at) > new Date(preview.created_at))
+                  (!latestMessageAt || new Date(missed.created_at) > new Date(latestMessageAt))
               );
 
               /* Everything the row needs is flattened to a primitive here.
@@ -833,7 +918,7 @@ export default function InboxPage() {
                   timestamp={
                     missedIsLatest && missed
                       ? chatListTime(missed.created_at)
-                      : chatListTime(c.last_message_at)
+                      : chatListTime(latestMessageAt)
                   }
                   previewText={missedIsLatest ? "Missed Voice Call 📞" : previewText(c)}
                   unread={unread}

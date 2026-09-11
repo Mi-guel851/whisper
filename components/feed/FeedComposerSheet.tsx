@@ -33,9 +33,9 @@ import FeedComposer, { type ComposerDraft } from "./FeedComposer";
  * This renders as a full-screen compose surface — Instagram/Twitter style —
  * sliding up from the bottom to cover 100% of the viewport height on mobile,
  * and as a centered full-height column over a dark backdrop on desktop. Only
- * the presentation changed: the draft, the topic, the photo pipeline, the
- * poll builder, the coin cost, the submit lifecycle and every validation rule
- * are untouched inside `FeedComposer`.
+ * the presentation changed: the draft, the topic, the photo pipeline, the poll
+ * builder, the AI-generated draft action, the coin cost, the submit lifecycle and
+ * every validation rule are untouched inside `FeedComposer`.
  */
 
 type FeedComposerSheetProps = {

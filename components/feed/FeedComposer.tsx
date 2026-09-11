@@ -7,6 +7,7 @@ import GlassPanel from "@/components/GlassPanel";
 import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import { useToast } from "@/components/ToastProvider";
 import { FEED_TOPICS, stripLinks, type FeedTopic } from "@/lib/feed";
+import { generateFeedSuggestion, type FeedSuggestion } from "@/lib/feedSuggestions";
 import { ImagePrepError, prepareFeedImage, type PreparedFeedImage } from "@/lib/imagePreview";
 import { PROSE_INPUT_PROPS } from "@/lib/textEntry";
 import { vibrate, HAPTIC } from "@/lib/haptics";
@@ -38,22 +39,6 @@ import FeedAvatar from "./FeedAvatar";
 const MAX_BODY = 500;
 const MAX_POLL_OPTIONS = 4;
 const MAX_POLL_OPTION_CHARS = 60;
-
-const SUGGESTED_POST =
-  "Hi everyone! I have a little time to talk. Send me an anonymous Whisper and let’s see where the conversation goes.";
-
-const AI_SUGGESTIONS = [
-  SUGGESTED_POST,
-  "I am in the mood for an honest conversation. Leave me a Whisper and tell me what is on your mind.",
-  "Quick question for the community: what is one small thing that made you smile today? Send your answer anonymously.",
-  "I am taking anonymous questions today. Ask me anything and I will answer as honestly as I can.",
-  "Sometimes a stranger has the best advice. Leave me a Whisper and share something you have learned recently.",
-  "Drop a kind message for someone who needs it today. My Whisper link is open for anonymous notes.",
-  "I want to hear a story I have never heard before. Send me an anonymous Whisper and surprise me.",
-  "No pressure, no names, just a real conversation. Say hello through my Whisper link.",
-  "What would you tell your future self today? Leave your answer anonymously on my Whisper.",
-  "I am collecting honest opinions. Tell me one thing you think more people should talk about.",
-];
 
 export type ComposerDraft = {
   body: string;
@@ -128,8 +113,11 @@ export default function FeedComposer({
 
   const [body, setBody] = useState("");
   const [topic, setTopic] = useState<FeedTopic | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [generatedSuggestion, setGeneratedSuggestion] = useState<FeedSuggestion | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /* Keep generated ideas fresh for this composer session. Once all ideas in a
+     selected topic have been used, the helper resets that topic's pool. */
+  const generatedSuggestionIds = useRef<Set<string>>(new Set());
 
   const [pollOptions, setPollOptions] = useState<string[] | null>(null);
   const [image, setImage] = useState<PreparedFeedImage | null>(null);
@@ -146,10 +134,9 @@ export default function FeedComposer({
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      if (prefillBody) {
-        setBody(prefillBody);
-        setTopic(prefillTopic);
-      }
+      setBody(prefillBody);
+      setTopic(prefillTopic);
+      setGeneratedSuggestion(null);
       if (prefillPoll) {
         /* A photo cannot ride with a poll, so the poll request wins and the photo
            is dropped — the caller asked for a poll explicitly. */
@@ -180,6 +167,21 @@ export default function FeedComposer({
     setImageUrl(null);
     if (fileRef.current) fileRef.current.value = "";
   }
+
+  const writeWithAi = useCallback(() => {
+    vibrate(HAPTIC.select);
+    const suggestion = generateFeedSuggestion(topic, generatedSuggestionIds.current);
+    generatedSuggestionIds.current.add(suggestion.id);
+    setGeneratedSuggestion(suggestion);
+    setBody(suggestion.text);
+    /* Keep the interaction feeling like writing into the field, not opening a
+       second picker. The next tap generates another idea from the same 128-entry
+       topic-balanced bank without ever rendering that bank as a list. */
+    queueMicrotask(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.select();
+    });
+  }, [topic]);
 
   async function pickImage(file: File | undefined) {
     if (!file) return;
@@ -250,8 +252,8 @@ export default function FeedComposer({
       if (posted) {
         setBody("");
         setTopic(null);
+        setGeneratedSuggestion(null);
         setPollOptions(null);
-        setShowSuggestions(false);
         clearImage();
       }
     } finally {
@@ -274,7 +276,10 @@ export default function FeedComposer({
             ref={setFieldRef}
             {...PROSE_INPUT_PROPS}
             value={body}
-            onChange={(event) => setBody(event.target.value)}
+            onChange={(event) => {
+              setBody(event.target.value);
+              setGeneratedSuggestion(null);
+            }}
             maxLength={MAX_BODY}
             rows={3}
             placeholder="Share a thought with the Whisper community..."
@@ -371,47 +376,27 @@ export default function FeedComposer({
           </div>
         )}
 
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3">
           <button
             type="button"
-            onClick={() => setBody(SUGGESTED_POST)}
-            /* Clamped to two lines. Unclamped, a 120-character suggestion sets
-               four lines in this column and the prompt ends up taller than the
-               field it is a suggestion for. */
-            className="glass-control line-clamp-2 min-w-0 flex-1 rounded-2xl px-3 py-2 text-left text-xs leading-5 transition"
-            style={{ color: "var(--theme-text-secondary)" }}
-          >
-            <span className="theme-accent-text font-bold">Suggestion:</span> {SUGGESTED_POST}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowSuggestions((visible) => !visible)}
-            className="glass-control flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold transition"
+            onClick={writeWithAi}
+            className="glass-control flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-xs font-bold transition"
             style={{ color: "var(--theme-accent-pink)" }}
-            aria-expanded={showSuggestions}
+            aria-label="Generate a new public feed post with AI"
           >
-            <Sparkles size={14} /> AI Write
+            <Sparkles size={14} />
+            {generatedSuggestion ? "Generate another AI idea" : "AI Write"}
           </button>
+          {generatedSuggestion && (
+            <p
+              className="mt-2 text-center text-[0.6875rem] leading-4"
+              style={{ color: "var(--theme-text-muted)" }}
+              role="status"
+            >
+              Fresh {FEED_TOPICS.find((entry) => entry.key === generatedSuggestion.topic)?.label.toLowerCase()} idea generated. Tap again for another.
+            </p>
+          )}
         </div>
-
-        {showSuggestions && (
-          <div className="glass-control mt-3 grid gap-2 rounded-2xl p-2">
-            {AI_SUGGESTIONS.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => {
-                  setBody(suggestion);
-                  setShowSuggestions(false);
-                }}
-                className="glass-control rounded-xl px-3 py-2 text-left text-xs leading-5 transition"
-                style={{ color: "var(--theme-text-secondary)" }}
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        )}
 
         <div
           className="mt-3 flex items-center justify-between gap-3 border-t pt-3"
