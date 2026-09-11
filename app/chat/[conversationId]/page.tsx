@@ -648,7 +648,7 @@ export default function ChatPage() {
     async function loadCallLogs() {
       const { data } = await supabase
         .from("call_logs")
-        .select("id,caller_id,callee_id,started_at,ended_at,status")
+        .select("id,caller_id,callee_id,started_at,answered_at,ended_at,status")
         .eq("conversation_id", conversationId)
         .order("started_at", { ascending: true })
         .limit(120);
