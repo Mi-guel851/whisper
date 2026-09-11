@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, Mic, MicOff, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
+import { ChevronDown, Lock, Mic, MicOff, PhoneCall, PhoneOff, Volume2, VolumeX } from "lucide-react";
 
 import { formatCallDuration } from "@/lib/calls/callFormat";
 import type { CallStatus } from "@/lib/calls/callSession";
@@ -24,6 +24,10 @@ type InCallSheetProps = {
       minimized, which today is none of them — the prop stays optional so the
       sheet can be rendered standalone in a preview without it. */
   onMinimize?: () => void;
+  /** When peer identity is still resolving (FCM prefetch pending or avatar
+      fetch in-flight) show a shimmer skeleton so the full-screen intent never
+      lands on a blank frame. */
+  isLoading?: boolean;
 };
 
 /**
@@ -53,9 +57,17 @@ export default function InCallSheet({
   onToggleSpeaker,
   onHangUp,
   onMinimize,
+  isLoading = false,
 }: InCallSheetProps) {
   const reduced = useSafeReducedMotion();
   const [now, setNow] = useState(() => Date.now());
+
+  // Optimistic ICE warm on mount so Accept/answer has TURN without extra wait
+  useEffect(() => {
+    void import("@/lib/calls/iceServers").then(({ getIceServers }) => {
+      void getIceServers().catch(() => {});
+    });
+  }, []);
 
   useEffect(() => {
     if (startedAt === null) return;
@@ -122,17 +134,34 @@ export default function InCallSheet({
                   transition={{ duration: 1.8, delay, repeat: Infinity, ease: "easeOut" }}
                 />
               ))}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={avatarUrl}
-              alt=""
-              className="h-36 w-36 rounded-full object-cover shadow-2xl"
-              style={{ border: "4px solid rgba(37, 211, 102, 0.62)", background: "var(--fill-2)" }}
-            />
+            {isLoading ? (
+              <div
+                className="h-36 w-36 animate-pulse rounded-full bg-white/10 shadow-2xl"
+                style={{ border: "4px solid rgba(37, 211, 102, 0.22)" }}
+                aria-hidden
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={avatarUrl}
+                alt=""
+                className="h-36 w-36 rounded-full object-cover shadow-2xl"
+                style={{ border: "4px solid rgba(37, 211, 102, 0.62)", background: "var(--fill-2)" }}
+              />
+            )}
           </div>
 
-          <h1 className="mt-8 max-w-xs truncate text-3xl font-black text-white">{name}</h1>
-          <p className="mt-2 text-base font-semibold tabular-nums text-white/85">{label}</p>
+          {isLoading ? (
+            <>
+              <div className="mt-8 h-8 w-40 animate-pulse rounded-full bg-white/12" aria-hidden />
+              <div className="mt-3 h-4 w-28 animate-pulse rounded-full bg-white/10" aria-hidden />
+            </>
+          ) : (
+            <>
+              <h1 className="mt-8 max-w-xs truncate text-3xl font-black text-white">{name}</h1>
+              <p className="mt-2 text-base font-semibold tabular-nums text-white/85">{label}</p>
+            </>
+          )}
         </div>
 
         <div className="w-full max-w-sm">
@@ -171,8 +200,9 @@ export default function InCallSheet({
               </div>
             )}
           </div>
-          <p className="text-center text-xs font-medium leading-relaxed text-white/62">
-            Audio is end-to-end over WebRTC. Whisper does not record calls.
+          <p className="flex items-center justify-center gap-1.5 text-center text-xs font-medium leading-relaxed text-white/72">
+            <Lock size={12} className="shrink-0 text-emerald-400" aria-hidden />
+            This call is end-to-end encrypted
           </p>
         </div>
       </div>

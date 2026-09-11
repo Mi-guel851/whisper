@@ -35,6 +35,15 @@ import { supabase } from "@/lib/supabase/client";
  * Nothing here logs URLs, hashes, codes, or session data — a fragment may
  * still carry one on an old OS, and "we don't log it" is a promise only this
  * file can keep.
+ *
+ * ACTION BUTTONS (20260912)
+ *
+ * FCMMessagingService builds NotificationCompat actions for each type
+ * (friend_request Accept/Decline, message Reply/View, whisper View,
+ * call Answer/Decline). Each action fires a whisperapp:// deep link with
+ * query params the handlers below understand, and for calls the Decline
+ * path also attempts end_call_log(declined) directly so the call ends even
+ * if JS hasn't mounted yet.
  */
 export default function AppUrlHandler() {
   const router = useRouter();
@@ -52,14 +61,52 @@ export default function AppUrlHandler() {
         const host = url.host;
         const path = url.pathname;
         const postId = url.searchParams.get("post");
+        const whisperId = url.searchParams.get("whisperId");
+        const action = url.searchParams.get("action");
+        const id = url.searchParams.get("id");
+        const reply = url.searchParams.get("reply");
+        const answer = url.searchParams.get("answer");
+        const callId = url.searchParams.get("callId") ?? url.searchParams.get("call_id");
+        const callerName = url.searchParams.get("callerName") ?? url.searchParams.get("caller_name");
+        const callerAvatar = url.searchParams.get("callerAvatar") ?? url.searchParams.get("caller_avatar");
         const conversation = path.replace(/^\//, "");
 
         switch (host) {
           case "inbox":
             return "/inbox";
           case "chat":
-            return conversation ? `/chat/${encodeURIComponent(conversation)}` : "/inbox";
+            if (!conversation) return "/inbox";
+            // Preserve reply/answer/caller prefetch params for instant call screen
+            {
+              const params = new URLSearchParams();
+              if (reply) params.set("reply", reply);
+              if (answer) params.set("answer", answer);
+              if (callId) params.set("callId", callId);
+              if (callerName) params.set("callerName", callerName);
+              if (callerAvatar) params.set("callerAvatar", callerAvatar);
+              const qs = params.toString();
+              return `/chat/${encodeURIComponent(conversation)}${qs ? "?" + qs : ""}`;
+            }
+          case "call":
+            // Spec deep link is /call/{id}?answer=true — route to chat's call screen
+            // Keep the same answer/caller prefetch so the call screen can render instantly
+            if (!conversation) return "/dashboard";
+            {
+              const params = new URLSearchParams();
+              // answer=true or action=decline are the two terminal affordances
+              if (answer) params.set("answer", answer);
+              if (action) params.set("action", action);
+              if (callId) params.set("callId", callId);
+              if (callerName) params.set("callerName", callerName);
+              if (callerAvatar) params.set("callerAvatar", callerAvatar);
+              // Also handle legacy ?callId param on call host
+              const qs = params.toString();
+              return `/chat/${encodeURIComponent(conversation)}${qs ? "?" + qs : ""}`;
+            }
           case "friends":
+            if (action && (action === "accept" || action === "decline") && id) {
+              return `/friends?action=${encodeURIComponent(action)}&id=${encodeURIComponent(id)}`;
+            }
             return "/friends";
           case "feed":
             // The feed lives at /public-feed; /feed never existed.
@@ -70,6 +117,11 @@ export default function AppUrlHandler() {
           case "coins":
             return "/premium";
           case "notifications":
+            if (whisperId) return `/notifications?whisperId=${encodeURIComponent(whisperId)}`;
+            return "/notifications";
+          case "whisper":
+            // View whisper deep link
+            if (conversation) return `/notifications?whisperId=${encodeURIComponent(conversation)}`;
             return "/notifications";
           case "complete-profile":
             // The OAuth redirect target — keep it reachable from the scheme.
@@ -139,6 +191,22 @@ export default function AppUrlHandler() {
             return;
           }
 
+          // Call Decline action: end the call even before navigation so the
+          // ringing notification clears and the server row is not left ringing.
+          if (url.host === "call" && url.searchParams.get("action") === "decline") {
+            const callId = url.searchParams.get("callId") ?? url.searchParams.get("call_id");
+            if (callId) {
+              // Best-effort RPC; if the session isn't ready the callSession
+              // will also handle it when the overlay mounts.
+              void supabase.rpc("end_call_log", { p_call_id: callId, p_outcome: "declined" } as any).then(() => {}, () => {});
+              // Also force-clear any phantom ringing rows for this user
+              void (supabase.rpc("force_clear_my_calls", { p_user_id: null } as any) as unknown as Promise<void>).then(() => {}, () => {});
+            }
+          }
+          // Call Answer action: the JS callSession will handle the explicit
+          // end_call_log(answered) on the Accept button — we just navigate.
+          // Pre-fetched caller_name/avatar are already in the URL for instant render.
+
           const route = routeForUrl(url);
           if (route && SAFE_ROUTE.test(route)) {
             router.push(route);
@@ -161,7 +229,7 @@ export default function AppUrlHandler() {
       });
 
       // Handle the URL when the app is launched from a link
-      App.getLaunchUrl()
+      void App.getLaunchUrl()
         .then((launchUrl) => {
           if (launchUrl?.url) return handleUrl(launchUrl.url);
         })

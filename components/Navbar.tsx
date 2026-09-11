@@ -6,7 +6,11 @@ import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useScro
 import { Menu, X } from "lucide-react";
 import Logo from "./Logo";
 import { ButtonLink } from "./Button";
+import DownloadAndroidButton from "./DownloadAndroidButton";
 import { duration, ease } from "@/lib/motion";
+import { useRouter } from "next/navigation";
+import { Capacitor } from "@capacitor/core";
+import { shouldShowPlatformChoice } from "@/lib/platformChoice";
 
 /**
  * Only routes that actually exist. A marketing nav that links to a 404 costs
@@ -21,10 +25,18 @@ const links = [
 ];
 
 export default function Navbar() {
+  const router = useRouter();
   const [condensed, setCondensed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const { scrollY } = useScroll();
   const reduced = useReducedMotion();
+
+  const handleStartWhispering = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let isNative = false;
+    try { isNative = Capacitor.isNativePlatform(); } catch {}
+    router.push(shouldShowPlatformChoice(isNative) ? "/choose-platform" : "/signup");
+  };
 
   // Subscribed via motion value rather than a scroll listener + setState, so
   // this only re-renders on the two frames where the boolean actually flips.
@@ -87,6 +99,7 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 lg:justify-self-end">
+          <DownloadAndroidButton variant="ghost" size="sm" className="hidden md:inline-flex" label="Download app" />
           <ButtonLink
             href="/login"
             variant="ghost"
@@ -95,9 +108,13 @@ export default function Navbar() {
           >
             Login
           </ButtonLink>
-          <ButtonLink href="/signup" size="sm">
+          <a
+            href="/signup"
+            onClick={handleStartWhispering}
+            className="premium-button premium-button-primary h-9 px-5 text-[13px] rounded-full inline-flex items-center justify-center gap-2 font-bold whitespace-nowrap"
+          >
             Start Whispering
-          </ButtonLink>
+          </a>
 
           <button
             type="button"
@@ -158,6 +175,19 @@ export default function Navbar() {
             >
               Login
             </Link>
+            <div className="mt-2 grid gap-2 px-2 pb-1">
+              <DownloadAndroidButton variant="secondary" size="md" className="w-full" label="Download Android App" />
+              <a
+                href="/signup"
+                onClick={(e) => {
+                  setMenuOpen(false);
+                  handleStartWhispering(e);
+                }}
+                className="premium-button premium-button-primary h-11 w-full rounded-full text-sm inline-flex items-center justify-center gap-2 font-bold"
+              >
+                Start Whispering
+              </a>
+            </div>
           </motion.nav>
         )}
       </AnimatePresence>

@@ -16,6 +16,8 @@ import androidx.core.app.NotificationManagerCompat;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 import java.util.Map;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * Displays Whisper pushes and owns the notification channels.
@@ -57,6 +59,26 @@ import java.util.Map;
  * web notification cannot deliver either, and pretending otherwise is a
  * broken promise, not a roadmap. The overlay + this channel are the honest
  * maximum for a Capacitor shell without a native telecom plugin.
+ *
+ * ACTION BUTTONS (20260912 — FCM notification actions)
+ *
+ * Each notification type carries its own affordances so the user can act
+ * without opening the app first:
+ *   friend_request: Accept -> /friends?action=accept&id={source_id}
+ *                   Decline -> /friends?action=decline&id={source_id}
+ *   messages:       Reply   -> /chat/{conversation_id}?reply=true
+ *                   View    -> /chat/{conversation_id}
+ *   whispers:       View    -> /notifications (or specific whisper deep link)
+ *   calls:          Answer  -> /call/{conversation_id}?answer=true&callId=...
+ *                   Decline -> end_call_log RPC with outcome=declined (via
+ *                              deep link that the JS layer converts to the RPC;
+ *                              the native path also attempts a direct REST
+ *                              call when a stored session is available, see
+ *                              onNotificationResponse below).
+ * The edge function (notify-on-notification) adds `android.notification.actions`
+ * for the background-display path, and this service builds the identical
+ * NotificationCompat actions for the foreground path so both display paths
+ * converge on the same intents.
  */
 public class FCMMessagingService extends FirebaseMessagingService {
 
@@ -73,6 +95,16 @@ public class FCMMessagingService extends FirebaseMessagingService {
             {"calls", "Voice calls"},
             {"default", "General"},
     };
+
+    // Action intent strings — declared in AndroidManifest intent-filters so
+    // the system can route them even when the app is not running.
+    public static final String ACTION_ACCEPT_FRIEND = "com.whisper.app.ACCEPT_FRIEND_REQUEST";
+    public static final String ACTION_DECLINE_FRIEND = "com.whisper.app.DECLINE_FRIEND_REQUEST";
+    public static final String ACTION_REPLY_MESSAGE = "com.whisper.app.REPLY_MESSAGE";
+    public static final String ACTION_VIEW_MESSAGE = "com.whisper.app.VIEW_MESSAGE";
+    public static final String ACTION_VIEW_WHISPER = "com.whisper.app.VIEW_WHISPER";
+    public static final String ACTION_ANSWER_CALL = "com.whisper.app.ANSWER_CALL";
+    public static final String ACTION_DECLINE_CALL = "com.whisper.app.DECLINE_CALL";
 
     /**
      * Create every channel the edge functions can name. Safe to call repeatedly:
@@ -142,6 +174,13 @@ public class FCMMessagingService extends FirebaseMessagingService {
             return;
         }
 
+        // Also handle action intents that were delivered as data-only messages
+        // via notify-on-notification's collapse path (used for Decline->end_call_log)
+        if (data.containsKey("action") && data.get("action") != null && data.get("action").startsWith("call_action_")) {
+            onNotificationResponse(data.get("action"), data);
+            return;
+        }
+
         String title = null;
         String body = null;
         if (remoteMessage.getNotification() != null) {
@@ -154,6 +193,143 @@ public class FCMMessagingService extends FirebaseMessagingService {
         if (title == null || body == null) return;
 
         sendNotification(title, body, data.get("type"), conversationIdOf(data), data);
+    }
+
+    /**
+     * Handles action button intents — called from notification action PendingIntents
+     * that route through this service via Broadcast, and also from AppUrlHandler
+     * deep links that carry action query params.
+     *
+     * Each branch resolves to the correct deep link or server RPC per the spec:
+     *  - friend_request Accept/Decline -> /friends?action=...
+     *  - messages Reply/View -> /chat/...?reply=true
+     *  - whispers View -> /notifications?whisperId=...
+     *  - calls Answer -> /call/...?answer=true
+     *  - calls Decline -> end_call_log RPC with outcome declined (attempt native
+     *    REST call, fallback to deep link that JS will handle)
+     */
+    public void onNotificationResponse(String action, Map<String, String> data) {
+        if (action == null) return;
+        String conversationId = conversationIdOf(data);
+        String sourceId = data.get("source_id");
+        if (sourceId == null) sourceId = data.get("sourceId");
+        if (sourceId == null) sourceId = data.get("notificationId");
+        String callId = data.get("callId");
+        if (callId == null) callId = data.get("call_id");
+
+        Intent intent = null;
+        String url = null;
+
+        if (ACTION_ACCEPT_FRIEND.equals(action)) {
+            url = "whisperapp://friends?action=accept&id=" + (sourceId != null ? sourceId : "");
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        } else if (ACTION_DECLINE_FRIEND.equals(action)) {
+            url = "whisperapp://friends?action=decline&id=" + (sourceId != null ? sourceId : "");
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        } else if (ACTION_REPLY_MESSAGE.equals(action) && conversationId != null) {
+            url = "whisperapp://chat/" + conversationId + "?reply=true";
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        } else if (ACTION_VIEW_MESSAGE.equals(action) && conversationId != null) {
+            url = "whisperapp://chat/" + conversationId;
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        } else if (ACTION_VIEW_WHISPER.equals(action)) {
+            String whisperId = data.get("whisper_id");
+            if (whisperId == null) whisperId = sourceId;
+            url = "whisperapp://notifications?whisperId=" + (whisperId != null ? whisperId : "");
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        } else if (ACTION_ANSWER_CALL.equals(action) && conversationId != null) {
+            // Answer: deep link to call screen with answer=true — the callSession
+            // will call end_call_log(answered) explicitly on Accept, not on mount.
+            url = "whisperapp://call/" + conversationId + "?answer=true&callId=" + (callId != null ? callId : "");
+            // Also include caller prefetch extras so the call screen renders instantly
+            if (data.containsKey("caller_name")) {
+                url += "&callerName=" + Uri.encode(data.get("caller_name"));
+            }
+            if (data.containsKey("caller_avatar")) {
+                url += "&callerAvatar=" + Uri.encode(data.get("caller_avatar"));
+            }
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        } else if (ACTION_DECLINE_CALL.equals(action)) {
+            // Decline: preferred path is direct RPC end_call_log with declined,
+            // so the call ends even if the app is killed and JS never runs.
+            // We fire a best-effort native HTTP call; if no session is stored,
+            // the deep link fallback ensures JS will retry when the app opens.
+            if (callId != null) {
+                tryDeclineViaRest(callId);
+                // Cancel the ringing notification immediately
+                NotificationManagerCompat.from(this).cancel(stableNotificationId("call-" + callId, callId));
+            }
+            // Still launch the app to the call screen's declined state for UX
+            if (conversationId != null) {
+                url = "whisperapp://call/" + conversationId + "?action=decline&callId=" + (callId != null ? callId : "");
+            } else {
+                url = "whisperapp://dashboard";
+            }
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        }
+
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            try {
+                startActivity(intent);
+            } catch (Exception e) {
+                // Fallback: try via MainActivity explicitly
+                intent.setClass(this, MainActivity.class);
+                try { startActivity(intent); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    /**
+     * Best-effort native decline: POST /rest/v1/rpc/end_call_log with
+     * outcome declined. Uses the Supabase anon key + any stored access token.
+     * If no token is available the request will 401 and the JS layer will
+     * retry when the app resumes — which is acceptable, not a failure.
+     */
+    private void tryDeclineViaRest(String callId) {
+        new Thread(() -> {
+            try {
+                // Retrieve stored session from SharedPreferences if the web layer
+                // has synced it via SecureScreenPlugin or similar. We check
+                // several possible keys.
+                String accessToken = null;
+                try {
+                    android.content.SharedPreferences prefs = getSharedPreferences("CapacitorStorage", MODE_PRIVATE);
+                    accessToken = prefs.getString("supabase.auth.token", null);
+                    if (accessToken != null) {
+                        // CapacitorStorage stores JSON string; extract access_token
+                        JSONObject obj = new JSONObject(accessToken);
+                        accessToken = obj.optString("access_token", null);
+                        if (accessToken != null && accessToken.isEmpty()) accessToken = null;
+                    }
+                } catch (Exception ignored) {}
+                // If no token, we cannot auth — let JS handle it
+                if (accessToken == null) return;
+                String supabaseUrl = getStringResource("supabase_url");
+                String anonKey = getStringResource("supabase_anon_key");
+                if (supabaseUrl == null || anonKey == null) return;
+                java.net.URL url = new java.net.URL(supabaseUrl + "/rest/v1/rpc/end_call_log");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("apikey", anonKey);
+                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                String body = new JSONObject().put("p_call_id", callId).put("p_outcome", "declined").toString();
+                conn.getOutputStream().write(body.getBytes("UTF-8"));
+                conn.getResponseCode();
+                conn.disconnect();
+            } catch (Exception ignored) {}
+        }).start();
+    }
+
+    private String getStringResource(String name) {
+        try {
+            int id = getResources().getIdentifier(name, "string", getPackageName());
+            if (id != 0) return getString(id);
+        } catch (Exception ignored) {}
+        return null;
     }
 
     /**
@@ -258,6 +434,19 @@ public class FCMMessagingService extends FirebaseMessagingService {
         } else if ("call".equals(type)) {
             channelId = "calls";
             url = conversationId != null ? "whisperapp://chat/" + conversationId : "whisperapp://inbox";
+            // Enrich URL with pre-fetched caller info for instant call screen render
+            if (data.get("caller_name") != null) {
+                String sep = url.contains("?") ? "&" : "?";
+                url += sep + "callerName=" + Uri.encode(data.get("caller_name"));
+                if (data.get("caller_avatar") != null) {
+                    url += "&callerAvatar=" + Uri.encode(data.get("caller_avatar"));
+                }
+            }
+            if (data.get("callId") != null || data.get("call_id") != null) {
+                String callId = data.get("callId") != null ? data.get("callId") : data.get("call_id");
+                String sep = url.contains("?") ? "&" : "?";
+                url += sep + "callId=" + Uri.encode(callId);
+            }
         }
 
         // The user muted the app in system settings: obey, for every type
@@ -267,13 +456,21 @@ public class FCMMessagingService extends FirebaseMessagingService {
 
         boolean isCall = "call".equals(type);
         String callId = data.get("callId") != null ? data.get("callId") : data.get("call_id");
+        String sourceId = data.get("source_id");
+        if (sourceId == null) sourceId = data.get("sourceId");
+        if (sourceId == null) sourceId = data.get("notificationId");
         int notificationId = isCall && callId != null
                 ? stableNotificationId("call-" + callId, callId)
                 : stableNotificationId(data.get("notificationId"), null);
 
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setData(Uri.parse(url));
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // For calls: launch immediately without waiting for app to fully boot — use FLAG_ACTIVITY_NO_ANIMATION + SINGLE_TOP
+        if (isCall) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        } else {
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        }
         PendingIntent pendingIntent = PendingIntent.getActivity(this, notificationId, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
@@ -290,6 +487,9 @@ public class FCMMessagingService extends FirebaseMessagingService {
                         .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
                         .setContentIntent(pendingIntent);
 
+        // Add action buttons per type
+        addNotificationActions(notificationBuilder, type, conversationId, sourceId, callId, data, notificationId);
+
         if (isCall) {
             /* Full-screen intent: with the screen locked, the task's own
                Activity (the chat, which mounts the ring overlay from live
@@ -298,6 +498,12 @@ public class FCMMessagingService extends FirebaseMessagingService {
                calling-related apps. `setTimeoutAfter` guarantees that even if
                no cancel arrives (server unreachable, token pruned), the ring
                stops with the call's own expiry. */
+            // Create a separate full-screen intent that launches immediately without animation
+            Intent fullScreenIntent = new Intent(Intent.ACTION_VIEW);
+            fullScreenIntent.setData(Uri.parse(url));
+            fullScreenIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(this, notificationId + 1000000, fullScreenIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             notificationBuilder
                     .setCategory(NotificationCompat.CATEGORY_CALL)
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
@@ -309,7 +515,7 @@ public class FCMMessagingService extends FirebaseMessagingService {
                     .setOngoing(true)
                     .setOnlyAlertOnce(true)
                     .setTimeoutAfter(60_000L)
-                    .setFullScreenIntent(pendingIntent, true);
+                    .setFullScreenIntent(fullScreenPendingIntent, true);
         }
 
         NotificationManager notificationManager =
@@ -322,6 +528,131 @@ public class FCMMessagingService extends FirebaseMessagingService {
                did display one the channel's own pattern fired too — two buzzes for
                one notification. */
             if (!isCall) vibrate();
+        }
+    }
+
+    private void addNotificationActions(NotificationCompat.Builder builder, String type, String conversationId, String sourceId, String callId, Map<String, String> data, int baseId) {
+        if (type == null) return;
+        
+        // Parse actions from data JSON if present (from edge function), otherwise build locally
+        String actionsJson = data.get("actions");
+        if (actionsJson != null) {
+            try {
+                JSONArray arr = new JSONArray(actionsJson);
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject obj = arr.getJSONObject(i);
+                    String title = obj.optString("title", "");
+                    String intentStr = obj.optString("intent", "");
+                    String actionUrl = obj.optString("action", "");
+                    if (title.isEmpty() || intentStr.isEmpty()) continue;
+                    Intent actionIntent = new Intent();
+                    // Map intent string to our action constants
+                    if ("ACCEPT_FRIEND_REQUEST".equals(intentStr)) {
+                        actionIntent.setAction(ACTION_ACCEPT_FRIEND);
+                    } else if ("DECLINE_FRIEND_REQUEST".equals(intentStr)) {
+                        actionIntent.setAction(ACTION_DECLINE_FRIEND);
+                    } else if ("REPLY_MESSAGE".equals(intentStr)) {
+                        actionIntent.setAction(ACTION_REPLY_MESSAGE);
+                    } else if ("VIEW_MESSAGE".equals(intentStr)) {
+                        actionIntent.setAction(ACTION_VIEW_MESSAGE);
+                    } else if ("VIEW_WHISPER".equals(intentStr)) {
+                        actionIntent.setAction(ACTION_VIEW_WHISPER);
+                    } else if ("ANSWER_CALL".equals(intentStr)) {
+                        actionIntent.setAction(ACTION_ANSWER_CALL);
+                    } else if ("DECLINE_CALL".equals(intentStr)) {
+                        actionIntent.setAction(ACTION_DECLINE_CALL);
+                    } else {
+                        actionIntent.setAction(intentStr);
+                    }
+                    actionIntent.setClass(this, MainActivity.class);
+                    actionIntent.setData(Uri.parse(actionUrl));
+                    actionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                    // For call answers, add no-animation flags
+                    if ("ANSWER_CALL".equals(intentStr)) {
+                        actionIntent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    }
+                    // Pass through call metadata as extras for instant handling
+                    if (conversationId != null) actionIntent.putExtra("conversationId", conversationId);
+                    if (callId != null) actionIntent.putExtra("callId", callId);
+                    if (sourceId != null) actionIntent.putExtra("sourceId", sourceId);
+                    if (data.get("caller_name") != null) actionIntent.putExtra("caller_name", data.get("caller_name"));
+                    if (data.get("caller_avatar") != null) actionIntent.putExtra("caller_avatar", data.get("caller_avatar"));
+                    PendingIntent pi = PendingIntent.getActivity(this, baseId + 100 + i, actionIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                    builder.addAction(new NotificationCompat.Action.Builder(0, title, pi).build());
+                }
+                return; // If we parsed JSON, don't also add local fallback
+            } catch (Exception ignored) {}
+        }
+
+        // Fallback local construction
+        if ("friend_request".equals(type)) {
+            String src = sourceId != null ? sourceId : "";
+            Intent acceptIntent = new Intent(ACTION_ACCEPT_FRIEND);
+            acceptIntent.setClass(this, MainActivity.class);
+            acceptIntent.setData(Uri.parse("whisperapp://friends?action=accept&id=" + src));
+            acceptIntent.putExtra("sourceId", src);
+            acceptIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent acceptPi = PendingIntent.getActivity(this, baseId + 1, acceptIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(new NotificationCompat.Action.Builder(0, "Accept", acceptPi).build());
+
+            Intent declineIntent = new Intent(ACTION_DECLINE_FRIEND);
+            declineIntent.setClass(this, MainActivity.class);
+            declineIntent.setData(Uri.parse("whisperapp://friends?action=decline&id=" + src));
+            declineIntent.putExtra("sourceId", src);
+            declineIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent declinePi = PendingIntent.getActivity(this, baseId + 2, declineIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(new NotificationCompat.Action.Builder(0, "Decline", declinePi).build());
+        } else if ("message".equals(type) && conversationId != null) {
+            Intent replyIntent = new Intent(ACTION_REPLY_MESSAGE);
+            replyIntent.setClass(this, MainActivity.class);
+            replyIntent.setData(Uri.parse("whisperapp://chat/" + conversationId + "?reply=true"));
+            replyIntent.putExtra("conversationId", conversationId);
+            replyIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent replyPi = PendingIntent.getActivity(this, baseId + 3, replyIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(new NotificationCompat.Action.Builder(0, "Reply", replyPi).build());
+
+            Intent viewIntent = new Intent(ACTION_VIEW_MESSAGE);
+            viewIntent.setClass(this, MainActivity.class);
+            viewIntent.setData(Uri.parse("whisperapp://chat/" + conversationId));
+            viewIntent.putExtra("conversationId", conversationId);
+            viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent viewPi = PendingIntent.getActivity(this, baseId + 4, viewIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(new NotificationCompat.Action.Builder(0, "View", viewPi).build());
+        } else if ("whisper".equals(type)) {
+            String whisperId = sourceId != null ? sourceId : "";
+            Intent viewIntent = new Intent(ACTION_VIEW_WHISPER);
+            viewIntent.setClass(this, MainActivity.class);
+            viewIntent.setData(Uri.parse("whisperapp://notifications?whisperId=" + whisperId));
+            viewIntent.putExtra("sourceId", whisperId);
+            viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent viewPi = PendingIntent.getActivity(this, baseId + 5, viewIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(new NotificationCompat.Action.Builder(0, "View", viewPi).build());
+        } else if ("call".equals(type) && conversationId != null) {
+            String cId = callId != null ? callId : "";
+            String callerName = data.get("caller_name");
+            String callerAvatar = data.get("caller_avatar");
+            Intent answerIntent = new Intent(ACTION_ANSWER_CALL);
+            answerIntent.setClass(this, MainActivity.class);
+            String answerUrl = "whisperapp://call/" + conversationId + "?answer=true&callId=" + cId;
+            if (callerName != null) answerUrl += "&callerName=" + Uri.encode(callerName);
+            if (callerAvatar != null) answerUrl += "&callerAvatar=" + Uri.encode(callerAvatar);
+            answerIntent.setData(Uri.parse(answerUrl));
+            answerIntent.putExtra("conversationId", conversationId);
+            answerIntent.putExtra("callId", cId);
+            if (callerName != null) answerIntent.putExtra("caller_name", callerName);
+            if (callerAvatar != null) answerIntent.putExtra("caller_avatar", callerAvatar);
+            answerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NO_ANIMATION | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent answerPi = PendingIntent.getActivity(this, baseId + 6, answerIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(new NotificationCompat.Action.Builder(0, "Answer", answerPi).build());
+
+            Intent declineIntent = new Intent(ACTION_DECLINE_CALL);
+            declineIntent.setClass(this, MainActivity.class);
+            declineIntent.setData(Uri.parse("whisperapp://call/" + conversationId + "?action=decline&callId=" + cId));
+            declineIntent.putExtra("conversationId", conversationId);
+            declineIntent.putExtra("callId", cId);
+            declineIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent declinePi = PendingIntent.getActivity(this, baseId + 7, declineIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(new NotificationCompat.Action.Builder(0, "Decline", declinePi).build());
         }
     }
 

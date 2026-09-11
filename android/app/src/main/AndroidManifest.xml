@@ -64,6 +64,32 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="whisperapp" android:host="complete-profile" />
             </intent-filter>
+            <!-- FCM action button intents — each notification channel's affordances
+                 route through MainActivity via explicit action strings so the
+                 system can deliver them even when the app is not running. -->
+            <intent-filter>
+                <action android:name="com.whisper.app.ACCEPT_FRIEND_REQUEST" />
+                <action android:name="com.whisper.app.DECLINE_FRIEND_REQUEST" />
+                <action android:name="com.whisper.app.REPLY_MESSAGE" />
+                <action android:name="com.whisper.app.VIEW_MESSAGE" />
+                <action android:name="com.whisper.app.VIEW_WHISPER" />
+                <action android:name="com.whisper.app.ANSWER_CALL" />
+                <action android:name="com.whisper.app.DECLINE_CALL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Deep links for call screen and chat reply — handled by AppUrlHandler -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="whisperapp" android:host="call" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="whisperapp" android:host="chat" />
+            </intent-filter>
         </activity>
 
         <provider

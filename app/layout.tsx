@@ -19,6 +19,7 @@ import AnnouncementPrompt from "@/components/AnnouncementPrompt";
 import BanGate from "@/components/BanGate";
 import AdminDebugGate from "@/components/AdminDebugGate";
 import CallSessionProvider from "@/components/calls/CallSessionProvider";
+import SessionKeepAlive from "@/components/SessionKeepAlive";
 
 /* Typography intentionally uses the native UI stack declared in globals.css.
    Pulling Inter from Google during `next build` made otherwise valid production
@@ -152,6 +153,7 @@ export default function RootLayout({
                     pill that floats over whichever page they land on. Renders
                     nothing at all until a call exists. */}
                 <CallSessionProvider />
+                <SessionKeepAlive />
               </PushNotificationsProvider>
             </NotificationProvider>
           </ToastProvider>
