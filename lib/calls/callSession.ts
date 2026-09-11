@@ -113,6 +113,19 @@ const OFFER_RETRANSMIT_MS = 2_000;
 /** How long an accepted-but-offer-less callee waits for that retransmission. */
 const OFFER_WAIT_MS = 15_000;
 /**
+ * The answer gets retried too.
+ *
+ * The offer is re-sent every two seconds, but the answer was sent exactly
+ * once — and it is the one signal whose loss is invisible: the callee has
+ * finished its half of the handshake and shows "Connecting…", the caller never
+ * hears back and shows "Connecting…", and both sit there until a watchdog
+ * hangs up a call that was one lost packet from working. Three copies, each a
+ * little later than the last; a caller that already applied the first one
+ * rejects the duplicates and carries on.
+ */
+const ANSWER_RETRANSMIT_MS = 1_500;
+const ANSWER_RETRANSMITS = 3;
+/**
  * How long "Connecting…" may last before ICE is restarted, then abandoned.
  *
  * This used to be 15s, which was long enough to be cruel: a callee who picked
@@ -196,6 +209,24 @@ class CallSession {
   private incomingCallId: string | null = null;
   private finalized = false;
   private answered = false;
+  /**
+   * Media is actually flowing. NOT the same as `answered`, and telling them
+   * apart is the difference between an honest call log and a lie.
+   *
+   * `answered` becomes true the instant a person picks up. `connected` becomes
+   * true only when ICE completes — when there is a path between the two
+   * devices and audio can cross it. A call can be answered and never connect
+   * (both peers behind a NAT with no relay, which is the common cellular
+   * case), and that call must be recorded as a failed connection, not as a
+   * "Voice call · 0:25" that never carried a word.
+   */
+  private connected = false;
+  /**
+   * Autoplay was refused for the peer's audio. Retried from every control the
+   * user can press during a call, because each of those is a user gesture and
+   * a gesture is exactly what the policy is waiting for.
+   */
+  private remoteAudioBlocked = false;
   /** Set while Accept is building the peer connection, so a double-tap
       cannot open a second one underneath the first. */
   private answering = false;
@@ -211,6 +242,7 @@ class CallSession {
   private vibrationTimer: ReturnType<typeof setInterval> | null = null;
   private iceRestartTimer: ReturnType<typeof setTimeout> | null = null;
   private retransmitTimer: ReturnType<typeof setInterval> | null = null;
+  private answerRetransmitTimer: ReturnType<typeof setTimeout> | null = null;
   private offerWaitTimer: ReturnType<typeof setTimeout> | null = null;
   private connectWatchdog: ReturnType<typeof setTimeout> | null = null;
 
@@ -497,7 +529,7 @@ class CallSession {
    * keeps the pre-0005 behavior instead of losing call bookkeeping entirely.
    */
   private reportOutcome = (
-    outcome: "answered" | "declined" | "busy" | "canceled" | "missed" | "completed"
+    outcome: "answered" | "declined" | "busy" | "canceled" | "missed" | "completed" | "failed"
   ) => {
     const callId = this.state.callId;
     if (!callId) return;
@@ -545,7 +577,7 @@ class CallSession {
   /** The one entry point every end/answer/decline uses: the server transition
       table when it exists, the legacy update when the RPC is missing. */
   private settleCall = (
-    outcome: "answered" | "declined" | "busy" | "canceled" | "missed" | "completed"
+    outcome: "answered" | "declined" | "busy" | "canceled" | "missed" | "completed" | "failed"
   ) => {
     if (this.state.callId || outcome !== "answered") {
       this.reportOutcome(outcome);
@@ -566,6 +598,7 @@ class CallSession {
       "iceRestartTimer",
       "offerWaitTimer",
       "connectWatchdog",
+      "answerRetransmitTimer",
     ] as const) {
       const timer = this[field];
       if (timer) clearTimeout(timer);
@@ -639,6 +672,7 @@ class CallSession {
       this.remoteAudio.srcObject = null;
       this.remoteAudio = null;
     }
+    this.remoteAudioBlocked = false;
     this.pendingOfferSdp = null;
     this.queuedRemoteCandidates = [];
     this.sentCandidates = [];
@@ -647,6 +681,7 @@ class CallSession {
     this.incomingCallId = null;
     this.finalized = false;
     this.answered = false;
+    this.connected = false;
     this.answering = false;
     this.awaitingOffer = false;
     this.iceRestarted = false;
@@ -704,6 +739,17 @@ class CallSession {
   /* The peer connection                                                 */
   /* ------------------------------------------------------------------ */
 
+  private resumeRemoteAudio() {
+    const audio = this.remoteAudio;
+    if (!audio || !this.remoteAudioBlocked) return;
+    void audio.play().then(
+      () => {
+        this.remoteAudioBlocked = false;
+      },
+      () => {}
+    );
+  }
+
   private ensureRemoteAudio(): HTMLAudioElement {
     if (!this.remoteAudio) {
       const el = new Audio();
@@ -721,6 +767,7 @@ class CallSession {
   private markConnected() {
     if (this.state.status !== "outgoing" && this.state.status !== "connecting") return;
     this.answered = true;
+    this.connected = true;
     this.debug("connected");
     stopRingTone();
     if (this.connectWatchdog) {
@@ -811,10 +858,18 @@ class CallSession {
     pc.ontrack = (event) => {
       const audio = this.ensureRemoteAudio();
       audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
-      void audio.play().catch(() => {
-        /* Autoplay blocked: the user is looking at a call surface and has
-           their finger on the screen — any tap resumes the context. */
-      });
+      void audio.play().then(
+        () => {
+          this.remoteAudioBlocked = false;
+        },
+        () => {
+          /* Autoplay blocked. Not a dead call — the user is looking at a call
+             surface with their finger on the screen, so the next tap (mute,
+             speaker, minimize) is a gesture this can retry on. Until then the
+             flag keeps a silent-but-connected call from looking healthy. */
+          this.remoteAudioBlocked = true;
+        }
+      );
     };
 
     pc.oniceconnectionstatechange = () => {
@@ -905,6 +960,35 @@ class CallSession {
     for (const candidate of this.sentCandidates) {
       this.broadcast({ event: "ice", payload: { candidate } });
     }
+  }
+
+  /**
+   * Re-send the callee's answer while the call is still setting up.
+   *
+   * Backed off (1.5s, 3s, 4.5s) and self-cancelling: it stops the moment the
+   * call connects, ends, or the retries run out. A caller that already applied
+   * the first answer throws InvalidStateError on the duplicate — per spec, an
+   * answer is not valid in the `stable` signaling state — and the handler
+   * swallows exactly that, so a retry can never disturb a call that is fine.
+   */
+  private retransmitAnswer(pc: RTCPeerConnection, attempt = 1) {
+    if (this.answerRetransmitTimer) {
+      clearTimeout(this.answerRetransmitTimer);
+      this.answerRetransmitTimer = null;
+    }
+    if (attempt > ANSWER_RETRANSMITS) return;
+    this.answerRetransmitTimer = setTimeout(() => {
+      this.answerRetransmitTimer = null;
+      if (this.state.status !== "connecting" || this.connected) return;
+      const sdp = pc.localDescription?.sdp;
+      if (!sdp) return;
+      this.debug("answer: retransmit", attempt);
+      this.broadcast({
+        event: "answer",
+        payload: { sdp, callId: this.incomingCallId ?? undefined },
+      });
+      this.retransmitAnswer(pc, attempt + 1);
+    }, ANSWER_RETRANSMIT_MS * attempt);
   }
 
   /* ------------------------------------------------------------------ */
@@ -1073,15 +1157,22 @@ class CallSession {
           this.debug("end: ignored, different call");
           return;
         }
-        this.debug("end: peer hung up, answered =", this.answered);
-        this.settleCall(this.answered ? "completed" : "canceled");
+        /* Read before the teardown: endLocalCall resets `connected`, and the
+           sentence below is about the call that just ended, not about the
+           idle engine it leaves behind. */
+        const wasConnected = this.connected;
+        this.debug("end: peer hung up, connected =", wasConnected);
+        this.settleCall(wasConnected ? "completed" : this.answered ? "failed" : "canceled");
         /* A callee receiving `end` while still ringing: the system banner is
            retired from the same place the server retires it (data-only FCM
            via notify-on-notification), but a browser without a service
            worker still needs the local close. */
         if (this.state.status === "incoming") this.dismissIncomingAlerts();
         this.endLocalCall(true);
-        this.notice("Call ended.");
+        /* Say what actually happened. "Call ended." on a call that never
+           carried audio teaches the user that the button is broken; the
+           sentence below tells them to try again, which is the truth. */
+        this.notice(wasConnected ? "Call ended." : "Call ended before it connected.");
         return;
       }
 
@@ -1306,7 +1397,9 @@ class CallSession {
     this.offerWaitTimer = setTimeout(() => {
       if (!this.awaitingOffer) return;
       this.awaitingOffer = false;
-      this.settleCall("canceled");
+      /* This person picked up and no offer ever arrived: the row already says
+         `answered`, so the honest ending is FAILED, not CANCELED. */
+      this.settleCall(this.connected ? "completed" : "failed");
       this.broadcast({ event: "end" });
       this.endLocalCall(true);
       this.notice("The call ended before it connected.");
@@ -1340,6 +1433,9 @@ class CallSession {
       event: "answer",
       payload: { sdp: pc.localDescription?.sdp ?? "", callId: this.incomingCallId ?? undefined },
     });
+    /* And then a couple more times, because a single lost answer used to
+       leave both sides on "Connecting…" with no way back. */
+    this.retransmitAnswer(pc);
     /* Their gathering happened while we were elsewhere. */
     this.replayCandidates();
     await this.flushQueuedCandidates(pc);
@@ -1569,16 +1665,21 @@ class CallSession {
    * `reason` distinguishes the two no-answer endings the server needs apart:
    * a 45-second give-up is MISSED (the callee gets the chat entry + alert);
    * hanging up first is CANCELED (chat entry only — a caller who changes
-   * their mind is not a missed call). An answered call that ends is always
-   * COMPLETED.
+   * their mind is not a missed call).
+   *
+   * The outcome keys on `connected`, not `answered`: a call that was picked
+   * up but never carried media is FAILED, so the log reads "couldn't connect"
+   * instead of a duration for a conversation that did not happen.
    */
   hangUp = (notify: string | null = "Call ended.", reason: "timeout" | "user" = "user") => {
     if (this.state.status === "idle") return;
-    const outcome: "completed" | "missed" | "canceled" = this.answered
+    const outcome: "completed" | "failed" | "missed" | "canceled" = this.connected
       ? "completed"
-      : reason === "timeout" && this.state.status === "outgoing"
-        ? "missed"
-        : "canceled";
+      : this.answered
+        ? "failed"
+        : reason === "timeout" && this.state.status === "outgoing"
+          ? "missed"
+          : "canceled";
     /* The transition table in end_call_log ignores anything illegal, so a
        callee pressing this (or a double hangup) converges on the server
        instead of fighting it. */
@@ -1594,6 +1695,7 @@ class CallSession {
   toggleMute = () => {
     const stream = this.localStream;
     if (!stream || this.state.status === "idle") return;
+    this.resumeRemoteAudio();
     const nextEnabled = this.state.muted;
     stream.getAudioTracks().forEach((track) => {
       track.enabled = nextEnabled;
@@ -1605,6 +1707,7 @@ class CallSession {
 
   toggleSpeaker = async () => {
     const audio = this.remoteAudio;
+    this.resumeRemoteAudio();
     if (!audio || !("setSinkId" in audio)) return;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1631,6 +1734,7 @@ class CallSession {
   /** Collapse into the top pill, or expand back over the screen. */
   setMinimized = (minimized: boolean) => {
     if (this.state.status === "idle" || this.state.minimized === minimized) return;
+    this.resumeRemoteAudio();
     this.state.minimized = minimized;
     this.publish();
     vibrate(HAPTIC.tap);

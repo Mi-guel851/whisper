@@ -30,6 +30,10 @@ const [
   overlay,
   chat,
   layout,
+  format,
+  turnRoute,
+  ice,
+  outcomesMigration,
 ] = await Promise.all([
   read("lib/whisperWords.ts"),
   read("components/dashboard/WordWall.tsx"),
@@ -44,6 +48,10 @@ const [
   read("components/calls/IncomingCallOverlay.tsx"),
   read("app/chat/[conversationId]/page.tsx"),
   read("app/layout.tsx"),
+  read("lib/calls/callFormat.ts"),
+  read("app/api/calls/turn-credentials/route.ts"),
+  read("lib/calls/iceServers.ts"),
+  read("supabase/migrations/202609120003_honest_call_outcomes.sql"),
 ]);
 
 function ok(name, check) {
@@ -232,5 +240,63 @@ ok("the call-specific preference still removes the ring", /p\.notify_calls is di
 ok("the old gate is the one being replaced", /and p\.push_notifications is distinct from false\s*\n\s*and p\.notify_calls/.test(lifecycleMigration));
 ok("push delivery still honours the global switch", /profile\?\.push_notifications === false/.test(pushFn));
 ok("the migration is transactional and re-runnable", /^begin;/m.test(ringMigration) && /^commit;/m.test(ringMigration));
+
+/* ------------------------------------------------------------------------- */
+console.log("a call that never connected is not a call");
+/* ------------------------------------------------------------------------- */
+
+/* The bug this section exists for: `answered` (a person picked up) and
+   `connected` (media is flowing) were one flag, so two people behind carrier
+   NAT who both pressed Accept and then sat on "Connecting…" for 25 seconds
+   produced a call_logs row reading `completed` with a duration — a log of a
+   conversation that never carried a word. */
+ok("picking up and connecting are separate facts",
+  /private connected = false;/.test(engine) && /this\.connected = true;/.test(engine));
+ok("the connect is what flips it, not the accept",
+  /private markConnected\(\) \{[\s\S]{0,400}?this\.connected = true;/.test(engine));
+ok("a teardown forgets the connection, so the next call starts honest",
+  /this\.answered = false;\s*this\.connected = false;/.test(engine));
+ok("the ending keys on the connection, not the pick-up",
+  /this\.connected\s*\? "completed"\s*: this\.answered\s*\? "failed"/.test(engine));
+ok("the peer's hang-up sentence says which kind of ending it was",
+  /const wasConnected = this\.connected;/.test(engine)
+    && /wasConnected \? "Call ended\." : "Call ended before it connected\."/.test(engine));
+ok("a picked-up call that never got an offer ends as failed, not canceled",
+  /this\.settleCall\(this\.connected \? "completed" : "failed"\);/.test(engine));
+ok("the timeline refuses to print a duration for a failed call",
+  /if \(entry\.status === "failed"\) \{\s*return \{ label: "Couldn't connect", direction, tone: "danger", duration: null/.test(format));
+ok("talk time is measured from the pick-up, not from the ring",
+  /const pickedUp = entry\.answered_at \? Date\.parse\(entry\.answered_at\) : started;/.test(format));
+ok("a failed call offers a call back",
+  /"missed", "expired", "canceled", "declined", "failed"/.test(format));
+ok("the server has somewhere to put the new outcome",
+  /'completed','busy','failed'/.test(outcomesMigration)
+    && /and p_outcome in \('completed', 'failed'\) then p_outcome/.test(outcomesMigration));
+ok("answering stamps the moment the call was taken",
+  /answered_at = case when v_next = 'answered'/.test(outcomesMigration));
+
+/* ------------------------------------------------------------------------- */
+console.log('"Connecting…" has a way out');
+/* ------------------------------------------------------------------------- */
+
+/* The other half of the same report. With no TURN relay the peer connection
+   has nothing to fall back on, and two phones behind carrier NAT cannot reach
+   each other at all — the route used to answer `iceServers: []` whenever two
+   env vars were unset, which is to say by default. */
+ok("the relay route supplies a relay unless an operator switches it off",
+  /PUBLIC_FALLBACK_ICE_SERVERS/.test(turnRoute) && /fallbackAllowed\(\)/.test(turnRoute));
+ok("an operator's own relay wins over the fallback",
+  /staticIceServers\(\)/.test(turnRoute)
+    && turnRoute.indexOf("staticIceServers()") < turnRoute.indexOf("PUBLIC_FALLBACK_ICE_SERVERS,"));
+ok("the client says so out loud when it ends up STUN-only",
+  /no TURN relay available/.test(ice) && /includes\("turn:"\)/.test(ice));
+ok("a lost answer is retried instead of stranding both sides",
+  /ANSWER_RETRANSMITS/.test(engine) && /private retransmitAnswer\(/.test(engine)
+    && /this\.retransmitAnswer\(pc\);/.test(engine));
+ok("a call that never connected does not make the user permanently busy",
+  /v_live_window interval := interval '4 hours'/.test(outcomesMigration)
+    && /and cl\.started_at > now\(\) - v_live_window/.test(outcomesMigration));
+ok("and the sweep closes what a dead device left open",
+  /set status = 'failed', ended_at = now\(\)\s*where status = 'answered'/.test(outcomesMigration));
 
 console.log("\nCALL SESSION + WORD WALL GUARDS PASSED");

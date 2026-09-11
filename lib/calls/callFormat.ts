@@ -39,7 +39,9 @@ export type CallEntryStatus =
   | "expired"
   | "canceled"
   | "declined"
-  | "busy";
+  | "busy"
+  /** Picked up, never connected. A connection failure, not a conversation. */
+  | "failed";
 
 export type CallEntryInfo = {
   /** Row id (public.call_logs.id) — the dedup key the timeline uses. */
@@ -47,6 +49,9 @@ export type CallEntryInfo = {
   caller_id: string;
   callee_id: string;
   started_at: string;
+  /** When someone picked up. Absent on rows written before 202609120003, and
+      the reason a duration is not measured from the ring. */
+  answered_at?: string | null;
   ended_at: string | null;
   status: CallEntryStatus;
 };
@@ -76,9 +81,13 @@ export function describeCallEntry(
     && Number.isFinite(started)
     && now - started > RING_WINDOW_MS + 15_000;
 
+  /* Talk time starts at the pick-up, not at the ring. Rows written before
+     answered_at existed fall back to started_at, which over-counts by the
+     length of the ring but is the best those rows can offer. */
   let duration: string | null = null;
-  if (entry.ended_at && (entry.status === "completed" || (entry.status === "answered"))) {
-    const ms = Date.parse(entry.ended_at) - started;
+  if (entry.ended_at && (entry.status === "completed" || entry.status === "answered")) {
+    const pickedUp = entry.answered_at ? Date.parse(entry.answered_at) : started;
+    const ms = Date.parse(entry.ended_at) - (Number.isFinite(pickedUp) ? pickedUp : started);
     if (Number.isFinite(ms) && ms >= 0) duration = formatCallDuration(ms);
   }
 
@@ -106,6 +115,11 @@ export function describeCallEntry(
       stale: false,
     };
   }
+  /* Picked up and never connected: say that, and show no duration. Printing
+     "Voice call · 0:25" here is the lie this status exists to remove. */
+  if (entry.status === "failed") {
+    return { label: "Couldn't connect", direction, tone: "danger", duration: null, stale: false };
+  }
   if (entry.status === "declined") {
     return {
       label: direction === "outgoing" ? "Call declined" : "Declined a call",
@@ -128,5 +142,5 @@ export function canCallBack(entry: CallEntryInfo, viewerId: string, isFriend: bo
   // start_call_log re-checks every rule; this only decides whether to render).
   if (!isFriend) return false;
   if (entry.caller_id === viewerId) return false;
-  return ["missed", "expired", "canceled", "declined"].includes(entry.status);
+  return ["missed", "expired", "canceled", "declined", "failed"].includes(entry.status);
 }

@@ -49,8 +49,24 @@ export function getIceServers(): Promise<RTCIceServer[]> {
       });
       if (!res.ok) return STUN_SERVERS;
 
-      const data = (await res.json()) as { iceServers: RTCIceServer[]; expiresInSeconds?: number };
+      const data = (await res.json()) as {
+        iceServers: RTCIceServer[];
+        expiresInSeconds?: number;
+        turnConfigured?: boolean;
+        source?: string;
+      };
       const servers = [...STUN_SERVERS, ...(data.iceServers ?? [])];
+      if (!servers.some((server) => String(server.urls ?? "").includes("turn:"))) {
+        /* Loud on purpose. A STUN-only build is not "degraded", it is a call
+           that cannot connect for anyone on a carrier network, and the only
+           symptom the user gets is "Connecting…" forever — so the reason is
+           written where an operator will find it. */
+        console.warn(
+          "[calls] no TURN relay available (source:",
+          data.source ?? "unknown",
+          ") — calls will fail between peers that both sit behind a restrictive NAT."
+        );
+      }
       cached = {
         servers,
         expiresAt: Date.now() + ((data.expiresInSeconds ?? 1800) * 1000 - REFRESH_HEADROOM_MS),
@@ -60,6 +76,7 @@ export function getIceServers(): Promise<RTCIceServer[]> {
       /* Timeout, offline, route missing (older deploy): STUN-only still
          carries calls that have a UDP path, and the error must never kill
          the call that is about to start. */
+      console.warn("[calls] could not reach /api/calls/turn-credentials; continuing STUN-only.");
       return STUN_SERVERS;
     } finally {
       inFlight = null;
