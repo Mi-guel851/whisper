@@ -48,7 +48,12 @@ export function middleware(req: NextRequest) {
     `object-src 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,
-    `frame-ancestors 'none'`,
+    /* Report-only, but it should not cry wolf: a dev preview is legitimately
+       framed by the sandbox shell, so the report tracks the same allowlist
+       next.config.ts enforces (and stays 'none' in production). */
+    process.env.NODE_ENV === "production"
+      ? `frame-ancestors 'none'`
+      : `frame-ancestors 'self' https://*.e2b.app https://*.arena.site`,
     `upgrade-insecure-requests`,
     `report-uri /api/csp-report`,
   ].join("; ");

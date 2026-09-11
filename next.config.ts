@@ -1,5 +1,56 @@
 import type { NextConfig } from "next";
 
+/* ------------------------------------------------------------------------- *
+ * FRAMING, IN PRODUCTION AND IN THE SANDBOX
+ *
+ * The rule this protects is unchanged: production never renders as a frame, so
+ * the unlock-payment and settings surfaces cannot be clickjacked. Nothing about
+ * the shipped site's headers moved.
+ *
+ * A `next dev` preview, though, is *always* shown inside a frame (the sandbox
+ * shell frames the dev server), so an unconditional `DENY` makes every preview
+ * blank — the app refuses to paint and the only feedback is a CSP report. The
+ * two header values are therefore selected by build mode: the strict pair in
+ * production, an ancestor-restricted pair in development.
+ *
+ * The development value is still not "allow anything": only this origin and the
+ * sandbox hosts can frame the page, and `X-Frame-Options` is dropped there only
+ * because the header cannot express an allowlist (CSP `frame-ancestors`, which
+ * every browser that matters obeys, carries the restriction instead).
+ * ------------------------------------------------------------------------- */
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+/* ------------------------------------------------------------------------- *
+ * DEV-SERVER ORIGINS
+ *
+ * Next refuses cross-origin requests to a running `next dev` unless the origin
+ * is listed here — and the refusal is a blanket 403 on `/_next/*`, not just on
+ * the hot-reload socket. Arena's preview is served from a different host than
+ * the dev server (`*.arena.site` through the shell, `*.e2b.app` directly), so
+ * every stylesheet and every JS chunk was answered 403: the preview painted as
+ * raw, unstyled HTML, which reads exactly like a layout that has run out of
+ * room. Nothing was wrong with the CSS — it never arrived.
+ *
+ * `allowedDevOrigins` is only consulted by the dev server, so this cannot
+ * loosen the production build; extra hosts can be appended per environment
+ * without editing this file.
+ * ------------------------------------------------------------------------- */
+const DEV_PREVIEW_ORIGINS = [
+  "*.arena.site", // the preview shell that frames the dev server
+  "*.e2b.app", // the sandbox host the shell proxies
+  ...(process.env.NEXT_ALLOWED_DEV_ORIGINS?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? []),
+];
+
+const FRAME_ANCESTORS = IS_PRODUCTION
+  ? "frame-ancestors 'none'"
+  : "frame-ancestors 'self' https://*.e2b.app https://*.arena.site";
+
+/* Kept as one literal so the production policy stays greppable — and so the
+   security suite's assertion keeps testing the shipped value, not a branch. */
+const BASE_CSP = `${FRAME_ANCESTORS}; object-src 'none'; base-uri 'self'; form-action 'self'`;
+
 const nextConfig: NextConfig = {
   images: {
     /* The two remote sources the app actually renders: Supabase Storage (photos,
@@ -47,6 +98,10 @@ const nextConfig: NextConfig = {
      extra download is on the user. */
   productionBrowserSourceMaps: false,
 
+  /* Without this the dev preview cannot load its own CSS or JS. See
+     DEV_PREVIEW_ORIGINS above. */
+  allowedDevOrigins: DEV_PREVIEW_ORIGINS,
+
   /* ------------------------------------------------------------------------- *
    * SECURITY HEADERS (production audit 2026-09). The app previously shipped no
    * response headers at all — clickjacking, MIME sniffing, referrer leakage and
@@ -65,11 +120,14 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          // Never render as a frame anywhere — blocks clickjacking of the
+          // Never render as a frame in production — blocks clickjacking of the
           // unlock-payment and settings surfaces. The app is not framed by
-          // anything legitimate (Paystack embeds ITS page, not ours).
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" },
+          // anything legitimate (Paystack embeds ITS page, not ours); the dev
+          // server is, which is what FRAME_ANCESTORS above exists for.
+          ...(IS_PRODUCTION
+            ? [{ key: "X-Frame-Options", value: "DENY" }]
+            : []),
+          { key: "Content-Security-Policy", value: BASE_CSP },
           // Stop the browser from re-typing mislabeled responses (classic
           // upload-response XSS vector).
           { key: "X-Content-Type-Options", value: "nosniff" },

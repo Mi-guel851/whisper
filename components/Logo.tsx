@@ -17,7 +17,11 @@ export default function Logo({
   compact?: boolean;
   showTagline?: boolean;
 }) {
-  const size = compact ? 34 : 48;
+  /* Compact mark: 32px, and the wordmark steps down one size below `sm`. The
+     header row is the tightest in the app — on a 320px phone the logo, the
+     primary action and the menu button share 320px, and the tagline-free
+     wordmark is what decides whether they fit. */
+  const size = compact ? 32 : 48;
 
   return (
     <div className="flex items-center gap-2.5">
@@ -32,7 +36,7 @@ export default function Logo({
 
       <div className="leading-none">
         <span
-          className={`block ${compact ? "text-xl" : "text-3xl"}`}
+          className={`block ${compact ? "text-lg sm:text-xl" : "text-3xl"}`}
           style={{
             color: "var(--bridge-text)",
             fontWeight: 800,

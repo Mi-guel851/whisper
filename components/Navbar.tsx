@@ -63,7 +63,7 @@ export default function Navbar() {
         // the logo and the action cluster happen to be the same width; the
         // `1fr auto 1fr` grid keeps it centred against the *bar*, which is what
         // the eye actually measures against.
-        className="glass-control mx-auto flex max-w-7xl items-center justify-between gap-2 rounded-2xl sm:rounded-3xl lg:grid lg:grid-cols-[1fr_auto_1fr]"
+        className="glass-control mx-auto flex max-w-7xl items-center justify-between gap-2 rounded-2xl px-3 sm:rounded-3xl sm:px-4 lg:grid lg:grid-cols-[1fr_auto_1fr]"
         animate={{
           paddingTop: condensed ? 8 : 12,
           paddingBottom: condensed ? 8 : 12,
@@ -76,7 +76,6 @@ export default function Navbar() {
             ? { duration: 0 }
             : { duration: duration.base, ease: ease.outQuint }
         }
-        style={{ paddingLeft: 16, paddingRight: 16 }}
       >
         <Link
           href="/"
@@ -86,7 +85,7 @@ export default function Navbar() {
           <Logo compact showTagline={false} />
         </Link>
 
-        <nav className="hidden items-center gap-7 lg:flex lg:justify-self-center">
+        <nav className="hidden items-center gap-6 lg:flex lg:justify-self-center">
           {links.map((link) => (
             <Link
               key={link.href}
@@ -99,7 +98,13 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 lg:justify-self-end">
-          <DownloadAndroidButton variant="ghost" size="sm" className="hidden md:inline-flex" label="Download app" />
+          <DownloadAndroidButton
+            variant="ghost"
+            size="sm"
+            lockup="store"
+            className="hidden xl:inline-flex"
+            label="Download the Android app"
+          />
           <ButtonLink
             href="/login"
             variant="ghost"
@@ -108,12 +113,21 @@ export default function Navbar() {
           >
             Login
           </ButtonLink>
+          {/* Two words, or one. Measured in Roboto, "Start Whispering" is 94px
+              of text: with the logo, the menu button and the bar's own padding
+              that came to 331px inside a 320px phone, so the bar was clipping
+              its own menu button on the narrowest devices. "Start" carries the
+              same offer in 36px, and the accessible name keeps the full one —
+              WCAG's label-in-name rule is satisfied either way, because the
+              visible word is contained in it. */}
           <a
             href="/signup"
             onClick={handleStartWhispering}
-            className="premium-button premium-button-primary h-9 px-5 text-[13px] rounded-full inline-flex items-center justify-center gap-2 font-bold whitespace-nowrap"
+            aria-label="Start Whispering"
+            className="premium-button premium-button-primary h-9 px-4 text-[13px] rounded-full inline-flex items-center justify-center gap-2 font-bold whitespace-nowrap sm:px-5"
           >
-            Start Whispering
+            <span className="sm:hidden">Start</span>
+            <span className="hidden sm:inline">Start Whispering</span>
           </a>
 
           <button

@@ -61,7 +61,14 @@ const dictionary = [...words.slice(words.indexOf("export const WHISPER_WORDS"), 
 ok("the vocabulary carries about a hundred words", dictionary.length >= 100);
 ok("no word appears twice in the vocabulary", new Set(dictionary).size === dictionary.length);
 ok("lanes are interleaved, so simultaneous lanes cannot collide", /position % count === index/.test(words));
-ok("the dashboard wall runs exactly three lanes", /const LANE_COUNT = 3;/.test(wall) && (wall.match(/whisperLane\(index, LANE_COUNT/g) || []).length === 1);
+/* Three lanes on desktop, two on phones — the wall thins on small screens
+   instead of being removed, and each set is a literal lane list now rather
+   than a count constant. */
+const desktopLanes = (wall.match(/const DESKTOP_LANES: readonly Lane\[\] = \[([\s\S]*?)\n\];/) || [])[1] ?? "";
+const mobileLanes = (wall.match(/const MOBILE_LANES: readonly Lane\[\] = \[([\s\S]*?)\n\];/) || [])[1] ?? "";
+ok("the desktop wall runs exactly three lanes", (desktopLanes.match(/\{ position:/g) || []).length === 3);
+ok("phones thin the wall to two lanes instead of hiding it", (mobileLanes.match(/\{ position:/g) || []).length === 2);
+ok("both lane sets are drawn from the shared vocabulary", /whisperLane\(index, DESKTOP_LANES\.length/.test(wall) && /whisperLane\(index, MOBILE_LANES\.length/.test(wall));
 ok("the wall uses the same morph component and timing as the send page", /from "@\/components\/ui\/MorphingText"/.test(wall)
   && /holdSeconds={2\.6}/.test(wall) && /morphSeconds={1\.2}/.test(wall) && /blurPx=\{8\}/.test(wall)
   && /holdSeconds={2\.6}/.test(cloud) && /morphSeconds={1\.2}/.test(cloud));
@@ -74,9 +81,9 @@ ok("the wall is decorative and unclickable", /aria-hidden/.test(wall) && /\.dash
    wall into a block of solid text. */
 const wallRuleRaw = css.slice(css.indexOf(".dashboard-word-wall-word {"), css.indexOf("}", css.indexOf(".dashboard-word-wall-word {")));
 const wallRule = wallRuleRaw.replace(/\/\*[\s\S]*?\*\//g, ""); // declarations only, not the note explaining them
-ok("the wall is legible in both themes (theme token, not hardcoded white)", /color:var\(--theme-text\)/.test(wallRule) && /opacity:\.16/.test(wallRule));
+ok("the wall is legible in both themes (theme token, not hardcoded white)", /color:var\(--theme-text\)/.test(wallRule) && /opacity:\.1(;|\})/.test(wallRule));
 ok("the wall does not depend on a construct the minifier mangles", !/color-mix/.test(wallRule));
-ok("the wall stays out of the mobile card, where there is no spare half", /@media \(max-width:44rem\) \{ \.dashboard-word-wall \{ display:none; \} \}/.test(css));
+ok("the wall thins on phones instead of disappearing", /@media \(max-width:44rem\) \{\s*\.dashboard-word-wall-word \{ font-size:\.62rem; \}/.test(css) && !/\.dashboard-word-wall \{[^}]*display:none/.test(css));
 ok("reduced motion gets a static word instead of a loop", /if \(reduced \|\| texts\.length < 2\) \{/.test(morph));
 ok("the welcome card renders the wall", /<WordWall \/>/.test(hero) && /\.dashboard-welcome-card \{ position:relative; overflow:hidden; \}/.test(css));
 
@@ -113,10 +120,69 @@ ok("a stalled connect restarts ICE, then ends with a sentence", /CONNECT_TIMEOUT
 ok("a disconnected call gets a grace period before restarting", /ICE_DISCONNECT_GRACE_MS/.test(engine));
 
 /* ------------------------------------------------------------------------- */
+console.log("picking up is not a busy signal");
+/* ------------------------------------------------------------------------- */
+
+/* The bug this section exists for: the caller re-offers every 2s while
+   ringing, and the callee's status becomes "connecting" the instant Accept is
+   pressed — so the next retransmission used to fall through to the busy
+   catch-all and the callee hung up its own call, two seconds after answering. */
+const offerBranch = engine.slice(engine.indexOf('case "offer": {'), engine.indexOf('case "answer": {'));
+ok(
+  "an offer that lands after Accept is recognised as a retransmission, not a second call",
+  /if \(this\.state\.status === "connecting" \|\| this\.state\.status === "in_call"\) \{/.test(offerBranch)
+    && /const sameCall = callId && knownCallId \? callId === knownCallId : null;/.test(offerBranch)
+    && /sameCall === true \|\| \(sameCall === null && this\.pc\?\.remoteDescription\)/.test(offerBranch)
+);
+ok(
+  "the busy verdict is only reachable for a genuinely idle engine",
+  offerBranch.indexOf('sameCall === true || (sameCall === null && this.pc?.remoteDescription)') <
+    offerBranch.indexOf('event: "busy"')
+);
+ok(
+  "a restart offer is not allowed to skip the accept path",
+  offerBranch.indexOf("if (this.awaitingOffer && this.state.status") < offerBranch.indexOf("signal.payload?.restart &&")
+);
+ok("busy only ends a dial that is still ringing", /if \(this\.state\.status !== "outgoing" \|\| !this\.belongsToCurrentCall\(busyCallId\)\)/.test(engine));
+ok("decline only ends a dial that is still ringing", /if \(this\.state\.status !== "outgoing" \|\| !this\.belongsToCurrentCall\(declineCallId\)\)/.test(engine));
+ok("an end for another call cannot hang up this one", /if \(!this\.belongsToCurrentCall\(endCallId\)\)/.test(engine));
+ok(
+  "call-id mismatches are an explicit decision, not a string compare in passing",
+  /private belongsToCurrentCall\(callId: string \| null \| undefined\): boolean/.test(engine)
+);
+ok("a caller stops re-offering the moment the answer lands", /pc\.signalingState !== "have-local-offer"/.test(engine));
+ok(
+  "accept marks the call answered before the answer goes out",
+  /this\.answered = true;\s*this\.setStatus\("connecting"\);/.test(engine) && /accept: answering, callId =/.test(engine)
+);
+ok(
+  "a double tap cannot build a second peer connection under the first",
+  /private answering = false;/.test(engine) && /if \(this\.answering\) return;/.test(engine)
+);
+ok("a ring cancelled mid-accept does not tear down the call being built", /cancelRing[\s\S]{0,600}if \(this\.answering\) return;/.test(engine));
+ok(
+  "the log channel does not read 'answered' as an ending",
+  /if \(row\.status === "answered"\) \{/.test(engine) && /log: peer picked up \(row answered\)/.test(engine)
+);
+ok(
+  "phantom cleanup refuses to run while a call is live",
+  /forceClearPhantom[\s\S]{0,900}if \(this\.state\.status !== "idle"\) return;/.test(engine)
+);
+ok(
+  "the connect budget is measured from the answer, with a restart inside it",
+  /CONNECT_TIMEOUT_MS = 25_000/.test(engine) && /CONNECT_RESTART_MS = 12_000/.test(engine)
+);
+ok(
+  "ICE 'failed' restarts once and then ends, instead of retrying forever",
+  /if \(!this\.iceRestarted && this\.state\.status !== "idle"\) \{\s*this\.iceRestarted = true;/.test(engine)
+);
+ok("an ICE restart carries the call id it belongs to", /payload: \{ sdp: offer\.sdp, restart: true, callId: restartCallId \?\? undefined \}/.test(engine));
+
+/* ------------------------------------------------------------------------- */
 console.log("answered calls minimize to the top pill");
 /* ------------------------------------------------------------------------- */
 
-ok("accepting collapses the call into the pill", /this\.state\.minimized = true;\s*this\.setStatus\("connecting"\);/.test(engine));
+ok("accepting collapses the call into the pill", /this\.state\.minimized = true;/.test(engine) && /this\.setStatus\("connecting"\);/.test(engine));
 ok("the pill can be expanded again", /onMinimize/.test(sheet) && /onExpand/.test(pill) && /setMinimized/.test(engine));
 ok("the pill carries the call controls", ["onToggleMute", "onHangUp", "call-pill-end", "formatCallDuration"].every((needle) => pill.includes(needle)));
 ok("the pill floats over every route from the provider, not the chat page", /<InCallPill/.test(provider) && /call-pill-layer/.test(css) && /\.call-pill-layer \{[\s\S]{0,200}position: fixed/.test(css));

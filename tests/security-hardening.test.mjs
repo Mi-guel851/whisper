@@ -101,7 +101,15 @@ const cspSink = await read('app/api/csp-report/route.ts');
 assert.match(cspSink, /export async function POST/, 'sink accepts the beacon POST');
 assert.match(cspSink, /truncat/i, 'reports are bounded — a sink that stores everything is a DoS gift');
 const nextCfg = await read('next.config.ts');
-assert.match(nextCfg, /frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'/, 'the unbreakable directives are already enforced via config headers');
+assert.match(nextCfg, /frame-ancestors 'none'/, 'the unbreakable directives are already enforced via config headers');
+assert.match(nextCfg, /object-src 'none'; base-uri 'self'; form-action 'self'/, 'the rest of the enforced policy rides with it');
+/* The framing pair is chosen by build mode (a dev preview is legitimately
+   framed; production is not). The guard has to hold the SHIPPED value, so it
+   checks the production branch specifically rather than any occurrence of the
+   string — otherwise a future edit could relax production and still pass. */
+assert.match(nextCfg, /IS_PRODUCTION\s*\n?\s*\??\s*\n?\s*\?\s*"frame-ancestors 'none'"/, 'production is the no-frames branch');
+assert.match(nextCfg, /key: "X-Frame-Options", value: "DENY"/, 'and X-Frame-Options still ships DENY in production');
+assert.match(nextCfg, /IS_PRODUCTION[\s\S]{0,200}X-Frame-Options/, 'DENY is inside the production-only branch, so development can be previewed');
 
 const signRoute = await read('app/api/cloudinary/sign/route.ts');
 assert.match(signRoute, /startsWith\("Bearer "\)/, 'the signer is authenticated by the same Bearer path the app actually uses');

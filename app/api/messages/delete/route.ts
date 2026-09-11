@@ -4,8 +4,21 @@ import { isCloudinaryUrl } from "@/lib/cloudinary";
 import { destroyCloudinaryUrl } from "@/lib/cloudinary.server";
 
 /**
- * Deletes an anonymous whisper message COMPLETELY: its photo from Cloudinary (or
- * the legacy Supabase bucket), then the database row.
+ * Deletes anonymous whisper messages COMPLETELY: their photos from Cloudinary
+ * (or the legacy Supabase bucket), then the database rows.
+ *
+ * ONE OR MANY
+ *
+ * The body takes `messageId` (the single-row button) or `messageIds` (the
+ * multi-select: long-press, tick, delete). Both are here rather than a second
+ * route because the work is identical per row and the authorization is the same
+ * check — the caller must be the recipient. A "select all" on a busy inbox is
+ * dozens of rows, and dozens of authenticated round trips from a phone is how a
+ * delete turns into a spinner that some of the time half-fails.
+ *
+ * A partial delete is not an error: rows the caller does not own are dropped
+ * from the request rather than failing the whole batch (they cannot be in a
+ * selection built from this user's own inbox anyway).
  *
  * The old client path deleted the image and the row as two independent calls.
  * Either half could silently fail and leave the other behind — a destroyed photo
@@ -20,8 +33,26 @@ import { destroyCloudinaryUrl } from "@/lib/cloudinary.server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { messageId } = await req.json().catch(() => ({}));
-    if (!messageId || typeof messageId !== "string") {
+    const body = (await req.json().catch(() => ({}))) as {
+      messageId?: unknown;
+      messageIds?: unknown;
+    };
+
+    /* Normalise both shapes into one deduped, bounded list. The cap is a guard
+       on the request itself: a legitimate "select all" in this inbox is tens
+       of rows, and an unbounded array is a way to make the server do an
+       arbitrary amount of storage work in one call. */
+    const MAX_BATCH = 200;
+    const rawIds = Array.isArray(body.messageIds)
+      ? body.messageIds
+      : [body.messageId];
+    const messageIds = [
+      ...new Set(
+        rawIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 64)
+      ),
+    ].slice(0, MAX_BATCH);
+
+    if (messageIds.length === 0) {
       return NextResponse.json({ error: "Missing messageId" }, { status: 400 });
     }
 
@@ -50,54 +81,64 @@ export async function POST(req: NextRequest) {
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
 
-    const { data: message, error: msgError } = await supabaseAdmin
+    const { data: messages, error: msgError } = await supabaseAdmin
       .from("messages")
       .select("id, recipient_id, image_url")
-      .eq("id", messageId)
-      .single();
+      .in("id", messageIds);
 
-    if (msgError || !message) {
-      return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    if (msgError) {
+      console.error("[messages/delete] lookup failed:", msgError.message);
+      return NextResponse.json({ error: "Couldn't delete that message." }, { status: 500 });
     }
 
     /* Only the recipient may delete a whisper — the sender is often anonymous
-       and not even signed in. */
-    if (message.recipient_id !== user.id) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+       and not even signed in. Rows that are not this user's are dropped rather
+       than refused, so a stale selection (deleted on another device, then
+       deleted again here) still settles to the truth. */
+    const owned = (messages ?? []).filter((row) => row.recipient_id === user.id);
+
+    if (owned.length === 0) {
+      const anyExists = (messages ?? []).length > 0;
+      return NextResponse.json(
+        { error: anyExists ? "Not authorized" : "Message not found" },
+        { status: anyExists ? 403 : 404 }
+      );
     }
 
-    const imageUrl: string | null = message.image_url;
-
-    /* Purge the media first. A Cloudinary failure is logged but does not block
-       the row delete — the row is the thing the user sees, and an orphaned asset
-       in an unlisted folder is strictly better than a delete that reports an
-       error and leaves both in place. */
-    if (imageUrl) {
-      if (isCloudinaryUrl(imageUrl)) {
-        const destroyed = await destroyCloudinaryUrl(imageUrl);
-        if (!destroyed.ok) {
-          console.error("[messages/delete] cloudinary destroy failed:", destroyed.reason);
+    /* Purge the media first, in one wave. A Cloudinary failure is logged but
+       does not block the row delete — the rows are what the user sees, and an
+       orphaned asset in an unlisted folder is strictly better than a delete
+       that reports an error and leaves everything in place. */
+    await Promise.all(
+      owned.map(async (message) => {
+        const imageUrl: string | null = message.image_url;
+        if (!imageUrl) return;
+        if (isCloudinaryUrl(imageUrl)) {
+          const destroyed = await destroyCloudinaryUrl(imageUrl);
+          if (!destroyed.ok) {
+            console.error("[messages/delete] cloudinary destroy failed:", destroyed.reason);
+          }
+          return;
         }
-      } else {
         /* Legacy `message-images` object key. */
         const marker = "/message-images/";
         const idx = imageUrl.indexOf(marker);
-        if (idx !== -1) {
-          const path = imageUrl.slice(idx + marker.length);
-          const { error: storageError } = await supabaseAdmin.storage
-            .from("message-images")
-            .remove([path]);
-          if (storageError) {
-            console.error("[messages/delete] legacy storage remove failed:", storageError.message);
-          }
+        if (idx === -1) return;
+        const path = imageUrl.slice(idx + marker.length);
+        const { error: storageError } = await supabaseAdmin.storage
+          .from("message-images")
+          .remove([path]);
+        if (storageError) {
+          console.error("[messages/delete] legacy storage remove failed:", storageError.message);
         }
-      }
-    }
+      })
+    );
 
+    const ownedIds = owned.map((row) => row.id);
     const { error: deleteError } = await supabaseAdmin
       .from("messages")
       .delete()
-      .eq("id", messageId)
+      .in("id", ownedIds)
       .eq("recipient_id", user.id);
 
     if (deleteError) {
@@ -105,7 +146,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Couldn't delete that message." }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, deleted: ownedIds.length });
   } catch (err) {
     console.error("[messages/delete] error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

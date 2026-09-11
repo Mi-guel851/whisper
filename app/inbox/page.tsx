@@ -11,6 +11,9 @@ import FriendsHeader from "@/components/FriendsHeader";
 import ChatRow from "@/components/inbox/ChatRow";
 import InboxSkeleton from "@/components/inbox/InboxSkeleton";
 import InboxChatMenu from "@/components/inbox/InboxChatMenu";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { blockUser, fetchBlockedIds, unblockUser } from "@/lib/blocks";
+import { useToast } from "@/components/ToastProvider";
 import EmptyState from "@/components/ui/EmptyState";
 import { useAnonNames } from "@/lib/anonNames";
 import { messagePreviewText } from "@/lib/messagePreview";
@@ -144,6 +147,18 @@ export default function InboxPage() {
      the sheet anchors to. */
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  /* Who this user has blocked. Read from the server once, then kept exact
+     locally — the menu has to say Block or Unblock, and guessing either way is
+     a lie with consequences (offering "Unblock" to someone who is not blocked
+     removes nothing and reports success). */
+  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+  /** The row awaiting a block/unblock confirmation, plus which way it goes. */
+  const [pendingBlock, setPendingBlock] = useState<{ userId: string; label: string; blocked: boolean } | null>(null);
+  const [blocking, setBlocking] = useState(false);
+  /** Bumped after a block so the list re-reads the server's view of it
+      (the friendship is gone, so the row's gate and preview may differ). */
+  const [reloadToken, setReloadToken] = useState(0);
+  const { showToast } = useToast();
   const { pinned, forcedUnread, togglePinned, markUnread, clearUnread } = useChatListState(myId);
   /* A live ref to the loaded rows so the memoized open/mark-read callbacks can
      tell which participant the caller is (and therefore which read column to
@@ -183,6 +198,10 @@ export default function InboxPage() {
 
       const userId = session.user.id;
       if (!cancelled) setMyId(userId);
+
+      void fetchBlockedIds(userId).then((ids) => {
+        if (!cancelled) setBlockedIds(ids);
+      });
 
       /* Listener first, then connect — and the connect isn't awaited. The manager
          rebuilds its channel on its own after a drop, so registering up front
@@ -530,7 +549,10 @@ export default function InboxPage() {
       if (channel) supabase.removeChannel(channel);
       if (missedChannel) supabase.removeChannel(missedChannel);
     };
-  }, []);
+    /* `reloadToken` is the block action's handle: blocking changes server state
+       the list was built from (friendship gone, request gone), so the honest
+       thing is to re-read it rather than patch the row in place. */
+  }, [reloadToken]);
 
   function otherUserId(c: ConversationRow) {
     return c.user_a === myId ? c.user_b : c.user_a;
@@ -755,6 +777,58 @@ export default function InboxPage() {
     }
   }
 
+  /* Block / unblock. The menu item asks; this decides. Both directions are
+     confirmed because both change what the other person can do to you — the
+     RPC swallows friendships, pending requests and ringing calls, and an
+     accidental tap on a sheet that sits under a finger must not do that. */
+  function askBlock() {
+    if (!menuFor) return;
+    const row = conversations.find((c) => c.id === menuFor);
+    if (!row) return;
+    const userId = otherUserId(row);
+    if (!userId) return;
+    setPendingBlock({ userId, label: labelFor(row), blocked: blockedIds.has(userId) });
+  }
+
+  async function confirmBlock() {
+    if (!pendingBlock) return;
+    const { userId, blocked, label } = pendingBlock;
+    setBlocking(true);
+    const result = blocked ? await unblockUser(userId) : await blockUser(userId);
+    setBlocking(false);
+
+    if (!result.ok) {
+      /* Close the sheet either way: a dialog left sitting open under a toast
+         that already explains the failure reads as a second, unanswered tap. */
+      setPendingBlock(null);
+      showToast(result.error);
+      return;
+    }
+
+    /* The local set mirrors the server's answer; the list itself is re-read
+       because a block also removes the friendship, which is what the row's
+       gate and its call button were built on. */
+    setBlockedIds((current) => {
+      const next = new Set(current);
+      if (blocked) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+    setPendingBlock(null);
+    /* The RPC is idempotent and says which of the two outcomes it reached;
+       repeating the user's own words back when nothing changed would be a
+       small lie about what the tap did. */
+    const message = blocked
+      ? result.status === "not_blocked"
+        ? `${label} wasn't blocked.`
+        : `Unblocked ${label}. They can message you again.`
+      : result.status === "already_blocked"
+        ? `${label} is already blocked.`
+        : `Blocked ${label}. They can't message or call you.`;
+    showToast(message, { variant: "subtle" });
+    setReloadToken((token) => token + 1);
+  }
+
   function openConversation(c: ConversationRow) {
     handleOpenConversation(c.id);
   }
@@ -952,10 +1026,36 @@ export default function InboxPage() {
               )
             : false
         }
+        isBlocked={
+          menuFor
+            ? blockedIds.has(
+                otherUserId(
+                  conversations.find((c) => c.id === menuFor) ?? ({ id: menuFor } as ConversationRow)
+                )
+              )
+            : false
+        }
         onPin={handleMenuPin}
         onToggleRead={handleMenuToggleRead}
+        onBlock={askBlock}
         onClose={closeMenu}
       />
+
+      {pendingBlock && (
+        <ConfirmDialog
+          title={pendingBlock.blocked ? `Unblock ${pendingBlock.label}?` : `Block ${pendingBlock.label}?`}
+          description={
+            pendingBlock.blocked
+              ? "They will be able to message you again and send a new friend request. Your chat history stays where it is."
+              : "They won't be able to message or call you, their pending friend request is withdrawn, and any call ringing right now is cancelled. You can unblock them from this menu later."
+          }
+          confirmLabel={pendingBlock.blocked ? "Unblock" : "Block"}
+          tone={pendingBlock.blocked ? "default" : "danger"}
+          onConfirm={confirmBlock}
+          onCancel={() => setPendingBlock(null)}
+          loading={blocking}
+        />
+      )}
       <BottomNavigation />
     </main>
   );

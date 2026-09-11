@@ -3,16 +3,24 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Pin, PinOff, MailCheck, MailOpen } from "lucide-react";
+import { Pin, PinOff, MailCheck, MailOpen, ShieldBan, ShieldCheck } from "lucide-react";
 
 /**
  * WhatsApp-style long-press (or right-click) menu for a chat row.
  *
  * A press-and-hold on a row is the discovery surface: a small action sheet
  * appears beside the finger with the row choices — Pin / Unpin, Mark as
- * read/unread. Tapping a row normally still opens the conversation; only a
- * held press (or a desktop right-click / long mouse-hold) opens this sheet, so
- * it never steals the tap that opens a chat.
+ * read/unread, and Block (or Unblock). Tapping a row normally still opens the
+ * conversation; only a held press (or a desktop right-click / long mouse-hold)
+ * opens this sheet, so it never steals the tap that opens a chat.
+ *
+ * BLOCK IS SET APART
+ *
+ * Blocking is the only destructive item here, so it gets a divider, its own
+ * colour, and it does NOT act on tap: it hands the decision back to the page,
+ * which asks for a confirmation. Everything else in this sheet is a toggle the
+ * user can undo by repeating it; a block is not, and a menu that treats them
+ * the same is a menu that blocks people by accident.
  *
  * The sheet dismisses on outside tap, scroll, Escape, or after an action.
  */
@@ -24,8 +32,13 @@ export type InboxChatMenuProps = {
   anchor: { x: number; y: number } | null;
   isPinned: boolean;
   isUnread: boolean;
+  /** True when this user has blocked the row's person (not the other way
+      round — being blocked is never disclosed here). */
+  isBlocked?: boolean;
   onPin: () => void;
   onToggleRead: () => void;
+  /** Asks for confirmation on the page; the sheet just closes. */
+  onBlock?: () => void;
   onClose: () => void;
 };
 
@@ -34,8 +47,10 @@ export default function InboxChatMenu({
   anchor,
   isPinned,
   isUnread,
+  isBlocked = false,
   onPin,
   onToggleRead,
+  onBlock,
   onClose,
 }: InboxChatMenuProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -144,6 +159,33 @@ export default function InboxChatMenu({
                 </button>
               );
             })}
+
+            {onBlock && (
+              <>
+                <div className="my-1 h-px bg-white/10" aria-hidden />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    /* Close first: the confirmation dialog is the modal the
+                       user must answer, and two stacked overlays under one
+                       finger is how the wrong button gets pressed. */
+                    onClose();
+                    onBlock();
+                  }}
+                  className={`chat-menu-item flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold ${
+                    isBlocked ? "" : "text-red-300"
+                  }`}
+                >
+                  {isBlocked ? (
+                    <ShieldCheck size={16} className="shrink-0 opacity-80" />
+                  ) : (
+                    <ShieldBan size={16} className="shrink-0 opacity-80" />
+                  )}
+                  {isBlocked ? "Unblock" : "Block"}
+                </button>
+              </>
+            )}
           </motion.div>
         </>
       )}
