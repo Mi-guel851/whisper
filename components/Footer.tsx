@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import DownloadAndroidButton from "./DownloadAndroidButton";
 
 const legal = [
   { href: "/privacy", label: "Privacy" },
@@ -16,6 +17,17 @@ export default function Footer() {
       className="px-4 py-10 sm:px-8"
       style={{ borderTop: "1px solid var(--hairline)" }}
     >
+      <div className="mx-auto mb-8 flex max-w-7xl flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-5 backdrop-blur sm:flex-row sm:justify-between">
+        <div className="text-center sm:text-left">
+          <p className="text-sm font-extrabold" style={{ color: "var(--bridge-text)" }}>
+            Whisper for Android — faster, with push
+          </p>
+          <p className="mt-1 text-xs font-medium" style={{ color: "var(--bridge-text-muted)" }}>
+            Get the native app. Same whispers, instant notifications, stays signed in 6 hours.
+          </p>
+        </div>
+        <DownloadAndroidButton variant="primary" size="md" label="Download Android App" />
+      </div>
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-6 md:flex-row md:justify-between">
         <div className="flex items-center gap-2.5">
           <Image src="/ghost.png" alt="" width={28} height={28} />

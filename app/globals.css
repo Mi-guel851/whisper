@@ -7077,20 +7077,25 @@ html.viewport-locked body {
 /* Calm dashboard: content first, with secondary tools progressively disclosed. */
 .dashboard-shell { background:var(--theme-bg); }
 .dashboard-ambient { opacity:.25; pointer-events:none; }
+/* Minimal premium welcome — was 1.75rem padding + 1.35rem gap making the
+   rectangular container feel too long. Tightened to 1.1rem/0.85rem so the
+   Hey + Hall word wall sit in one compact band, not a tall billboard. */
 .dashboard-welcome-card {
-  display:flex; flex-direction:column; align-items:stretch; gap:1.35rem;
-  min-height:0; padding:1.75rem; grid-template-columns:none;
-  background:radial-gradient(ellipse at top right, color-mix(in srgb,var(--theme-accent-purple) 20%,transparent),transparent 70%),var(--theme-card);
-  box-shadow:inset 0 1px rgba(255,255,255,.05);
+  display:flex; flex-direction:column; align-items:stretch; gap:0.85rem;
+  min-height:0; padding:1.15rem 1.35rem 1.2rem; grid-template-columns:none;
+  border-radius: 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent-purple) 14%, var(--hairline));
+  background:radial-gradient(ellipse at top right, color-mix(in srgb,var(--theme-accent-purple) 16%,transparent),transparent 68%),var(--theme-card);
+  box-shadow: var(--elev-1), inset 0 1px rgba(255,255,255,.06);
 }
 .dashboard-welcome-card::before { display:none; }
-.dashboard-welcome-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.85rem; }
-.dashboard-welcome-eyebrow { font-size:.65rem; font-weight:700; letter-spacing:.14em; color:var(--theme-text-muted); }
-.dashboard-welcome-copy { min-width:0; max-width:34rem; }
-.dashboard-welcome-copy h1 { overflow-wrap:anywhere; font-size:clamp(1.65rem,3vw,2.4rem); line-height:1.2; font-weight:800; letter-spacing:-.045em; color:var(--theme-text); }
+.dashboard-welcome-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.55rem; }
+.dashboard-welcome-eyebrow { font-size:.6rem; font-weight:700; letter-spacing:.13em; color:var(--theme-text-muted); }
+.dashboard-welcome-copy { min-width:0; max-width:32rem; }
+.dashboard-welcome-copy h1 { overflow-wrap:anywhere; font-size:clamp(1.45rem,2.6vw,2.05rem); line-height:1.15; font-weight:800; letter-spacing:-.04em; color:var(--theme-text); }
 .dashboard-welcome-copy h1 > span { color:var(--theme-accent-purple); }
-.dashboard-welcome-copy p { margin-top:.55rem; font-size:.875rem; line-height:1.6; color:var(--theme-text-secondary); }
-.dashboard-welcome-card .dashboard-hero-actions { margin:0; gap:1rem; flex-wrap:wrap; }
+.dashboard-welcome-copy p { margin-top:.35rem; font-size:.8125rem; line-height:1.5; color:var(--theme-text-secondary); }
+.dashboard-welcome-card .dashboard-hero-actions { margin:0; gap:.7rem; flex-wrap:wrap; }
 .dashboard-hero-share-link { min-height:44px; }
 
 /* The welcome card's right-hand field: an ambient word wall, the same effect
@@ -7103,29 +7108,20 @@ html.viewport-locked body {
    which is the whole reason this is a token and not a utility class. */
 .dashboard-welcome-card { position:relative; overflow:hidden; }
 .dashboard-welcome-card > *:not(.dashboard-word-wall) { position:relative; z-index:2; }
+/* WordWall is ambient, not content — smaller, softer, tucked into the
+   empty right-hand gutter so "Hall" (the morphing word) never collides with
+   the Hey + paragraph column. Reduced font + opacity + narrowed left edge. */
 .dashboard-word-wall {
-  /* `top` must clear the welcome-top row, not just the card padding: the
-     streak chip is `min-h-11` (2.75rem) and the row starts at the card's
-     1.75rem padding, so the chip's bottom edge sits ~4.5rem down — lane one
-     ran at `top:3.25rem` and its words rendered underneath the button. 4.75rem
-     mirrors the existing `bottom` inset and keeps every lane below the chip
-     at every width. */
-  position:absolute; top:4.75rem; bottom:4.75rem; left:46%; right:0; z-index:1;
+  position:absolute; top:3.6rem; bottom:1.1rem; left:52%; right:0.6rem; z-index:1;
   pointer-events:none; user-select:none; overflow:hidden;
-  -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 44%);
-  mask-image:linear-gradient(90deg, transparent 0, #000 44%);
+  -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 38%);
+  mask-image:linear-gradient(90deg, transparent 0, #000 38%);
 }
 .dashboard-word-wall-word {
-  font-size:clamp(.9rem,1.35vw,1.3rem);
+  font-size:clamp(.78rem,1.05vw,1.05rem);
   font-weight:900; text-transform:uppercase; letter-spacing:-.02em;
-  /* The theme's own text colour, held back with `opacity` rather than a
-     colour-mix alpha: this build's minifier drops the percentage out of
-     `color-mix(in srgb, var(--x) 15%, transparent)` and emits the variable at
-     full strength, which turns texture into a wall of solid text. Opacity on
-     the host also multiplies cleanly with the per-layer opacity MorphingText
-     animates, so the morph reads exactly as it does on the send page. */
   color:var(--theme-text);
-  opacity:.16;
+  opacity:.13;
 }
 /* On phones the card is a single column — there is no spare right half to
    overlay, and hiding the wall entirely (the old behaviour) is why the
@@ -7143,8 +7139,8 @@ html.viewport-locked body {
     position:relative; order:10; left:auto; right:auto; top:auto; bottom:auto;
     display:flex; flex-direction:column; justify-content:space-evenly;
     align-items:flex-end;
-    height:7.25rem; margin-top:.25rem;
-    padding-inline:1.1rem;
+    height:5.4rem; margin-top:.15rem;
+    padding-inline:0.9rem;
     -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
     mask-image:linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
   }
@@ -7195,7 +7191,7 @@ html.viewport-locked body {
   .dashboard-global-search input { height:44px; font-size:16px; }
   .dashboard-center-column { padding:1rem 1rem 1.25rem; }
   .dashboard-center-column > * + * { margin-top:1.25rem; }
-  .dashboard-welcome-card { padding:1.25rem; gap:1.15rem; border-radius:1.25rem; }
+  .dashboard-welcome-card { padding:1rem 1.1rem 1.05rem; gap:0.85rem; border-radius:1rem; }
   .dashboard-welcome-eyebrow { font-size:.58rem; max-width:9rem; line-height:1.6; }
   .dashboard-welcome-top { gap:.5rem; }
   .dashboard-welcome-copy p { font-size:.8rem; }

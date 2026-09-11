@@ -5,8 +5,12 @@ import { motion } from "framer-motion";
 import { ArrowRight, Check } from "lucide-react";
 import EdgeLitCard from "./EdgeLitCard";
 import { ButtonLink } from "./Button";
+import DownloadAndroidButton from "./DownloadAndroidButton";
 import { respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+import { useRouter } from "next/navigation";
+import { Capacitor } from "@capacitor/core";
+import { shouldShowPlatformChoice } from "@/lib/platformChoice";
 
 /**
  * The closing CTA.
@@ -26,6 +30,13 @@ const GUARANTEES = [
 
 export default function ClosingCTA() {
   const reduced = useSafeReducedMotion();
+  const router = useRouter();
+  const handleCreate = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let isNative = false;
+    try { isNative = Capacitor.isNativePlatform(); } catch {}
+    router.push(shouldShowPlatformChoice(isNative) ? "/choose-platform" : "/signup");
+  };
 
   return (
     <section className="relative mx-auto max-w-6xl px-4 py-16 sm:px-8 sm:py-24">
@@ -126,19 +137,29 @@ export default function ClosingCTA() {
               variants={respectMotion(staggerItem, reduced)}
               className="mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start"
             >
-              <ButtonLink
+              <a
                 href="/signup"
-                size="lg"
-                iconRight={<ArrowRight size={18} />}
-                className="w-full sm:w-auto"
+                onClick={handleCreate}
+                className="premium-button premium-button-primary h-12 px-7 text-[15px] rounded-full w-full sm:w-auto inline-flex items-center justify-center gap-2 font-bold whitespace-nowrap"
               >
                 Create My Link — It&apos;s Free
-              </ButtonLink>
+                <ArrowRight size={18} />
+              </a>
               <span
                 className="text-xs font-semibold"
                 style={{ color: "var(--bridge-text-muted)" }}
               >
                 No credit card. No hassle.
+              </span>
+            </motion.div>
+
+            <motion.div
+              variants={respectMotion(staggerItem, reduced)}
+              className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start"
+            >
+              <DownloadAndroidButton variant="secondary" size="md" label="Download Android App" className="w-full sm:w-auto !bg-white/10 !text-white !border-white/15" />
+              <span className="text-xs font-medium" style={{ color: "var(--bridge-text-muted)" }}>
+                Prefer the app? Get it on Google Play
               </span>
             </motion.div>
           </div>

@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import Background from "../components/Background";
 import Hero from "../components/Hero";
 import Navbar from "../components/Navbar";
+import LandingTopDownloadBanner from "../components/home/LandingTopDownloadBanner";
 import StatsStrip from "../components/home/StatsStrip";
 import Features from "../components/Features";
 import Testimonials from "../components/home/Testimonials";
@@ -47,10 +48,6 @@ export default function Home() {
       <div
         className="sticky top-0 z-20 overflow-hidden"
         style={{
-          /* Reads from the token rather than a hardcoded near-black, so it
-             tracks the dark canvas this subtree declares. `color-mix` keeps the
-             frosted-over-canvas effect: enough body to blur against, not an
-             opaque slab. */
           background: "color-mix(in srgb, var(--theme-bg) 92%, transparent)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
@@ -75,6 +72,9 @@ export default function Home() {
           }}
         />
       </div>
+
+      {/* Top Android download banner — prominent at top of scrollable landing, before stats */}
+      <LandingTopDownloadBanner />
 
       {/* Scrollable content */}
       <div className="relative z-10">

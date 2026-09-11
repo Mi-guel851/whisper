@@ -8,15 +8,26 @@ import OrbitChips from "./home/OrbitChips";
 import Avatar from "./home/Avatar";
 import CountUp from "./home/CountUp";
 import { ButtonLink } from "./Button";
+import DownloadAndroidButton from "./DownloadAndroidButton";
 import ShimmerButton from "./ui/ShimmerButton";
 import { ease, respectMotion, staggerContainer, staggerItem } from "@/lib/motion";
 import { useSafeReducedMotion } from "@/lib/useSafeReducedMotion";
+import { useRouter } from "next/navigation";
+import { Capacitor } from "@capacitor/core";
+import { shouldShowPlatformChoice } from "@/lib/platformChoice";
 
 const HEADING_SETTLE = 0.3;
 const PROOF = ["@its_joycee", "@real_kayz", "@mimi.vibes"];
 
 export default function Hero() {
   const reduced = useSafeReducedMotion();
+  const router = useRouter();
+  const handleCreateLink = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let isNative = false;
+    try { isNative = Capacitor.isNativePlatform(); } catch {}
+    router.push(shouldShowPlatformChoice(isNative) ? "/choose-platform" : "/signup");
+  };
 
   return (
     <section className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 pb-16 pt-28 sm:px-8 sm:pb-24 sm:pt-36 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8 lg:pt-40">
@@ -63,18 +74,15 @@ export default function Hero() {
           variants={respectMotion(staggerItem, reduced)}
           className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-center lg:justify-start"
         >
-          {/* The one CTA on the page that keeps moving. The frame owns the width
-              so the button can fill it; `ButtonLink` keeps its own ripple, press
-              spring and focus ring — the shimmer is purely additive. */}
           <ShimmerButton className="w-full sm:w-auto">
-            <ButtonLink
+            <a
               href="/signup"
-              size="lg"
-              iconRight={<ArrowRight size={18} />}
-              className="w-full"
+              onClick={handleCreateLink}
+              className="premium-button premium-button-primary h-12 px-7 text-[15px] rounded-full w-full inline-flex items-center justify-center gap-2 font-bold whitespace-nowrap"
             >
               Create My Link
-            </ButtonLink>
+              <ArrowRight size={18} />
+            </a>
           </ShimmerButton>
           <ButtonLink
             href="/#how-it-works"
@@ -84,6 +92,13 @@ export default function Hero() {
           >
             See how it works
           </ButtonLink>
+        </motion.div>
+
+        <motion.div
+          variants={respectMotion(staggerItem, reduced)}
+          className="mt-4 flex justify-center lg:justify-start"
+        >
+          <DownloadAndroidButton variant="ghost" size="sm" label="Download Android app — Get it on Google Play" />
         </motion.div>
 
         {/* --- Social proof --- */}

@@ -10,9 +10,10 @@ import { SIGNUPS_CLOSED } from "@/lib/signupGate";
 import { grantConsent, markConsentPending } from "@/lib/consent";
 import { Capacitor } from "@capacitor/core";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { shouldShowPlatformChoice } from "@/lib/platformChoice";
 
 export default function SignupPage() {
   const { showToast } = useToast();
@@ -24,6 +25,23 @@ export default function SignupPage() {
      complete an account with no consent row), so this state is friction, not
      enforcement. */
   const [agreed, setAgreed] = useState(false);
+  const [gateChecked, setGateChecked] = useState(false);
+
+  // Enforce the "Continue on site or Download app" choice before the Google step.
+  // Native shell never sees the gate; web sees it exactly once (stored in localStorage).
+  useEffect(() => {
+    if (SIGNUPS_CLOSED) {
+      setGateChecked(true);
+      return;
+    }
+    let isNative = false;
+    try { isNative = Capacitor.isNativePlatform(); } catch {}
+    if (shouldShowPlatformChoice(isNative)) {
+      router.replace("/choose-platform");
+      return;
+    }
+    setGateChecked(true);
+  }, [router]);
 
   /* Return before any of the Google machinery is reachable.
      Not a disabled button: `signInWithOAuth` is what *creates* the account, so
@@ -31,6 +49,16 @@ export default function SignupPage() {
      happens to trigger it. See lib/signupGate.ts. */
   if (SIGNUPS_CLOSED) {
     return <ComingSoonGate />;
+  }
+
+  if (!gateChecked) {
+    return (
+      <AuthShell>
+        <div className="grid place-items-center py-16">
+          <Loader2 size={22} className="animate-spin text-white/60" />
+        </div>
+      </AuthShell>
+    );
   }
 
   async function registerFcmToken() {
