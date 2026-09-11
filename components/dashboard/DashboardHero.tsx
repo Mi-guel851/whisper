@@ -15,8 +15,8 @@ export default function DashboardHero({ profile }: { profile: DashboardProfile }
           wall the anonymous send page runs behind its composer — three lanes
           of morphing words drawn from the shared hundred-word vocabulary in
           lib/whisperWords.ts. Decorative only: aria-hidden, pointer-events
-          none, and hidden below the tablet breakpoint where the card has no
-          spare half to give. */}
+          none, and reflowed below the tablet breakpoint into a standalone
+          band at the foot of the card, where there is no spare half to give. */}
       <WordWall />
       <div className="dashboard-welcome-top">
         <span className="dashboard-welcome-eyebrow">YOUR LITTLE CORNER OF WHISPER</span>
