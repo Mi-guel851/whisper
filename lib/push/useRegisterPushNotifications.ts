@@ -115,27 +115,86 @@ export function useRegisterPushNotifications(userId: string | null) {
       PushNotifications.addListener(
         "pushNotificationActionPerformed",
         (action) => {
-          /* Only chat was handled here, so tapping a friend request or a feed
-             post from the tray landed the user wherever they already were —
-             which reads as a notification that does nothing.
-             `notify-on-notification` stringifies the trigger's whole metadata
-             into `data`, so the destination is already in the payload; this just
-             has to read it. `route` is what the feed trigger sets explicitly,
-             and the per-type fallbacks cover the triggers that predate it. */
+          /* Every push type deep-links to its own surface. `notify-on-notification`
+             stringifies the trigger's whole metadata into `data`, so the
+             destination is already in the payload — this just has to read it:
+             `route` is what the triggers set explicitly (feed, calls, whispers),
+             and the per-type fallbacks below cover anything that predates it.
+               message        → /chat/{conversation_id} (the thread itself)
+               whisper        → /notifications (the whisper inbox)
+               feed           → /public-feed?post={postId} (highlighted)
+               friend_request → /friends
+               coins          → /premium (the wallet lives there)
+               call           → /chat/{conversation_id} + the ring overlay,
+                                triggered immediately via the pending-call stash
+             This listener is also the iOS tap path: the Capacitor plugin owns
+             the native notification center delegate, so a tap on either
+             platform lands here rather than in AppDelegate — see the "Push
+             notification deep links" note in ios/App/App/AppDelegate.swift. */
           const data = (action.notification.data ?? {}) as Record<string, string>;
           const conversationId = data.conversationId || data.conversation_id;
+          const postId = data.postId || data.post_id;
+          const type = data.type || "";
 
-          const destination =
-            data.route ||
-            (conversationId
-              ? `/chat/${conversationId}`
-              : data.type === "friend_request"
-                ? "/friends"
-                : data.type === "feed"
-                  ? "/public-feed"
-                  : data.type === "whisper" || data.type === "message"
-                    ? "/inbox"
-                    : null);
+          /* `route` is server-provided, but a tap handler that navigates to an
+             arbitrary string is an open redirect wearing a push notification —
+             so it is allowlisted to the app's own surfaces before use. */
+          const SAFE_ROUTE =
+            /^\/(chat\/[A-Za-z0-9-]+|inbox|friends|notifications|premium|public-feed|dashboard)(\?[A-Za-z0-9_\-=&%.]*)?$/;
+          const routed = typeof data.route === "string" && SAFE_ROUTE.test(data.route) ? data.route : null;
+
+          let destination: string | null = routed;
+          if (!destination) {
+            switch (type) {
+              case "message":
+                destination = conversationId ? `/chat/${conversationId}` : "/inbox";
+                break;
+              case "whisper":
+                destination = "/notifications";
+                break;
+              case "feed":
+              case "reply":
+              case "public_feed":
+                destination = postId ? `/public-feed?post=${postId}` : "/public-feed";
+                break;
+              case "friend_request":
+                destination = "/friends";
+                break;
+              case "coins":
+              case "coin_transfer":
+                destination = "/premium";
+                break;
+              case "call":
+                destination = conversationId ? `/chat/${conversationId}` : "/inbox";
+                break;
+              default:
+                destination = conversationId ? `/chat/${conversationId}` : null;
+                break;
+            }
+          }
+
+          /* A call tap rings immediately. The stash survives the full-document
+             load below (same tab, sessionStorage), so a cold-started app opens
+             the overlay on mount; the event covers the warm case, where the
+             app is already open and the overlay should appear without waiting
+             for the realtime socket to resubscribe. Both are read by
+             components/calls/GlobalCallListener. */
+          if (type === "call" && conversationId) {
+            const pending = {
+              conversationId,
+              callerId: data.caller_id || data.callerId || null,
+              callId: data.callId || data.call_id || null,
+              at: Date.now(),
+            };
+            try {
+              sessionStorage.setItem("whisper:pending-call", JSON.stringify(pending));
+            } catch {
+              /* Private mode — the event below still covers the warm case. */
+            }
+            window.dispatchEvent(
+              new CustomEvent("whisper:incoming-call", { detail: pending })
+            );
+          }
 
           /* A full document load rather than a router push: the handler can fire
              while the WebView is being resumed from a cold start, before React

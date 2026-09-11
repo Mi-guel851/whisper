@@ -46,4 +46,67 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    // MARK: - Push notification deep links
+    //
+    // A tap on a Whisper push opens the app straight onto the surface the
+    // payload describes. On iOS that tap is delivered by the Capacitor
+    // PushNotifications plugin — it owns the UNUserNotificationCenterDelegate,
+    // so this file deliberately implements NO delegate methods of its own:
+    // adding them would intercept taps before the plugin and the web layer
+    // would never hear about them. The tap arrives in JavaScript as
+    // `pushNotificationActionPerformed`, and the router there
+    // (lib/push/useRegisterPushNotifications.ts) navigates by the payload's
+    // `route` field with these per-type fallbacks:
+    //
+    //   message        → /chat/{conversation_id}
+    //   whisper        → /notifications
+    //   feed           → /public-feed?post={postId}
+    //   friend_request → /friends
+    //   coins          → /premium
+    //   call           → /chat/{conversation_id} + the ring overlay, triggered
+    //                    immediately via the pending-call stash
+    //
+    // `WhisperPushRoutes` below mirrors that contract on the native side, so a
+    // future native handler (CallKit, Notification Service Extension) starts
+    // from the same destinations instead of inventing its own.
+
+}
+
+/// The push-tap destinations, mirrored from the web router (see above).
+/// Pure mapping, no side effects — safe to call from any future native
+/// notification handler.
+enum WhisperPushRoutes {
+    static func destination(
+        type: String?,
+        route: String?,
+        conversationId: String?,
+        postId: String?
+    ) -> String? {
+        if let route = route, isSafeRoute(route) {
+            return route
+        }
+        switch type {
+        case "message":
+            return conversationId.map { "/chat/\($0)" } ?? "/inbox"
+        case "whisper":
+            return "/notifications"
+        case "feed", "reply", "public_feed":
+            return postId.map { "/public-feed?post=\($0)" } ?? "/public-feed"
+        case "friend_request":
+            return "/friends"
+        case "coins", "coin_transfer":
+            return "/premium"
+        case "call":
+            return conversationId.map { "/chat/\($0)" } ?? "/inbox"
+        default:
+            return conversationId.map { "/chat/\($0)" }
+        }
+    }
+
+    /// The same allowlist the web router applies: own surfaces only, so a
+    /// crafted payload can never turn a tap into an open redirect.
+    static func isSafeRoute(_ route: String) -> Bool {
+        let pattern = "^/(chat/[A-Za-z0-9-]+|inbox|friends|notifications|premium|public-feed|dashboard)(\\?[A-Za-z0-9_\\-=&%.]*)?$"
+        return route.range(of: pattern, options: .regularExpression) != nil
+    }
 }

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState, useSyncExternalStore } from "react";
-import { Bell, MessageCircle, Moon, Search, Sun } from "lucide-react";
+import { MessageCircle, Moon, Search, Sun } from "lucide-react";
 
 import Logo from "@/components/Logo";
+import NotificationBell from "@/components/NotificationBell";
 import { generatedAvatarUrl } from "@/lib/generatedAvatar";
 import {
   getNavBadges,
@@ -79,9 +80,11 @@ export default function DashboardTopbar({ profile }: { profile: DashboardProfile
         <TopbarAction href="/inbox" label="Open messages" count={badges.chats}>
           <MessageCircle size={18} />
         </TopbarAction>
-        <TopbarAction href="/notifications" label="Open notifications" count={badges.whispers}>
-          <Bell size={18} />
-        </TopbarAction>
+        {/* The bell is a switchboard, not a link: an inline dropdown (a bottom
+            sheet on mobile) with the master push toggle, the five category
+            toggles, and a "View all notifications" foot that keeps the old
+            destination one tap away. */}
+        <NotificationBell />
         <Link href="/profile" className="dashboard-top-profile" aria-label="Open your profile">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={profile.avatar_url || generatedAvatarUrl(profile.id)} alt="" />

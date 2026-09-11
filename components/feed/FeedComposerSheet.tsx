@@ -27,6 +27,15 @@ import FeedComposer, { type ComposerDraft } from "./FeedComposer";
  * post landed: a sheet left open over a feed that now contains the whisper reads as
  * a failure. A rejected post keeps the sheet up with the draft intact, which is the
  * only behaviour that does not lose what somebody typed.
+ *
+ * PRESENTATION: FULL SCREEN
+ *
+ * This renders as a full-screen compose surface — Instagram/Twitter style —
+ * sliding up from the bottom to cover 100% of the viewport height on mobile,
+ * and as a centered full-height column over a dark backdrop on desktop. Only
+ * the presentation changed: the draft, the topic, the photo pipeline, the
+ * poll builder, the coin cost, the submit lifecycle and every validation rule
+ * are untouched inside `FeedComposer`.
  */
 
 type FeedComposerSheetProps = {
@@ -60,16 +69,15 @@ export default function FeedComposerSheet({
     <Modal
       open={open}
       onClose={onClose}
-      variant="sheet"
+      variant="fullscreen"
       title="New whisper"
       showClose
       initialFocus={fieldRef}
-      /* Backdrop dismiss stays on, but the draft survives it — the sheet only
-         unmounts the composer when the page drops `open`, and reopening restores
-         nothing, so an accidental tap outside costs the text. Keeping it means
-         the panel behaves like every other sheet in the app; the drag handle and
-         the close button are both faster ways out for anyone who meant it. */
-      dismissOnBackdrop
+      /* Fullscreen has no backdrop to tap (the panel is the screen), so this
+         only governs the desktop margins: off, because an accidental
+         margin-tap that costs a half-written post is exactly the kind of loss
+         a compose screen must never inflict. The X is the way out. */
+      dismissOnBackdrop={false}
       className="feed-composer-sheet"
     >
       <div className="feed-composer-sheet-body">

@@ -12,8 +12,14 @@ type ModalProps = {
   children: React.ReactNode;
   title?: string;
   description?: string;
-  /** "sheet" slides up from the bottom edge — better on phones. */
-  variant?: "center" | "sheet";
+  /**
+   * "sheet" slides up from the bottom edge — better on phones. "fullscreen"
+   * is the compose-screen treatment: it covers 100% of the viewport height,
+   * sliding up from the bottom on mobile and centering as a full-height
+   * column over a dark backdrop on desktop. The panel is a flex column whose
+   * body scrolls, so long content (poll builders, topic rows) never clips.
+   */
+  variant?: "center" | "sheet" | "fullscreen";
   size?: "sm" | "md" | "lg";
   showClose?: boolean;
   /** Set false for destructive flows that must be answered explicitly. */
@@ -138,14 +144,15 @@ export default function Modal({
   if (typeof document === "undefined") return null;
 
   const isSheet = variant === "sheet";
+  const isFullscreen = variant === "fullscreen";
 
   return createPortal(
     <AnimatePresence>
       {open && (
         <div
           className={`fixed inset-0 z-[999] flex ${
-            isSheet ? "items-end" : "items-center"
-          } justify-center ${isSheet ? "" : "p-4"}`}
+            isSheet ? "items-end" : isFullscreen ? "items-stretch justify-center" : "items-center"
+          } justify-center ${isSheet || isFullscreen ? "" : "p-4"}`}
         >
           <motion.div
             variants={backdrop}
@@ -167,10 +174,14 @@ export default function Modal({
             aria-modal="true"
             aria-label={title}
             tabIndex={-1}
-            variants={isSheet ? sheetUp : modalIn}
+            variants={isSheet || isFullscreen ? sheetUp : modalIn}
             initial="hidden"
             animate="visible"
             exit="exit"
+            /* Fullscreen is dismissed by its close button, not by gesture: a
+               drag that can nuke a half-written post is a trap, and the body
+               needs its own vertical scroll (polls, topics) without fighting
+               the panel for the gesture. */
             drag={isSheet ? "y" : false}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.4 }}
@@ -178,8 +189,12 @@ export default function Modal({
               // Flick down, or drag past a third of the sheet, to dismiss.
               if (info.offset.y > 120 || info.velocity.y > 600) onClose();
             }}
-            className={`overlay-surface relative w-full max-h-[90dvh] overflow-y-auto outline-none ${
-              isSheet ? "rounded-t-[1.75rem]" : `${sizeClasses[size]} rounded-[1.5rem]`
+            className={`overlay-surface relative w-full outline-none ${
+              isFullscreen
+                ? "modal-fullscreen"
+                : isSheet
+                  ? "max-h-[90dvh] overflow-y-auto rounded-t-[1.75rem]"
+                  : `${sizeClasses[size]} max-h-[90dvh] overflow-y-auto rounded-[1.5rem]`
             } ${className}`}
             style={{
               background: "var(--theme-surface-solid)",
