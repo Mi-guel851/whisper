@@ -40,6 +40,9 @@ without at least the first two values.
 | `EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY` | the coin store | Paystack → Settings → API Keys (`pk_live_…`) |
 | `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME` | photo uploads | Cloudinary dashboard |
 | `EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET` | photo uploads when signing is unavailable | Cloudinary → Settings → Upload |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Google sign-in (optional) | defaults to the web app's OAuth client |
+| `EXPO_PUBLIC_SIGNUPS_OPEN` | the signup gate (optional) | `true` reopens new-account creation, the web's flag |
+| `EXPO_PUBLIC_ADMIN_EMAILS` | the admin console (optional) | defaults to the web app's `lib/admin/emails.ts` |
 
 **The Android push configuration is already in the repository** —
 `whisper-native/google-services.json` is a copy of `android/app/google-services.json`
@@ -87,13 +90,18 @@ app/                    the route tree (expo-router, file-based)
   support.tsx           Contact Support: category + subject + message → mailto
   feedback.tsx          star rating + message → mailto
   favorites.tsx         the web's "Coming Soon" page, natively
-  settings.tsx          push switches, wallet address, log out
+  creator.tsx           the creator console: official posts behind `is_whisper_creator`
+  admin.tsx             the announcements admin: email allowlist + ADMIN_GRANT_PIN
+  settings.tsx          push switches, appearance (system/light/dark), wallet, legal, log out
   forgot-password.tsx   reset by username + recovery phrase
   saved.tsx             saved posts (the feed's bookmark)
   u.tsx                 somebody else's profile
 lib/                    data access, one file per surface, plus theme/format/errors/haptics
   supabase.ts           the client (AsyncStorage session, AppState refresh)
   session.tsx           SessionProvider: getSession + onAuthStateChange, in context
+  ThemeProvider.tsx     system/light/dark: AsyncStorage + profiles.theme_preference
+  calls/                voice calls: callSession (WebRTC engine), signaling, iceServers,
+                        ringTone, callFormat, pendingRing (push-tap → ring), callColors
   feed.ts feedState.ts  the public feed: RPC-first, table fallback
   useFeedEngagement.ts  likes, poll votes, photo claims and saves, shared by the
                         feed and the saved-posts screen
@@ -109,6 +117,9 @@ lib/                    data access, one file per surface, plus theme/format/err
   paystack.ts           the coin checkout
   push.ts               device tokens, taps, channels
   badges.ts             the unread counts the tab bar shows
+  creator.ts adminClient.ts announcements.ts presence.ts blocks.ts
+  googleAuth.ts         official posts, the admin client, announcement voting,
+                        online dots, inbox blocking, native Google sign-in
   profile.ts coins.ts identity.ts firstRun.ts toast.tsx theme.ts format.ts
   errors.ts uploads.ts useVoiceRecorder.ts whispersAi.ts haptics.ts types.ts
 components/             the design system + shared pieces (see below)
