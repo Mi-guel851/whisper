@@ -53,6 +53,8 @@ export function FeedCard({
   openImageUri,
   onToggleLike,
   onOpenThread,
+  onOpenThreadScreen,
+  threadOpen = false,
   onOpenMenu,
   onTip,
   saved = null,
@@ -72,7 +74,13 @@ export function FeedCard({
   imageState: FeedImageState;
   openImageUri?: string | null;
   onToggleLike: () => void;
+  /** The reply action: opens the thread under the card, with its composer. */
   onOpenThread: () => void;
+  /** The card's own surface: opens the whisper's own screen. Falls back to the
+   *  inline thread when the caller has no separate screen for it. */
+  onOpenThreadScreen?: () => void;
+  /** Whether the thread is open under this card — the reply icon reads active. */
+  threadOpen?: boolean;
   onOpenMenu: () => void;
   onTip: () => void;
   /**
@@ -129,7 +137,10 @@ export function FeedCard({
       strong={highlight}
     >
       <View style={styles.head}>
-        <Pressable onPress={onOpenThread} accessibilityLabel={`Open ${name}'s whisper`}>
+        <Pressable
+          onPress={onOpenThreadScreen ?? onOpenThread}
+          accessibilityLabel={`Open ${name}'s whisper`}
+        >
           <Avatar authorId={post.author_id} size={42} official={official} />
         </Pressable>
 
@@ -166,7 +177,7 @@ export function FeedCard({
           accessibilityLabel="More options"
           accessibilityRole="button"
         >
-          <Ionicons name="ellipsis-horizontal" size={18} color={COLORS.muted} />
+          <Ionicons name="ellipsis-horizontal" size={18} color={COLORS.subtle} />
         </Pressable>
       </View>
 
@@ -243,7 +254,7 @@ export function FeedCard({
             <Ionicons
               name={liked ? "heart" : "heart-outline"}
               size={17}
-              color={liked ? COLORS.rose : COLORS.muted}
+              color={liked ? COLORS.rose : COLORS.subtle}
             />
           </Animated.View>
           {likeCount > 0 && (
@@ -282,7 +293,7 @@ export function FeedCard({
             <Ionicons
               name={saved ? "bookmark" : "bookmark-outline"}
               size={16}
-              color={saved ? COLORS.cyan : COLORS.muted}
+              color={saved ? COLORS.cyan : COLORS.subtle}
             />
           </Pressable>
         )}
@@ -329,8 +340,8 @@ function ActionButton({
 }) {
   const content = (
     <>
-      <Ionicons name={icon} size={17} color={readOnly ? COLORS.subtle : COLORS.muted} />
-      {label ? <Text style={[styles.actionLabel, readOnly && { color: COLORS.subtle }]}>{label}</Text> : null}
+      <Ionicons name={icon} size={17} color={COLORS.subtle} />
+      {label ? <Text style={styles.actionLabel}>{label}</Text> : null}
     </>
   );
 
@@ -419,7 +430,7 @@ const styles = StyleSheet.create({
     borderTopColor: GLASS.border,
   },
   action: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4, paddingHorizontal: 2 },
-  actionLabel: { color: COLORS.muted, fontSize: 12, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  actionLabel: { color: COLORS.subtle, fontSize: 12, fontWeight: "700", fontVariant: ["tabular-nums"] },
   tip: { borderRadius: RADIUS.pill, overflow: "hidden" },
   tipGradient: {
     flexDirection: "row",

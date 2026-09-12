@@ -3,7 +3,16 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FeedCard, TopicChip } from "@/components/feed/FeedCard";
@@ -14,6 +23,7 @@ import { SearchField } from "@/components/Input";
 import { Logo } from "@/components/Logo";
 import { EmptyState, InlineLoader, Screen, SkeletonRow } from "@/components/Screen";
 import { Sheet, SheetRow } from "@/components/Sheet";
+import { WhispersAi } from "@/components/WhispersAi";
 import { CoinTipSheet } from "@/components/CoinTipSheet";
 import { TAB_BAR_SPACE } from "@/navigation/MainTabs";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
@@ -27,7 +37,9 @@ import {
   FEED_TOPICS,
   apiBase,
   blockAuthor,
+  createFeedPost,
   fetchFeedPage,
+  fetchThread,
   reportPost,
   sliceFallback,
   type FeedSort,
@@ -68,7 +80,7 @@ export function FeedScreen() {
      and typing each call for the destination it performs keeps both honest. */
   const tabNavigation = useNavigation<BottomTabNavigationProp<TabParamList>>();
   const insets = useSafeAreaInsets();
-  const { userId } = useSession();
+  const { userId, session } = useSession();
   const { showToast } = useToast();
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -97,6 +109,7 @@ export function FeedScreen() {
     savesAvailable,
     seed,
     markSaved,
+    noteReply,
     toggleLike,
     vote,
     openPhoto,
@@ -104,6 +117,14 @@ export function FeedScreen() {
   } = useFeedEngagement(userId);
 
   const [menuPost, setMenuPost] = useState<FeedPost | null>(null);
+  /* Threads are opened one at a time and cached once fetched — the site starts
+     every thread closed and pulls the replies on the first tap, which is what
+     keeps a page of whispers one request instead of twenty. */
+  const [threads, setThreads] = useState<Record<string, FeedPost[]>>({});
+  const [loadingThread, setLoadingThread] = useState<Record<string, boolean>>({});
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
   const [tipPost, setTipPost] = useState<FeedPost | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
 
@@ -261,6 +282,71 @@ export function FeedScreen() {
      `useFeedEngagement`. The card's callbacks below name them directly. */
 
   /* -----------------------------------------------------------------------
+     Threads
+     -------------------------------------------------------------------- */
+
+  const openThread = useCallback(
+    async (post: FeedPost) => {
+      /* Already open: the tap closes it. */
+      if (threads[post.id]) {
+        setThreads((value) => {
+          const next = { ...value };
+          delete next[post.id];
+          return next;
+        });
+        setReplyTo((value) => (value === post.id ? null : value));
+        setReplyDraft("");
+        return;
+      }
+
+      setLoadingThread((value) => ({ ...value, [post.id]: true }));
+      vibrate("tap");
+
+      const rows = await fetchThread(post.id);
+
+      /* The RPC returns the root as well; the card is already on screen. */
+      const replies = rows
+        .filter((row) => row.id !== post.id)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+
+      setLoadingThread((value) => ({ ...value, [post.id]: false }));
+      setThreads((value) => ({ ...value, [post.id]: replies }));
+      seed(replies, userId ?? "");
+    },
+    [seed, threads, userId]
+  );
+
+  const sendReply = useCallback(
+    async (parent: FeedPost) => {
+      const body = replyDraft.trim();
+      const token = session?.access_token;
+
+      if (!body || !token || replyBusy) return;
+
+      setReplyBusy(true);
+      const result = await createFeedPost({ body, parentPostId: parent.id }, token);
+      setReplyBusy(false);
+
+      if ("error" in result) {
+        showToast(result.error, { variant: "error" });
+        return;
+      }
+
+      setThreads((value) => ({
+        ...value,
+        [parent.id]: [...(value[parent.id] ?? []), result.post],
+      }));
+      seed([result.post], userId ?? "");
+      noteReply(parent.id);
+      setReplyDraft("");
+      setReplyTo(null);
+      vibrate("success");
+      showToast("Reply sent", { variant: "success" });
+    },
+    [noteReply, replyBusy, replyDraft, seed, session?.access_token, showToast, userId]
+  );
+
+  /* -----------------------------------------------------------------------
      Menu actions
      -------------------------------------------------------------------- */
 
@@ -416,6 +502,7 @@ export function FeedScreen() {
           />
         }
         renderItem={({ item }) => (
+          <View>
           <FeedCard
             post={item}
             myId={userId ?? ""}
@@ -430,12 +517,90 @@ export function FeedScreen() {
             onToggleLike={() => void toggleLike(item)}
             onVote={(index) => void vote(item, index)}
             onOpenGallery={() => void openPhoto(item)}
-            onOpenThread={() => navigation.navigate("SingleWhisper", { postId: item.id })}
+            onOpenThread={() => void openThread(item)}
             onOpenMenu={() => setMenuPost(item)}
             saved={savesAvailable ? Boolean(savedIds[item.id]) : null}
             onToggleSave={() => void toggleSaved(item)}
             onTip={() => setTipPost(item)}
+            threadOpen={Boolean(threads[item.id])}
+            onOpenThreadScreen={() => navigation.navigate("SingleWhisper", { postId: item.id })}
           />
+
+          {/* The thread, indented the way the site indents it — only one level,
+              because every reply avatar is the same size and a deeper staircase
+              is what makes a thread unreadable on a phone. */}
+          {loadingThread[item.id] && (
+            <View style={styles.threadLoading}>
+              <ActivityIndicator color={COLORS.cyan} size="small" />
+            </View>
+          )}
+
+          {(threads[item.id] ?? []).map((reply) => (
+            <View key={reply.id} style={styles.threadReply}>
+              <FeedCard
+                post={reply}
+                myId={userId ?? ""}
+                liked={Boolean(liked[reply.id])}
+                likeCount={likeCounts[reply.id] ?? 0}
+                replyCount={replyCounts[reply.id] ?? 0}
+                imageState={imageStates[reply.id] ?? "locked"}
+                openImageUri={imageUris[reply.id] ?? null}
+                pollCounts={pollCounts[reply.id]}
+                pollChoice={pollChoices[reply.id] ?? null}
+                pollPending={Boolean(pollPending[reply.id])}
+                onToggleLike={() => void toggleLike(reply)}
+                onVote={(index) => void vote(reply, index)}
+                onOpenGallery={() => void openPhoto(reply)}
+                onOpenThread={() => navigation.navigate("SingleWhisper", { postId: reply.id })}
+                onOpenMenu={() => setMenuPost(reply)}
+                saved={savesAvailable ? Boolean(savedIds[reply.id]) : null}
+                onToggleSave={() => void toggleSaved(reply)}
+                onTip={() => setTipPost(reply)}
+              />
+            </View>
+          ))}
+
+          {threads[item.id] && (
+            <View style={styles.replyBox}>
+              <TextInput
+                value={replyTo === item.id ? replyDraft : ""}
+                onFocus={() => setReplyTo(item.id)}
+                onChangeText={(value) => {
+                  setReplyTo(item.id);
+                  setReplyDraft(value.slice(0, 500));
+                }}
+                placeholder="Reply anonymously…"
+                placeholderTextColor={COLORS.subtle}
+                keyboardAppearance="dark"
+                multiline
+                style={styles.replyInput}
+              />
+
+              <Pressable
+                onPress={() => void sendReply(item)}
+                disabled={replyTo !== item.id || !replyDraft.trim() || replyBusy}
+                style={[
+                  styles.replySend,
+                  (replyTo !== item.id || !replyDraft.trim() || replyBusy) && styles.replySendOff,
+                ]}
+                accessibilityLabel="Send reply"
+              >
+                <LinearGradient
+                  colors={GRADIENT_COLORS}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.replySendGradient}
+                >
+                  {replyBusy ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Ionicons name="arrow-up" size={17} color="#ffffff" />
+                  )}
+                </LinearGradient>
+              </Pressable>
+            </View>
+          )}
+          </View>
         )}
         ListEmptyComponent={
           loading ? (
@@ -536,6 +701,10 @@ export function FeedScreen() {
         )}
       </Sheet>
 
+      {/* The assistant parks above the compose button — the site's drawer and
+          FAB comments both reserve that corner for it. */}
+      <WhispersAi bottomOffset={TAB_BAR_SPACE + 6 + 58 + 14} />
+
       <CoinTipSheet
         visible={Boolean(tipPost)}
         onClose={() => setTipPost(null)}
@@ -571,6 +740,32 @@ const styles = StyleSheet.create({
   sortText: { color: COLORS.muted, fontSize: 12.5, fontWeight: "700" },
   sortTextActive: { color: COLORS.text },
   topicRow: { gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+  threadLoading: { paddingVertical: 14, alignItems: "center" },
+  threadReply: { paddingLeft: 14 },
+  replyBox: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 16,
+    paddingLeft: 14,
+  },
+  replyInput: {
+    flex: 1,
+    maxHeight: 96,
+    color: COLORS.text,
+    fontSize: 14,
+    lineHeight: 19,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: GLASS.border,
+    backgroundColor: GLASS.background,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  replySend: { borderRadius: 20, overflow: "hidden" },
+  replySendOff: { opacity: 0.45 },
+  replySendGradient: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   fab: { position: "absolute", right: 18 },
   fabGradient: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center" },
 });

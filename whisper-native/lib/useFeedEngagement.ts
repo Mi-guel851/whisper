@@ -114,6 +114,15 @@ export function useFeedEngagement(viewerId: string | null) {
     });
   }, []);
 
+  /**
+   * Records a reply that this session just posted, so the thread count on the
+   * card moves without a refetch. The server's count replaces it on the next
+   * page load, which is the point of keeping it optimistic rather than official.
+   */
+  const noteReply = useCallback((parentPostId: string) => {
+    setReplyCounts((value) => ({ ...value, [parentPostId]: (value[parentPostId] ?? 0) + 1 }));
+  }, []);
+
   const toggleLike = useCallback(
     async (post: FeedPost) => {
       if (!viewerId) return;
@@ -253,6 +262,7 @@ export function useFeedEngagement(viewerId: string | null) {
     savesAvailable,
     seed,
     markSaved,
+    noteReply,
     toggleLike,
     vote,
     openPhoto,

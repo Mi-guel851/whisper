@@ -35,6 +35,10 @@ import { discardUpload, uploadImage } from "@/lib/uploads";
 
 type Props = NativeStackScreenProps<MainStackParamList, "CreateWhisper">;
 
+/* Mirrors FeedComposer.tsx on the web, which mirrors the route's own check. */
+const MAX_POLL_OPTIONS = 4;
+const MAX_POLL_OPTION_CHARS = 60;
+
 const BODY_LIMIT = 500;
 
 /**
@@ -79,6 +83,9 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
   const [balance, setBalance] = useState<number | null>(null);
   const [anonymous] = useState(true);
   const [topicsOpen, setTopicsOpen] = useState(false);
+  /* `null` means "no poll", an array means the builder is open. A photo and a
+     poll cannot ride together — see `togglePoll` and `pickImage`. */
+  const [pollOptions, setPollOptions] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -87,7 +94,27 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
 
   const cost = isReply ? FEED_REPLY_COST : FEED_POST_COST;
   const affordable = balance === null || balance >= cost;
-  const canPost = body.trim().length > 0 || Boolean(imageUrl);
+  const filledPoll = (pollOptions ?? []).map((option) => option.trim()).filter(Boolean);
+  const pollReady = !pollOptions || filledPoll.length >= 2;
+  const canPost = body.trim().length > 0 || Boolean(imageUrl) || filledPoll.length >= 2;
+
+  const setPollOption = (index: number, value: string) =>
+    setPollOptions((current) => {
+      if (!current) return current;
+      const next = [...current];
+      next[index] = value.slice(0, MAX_POLL_OPTION_CHARS);
+      return next;
+    });
+
+  const addPollOption = () =>
+    setPollOptions((current) =>
+      current && current.length < MAX_POLL_OPTIONS ? [...current, ""] : current
+    );
+
+  const removePollOption = (index: number) =>
+    setPollOptions((current) =>
+      current && current.length > 2 ? current.filter((_, position) => position !== index) : current
+    );
 
   const counter = useSharedValue(0);
   useEffect(() => {
@@ -100,6 +127,13 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
   }));
 
   const pickImage = useCallback(async () => {
+    if (pollOptions) {
+      setPollOptions(null);
+      showToast("Removed the poll — a whisper carries a photo or a poll, not both.", {
+        variant: "subtle",
+      });
+    }
+
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       showToast("Photo access is off. Turn it on in your settings.", { variant: "warning" });
@@ -171,7 +205,9 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
            one, a locked photo whisper has nothing to render, and the locked
            state would be a grey box rather than the picture. */
         imagePreview: url ? url.replace("/image/upload/", "/image/upload/w_24,e_blur:800,q_20/") : null,
-        pollOptions: null,
+        /* Padded to the server's ceiling here rather than trusted from the
+           builder: the route is the authority on the option count. */
+        pollOptions: pollOptions ? filledPoll.slice(0, MAX_POLL_OPTIONS) : null,
       },
       session.access_token
     );
@@ -204,6 +240,32 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
     setImage(null);
     setImageUrl(null);
   };
+
+  /**
+   * Photo or poll, never both.
+   *
+   * The web composer enforces this the same way. A post that carried both would
+   * need two spends and two refund paths in the server route, and the card has
+   * one place for a payload — so instead of silently dropping one, the tool that
+   * was just tapped wins and says so.
+   */
+  const togglePoll = useCallback(() => {
+    vibrate("tap");
+
+    if (pollOptions) {
+      setPollOptions(null);
+      return;
+    }
+
+    if (image) {
+      void discardImage();
+      showToast("Removed the photo — a whisper carries a photo or a poll, not both.", {
+        variant: "subtle",
+      });
+    }
+
+    setPollOptions(["", ""]);
+  }, [discardImage, image, pollOptions, showToast]);
 
   const topicLabel = useMemo(
     () => FEED_TOPICS.find((entry) => entry.key === topic) ?? null,
@@ -291,18 +353,92 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
             </>
           )}
 
+          {pollOptions && (
+            <GlassCard style={styles.pollCard} radius={RADIUS.lg}>
+              <View style={styles.pollInner}>
+                <View style={styles.pollHead}>
+                  <Ionicons name="stats-chart-outline" size={16} color={COLORS.cyan} />
+                  <Text style={styles.pollTitle}>Poll</Text>
+                  <Text style={styles.pollHint}>2–{MAX_POLL_OPTIONS} options</Text>
+                </View>
+
+                {pollOptions.map((option, index) => (
+                  <View key={index} style={styles.pollRow}>
+                    <Text style={styles.pollIndex}>{index + 1}</Text>
+                    <TextInput
+                      value={option}
+                      onChangeText={(value) => setPollOption(index, value)}
+                      placeholder={`Option ${index + 1}`}
+                      placeholderTextColor={COLORS.subtle}
+                      keyboardAppearance="dark"
+                      style={styles.pollInput}
+                    />
+                    {pollOptions.length > 2 && (
+                      <Pressable
+                        onPress={() => {
+                          vibrate("tap");
+                          removePollOption(index);
+                        }}
+                        hitSlop={10}
+                        accessibilityLabel={`Remove option ${index + 1}`}
+                      >
+                        <Ionicons name="close-circle" size={18} color={COLORS.muted} />
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+
+                {pollOptions.length < MAX_POLL_OPTIONS && (
+                  <Pressable
+                    onPress={() => {
+                      vibrate("tap");
+                      addPollOption();
+                    }}
+                    style={styles.pollAdd}
+                    accessibilityLabel="Add a poll option"
+                  >
+                    <Ionicons name="add-circle-outline" size={17} color={COLORS.purple} />
+                    <Text style={styles.pollAddText}>Add option</Text>
+                  </Pressable>
+                )}
+
+                {!pollReady && <Text style={styles.pollWarn}>A poll needs at least two options.</Text>}
+              </View>
+            </GlassCard>
+          )}
+
           <View style={styles.optionRow}>
-            <Pressable onPress={() => void pickImage()} style={styles.option} accessibilityLabel="Add a photo">
+            <Pressable
+              onPress={() => void pickImage()}
+              style={[styles.option, image && styles.optionActive]}
+              accessibilityLabel="Add a photo"
+            >
               <Ionicons name="image-outline" size={19} color={COLORS.cyan} />
               <Text style={styles.optionText}>Photo</Text>
             </Pressable>
+
+            {/* Polls are a root-post feature: the thread RPC does not compute
+                tallies for replies, so a poll down a thread would render bars
+                that never move. The server refuses it too. */}
+            {!isReply && (
+              <Pressable
+                onPress={togglePoll}
+                style={[styles.option, pollOptions && styles.optionActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: Boolean(pollOptions) }}
+                accessibilityLabel="Add a poll"
+              >
+                <Ionicons name="stats-chart-outline" size={19} color={COLORS.purple} />
+                <Text style={styles.optionText}>Poll</Text>
+              </Pressable>
+            )}
 
             <Pressable
               onPress={() => setTopicsOpen(true)}
               style={styles.option}
               accessibilityLabel="More options"
             >
-              <Ionicons name="ellipsis-horizontal" size={19} color={COLORS.purple} />
+              <Ionicons name="ellipsis-horizontal" size={19} color={COLORS.muted} />
               <Text style={styles.optionText}>More</Text>
             </Pressable>
           </View>
@@ -448,6 +584,28 @@ const styles = StyleSheet.create({
   topicRow: { gap: 8, paddingVertical: 4 },
 
   optionRow: { flexDirection: "row", gap: 10 },
+  optionActive: { borderColor: "rgba(34,211,238,0.5)", backgroundColor: "rgba(34,211,238,0.08)" },
+  pollCard: { marginTop: 14 },
+  pollInner: { padding: 14 },
+  pollHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  pollTitle: { color: COLORS.text, fontSize: 14, fontWeight: "800", flex: 1 },
+  pollHint: { color: COLORS.subtle, fontSize: 11.5, fontWeight: "600" },
+  pollRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  pollIndex: { color: COLORS.subtle, fontSize: 12, fontWeight: "800", width: 12, textAlign: "center" },
+  pollInput: { flex: 1, color: COLORS.text, fontSize: 14, paddingVertical: 11 },
+  pollAdd: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 6 },
+  pollAddText: { color: COLORS.purple, fontSize: 13, fontWeight: "700" },
+  pollWarn: { color: COLORS.warning, fontSize: 12, marginTop: 2 },
   option: {
     flexDirection: "row",
     alignItems: "center",
