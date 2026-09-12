@@ -28,6 +28,7 @@ import {
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
+import { presenceManager } from "@/lib/presence";
 import { useToast } from "@/lib/toast";
 import { CARD_SHADOW, COLORS, GLASS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/lib/theme";
 
@@ -75,6 +76,8 @@ export default function Friends() {
 
   const [loading, setLoading] = useState(true);
   const [friends, setFriends] = useState<FriendRow[]>([]);
+  /* Who is online right now — the web friends page's presence dots. */
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [incoming, setIncoming] = useState<FriendRequestRow[]>([]);
   const [outgoing, setOutgoing] = useState<FriendRequestRow[]>([]);
   const [people, setPeople] = useState<FriendProfile[]>([]);
@@ -127,6 +130,11 @@ export default function Friends() {
     useCallback(() => {
       if (!userId) return;
       void refreshAll();
+      /* Presence: subscribe before the handshake, like the web friends page. */
+      const unsubscribePresence = presenceManager.subscribe((users) => {
+        setOnlineIds(new Set(users.map((user) => user.id)));
+      });
+      void presenceManager.connect(userId);
 
       /* Listener first, then the refresh lands whenever data arrives — the
          same ordering the web page uses for its channels. */
@@ -151,6 +159,7 @@ export default function Friends() {
       return () => {
         supabase.removeChannel(requestChannel);
         supabase.removeChannel(friendsChannel);
+        unsubscribePresence();
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId])
@@ -346,7 +355,10 @@ export default function Friends() {
           renderItem={({ item }) => (
             <View style={styles.card}>
               <View style={styles.personRow}>
-                <Avatar authorId={item.friend_id} size={44} imageUrl={item.friend?.avatar_url} />
+                <View>
+                  <Avatar authorId={item.friend_id} size={44} imageUrl={item.friend?.avatar_url} />
+                  {onlineIds.has(item.friend_id) ? <View style={styles.onlineDot} /> : null}
+                </View>
                 <View style={styles.personText}>
                   <Text style={styles.personName} numberOfLines={1}>
                     {item.friend?.display_name?.trim() || item.friend?.username || "Anonymous user"}
@@ -591,6 +603,17 @@ const makeStyles = () => StyleSheet.create({
     borderWidth: 1,
     borderColor: GLASS.border,
     ...CARD_SHADOW,
+  },
+  onlineDot: {
+    position: "absolute",
+    right: 1,
+    bottom: 1,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: COLORS.success,
+    borderWidth: 2.5,
+    borderColor: COLORS.background,
   },
   personRow: { flexDirection: "row", alignItems: "center", gap: 11 },
   personText: { flex: 1, gap: 1 },

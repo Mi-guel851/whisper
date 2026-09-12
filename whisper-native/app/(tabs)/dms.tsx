@@ -18,6 +18,7 @@ import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
 import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
+import { presenceManager } from "@/lib/presence";
 import type { ConversationRow, DirectMessage } from "@/lib/types";
 
 /**
@@ -46,6 +47,10 @@ import type { ConversationRow, DirectMessage } from "@/lib/types";
  * paywall after tapping is the thing that makes people stop tapping.
  */
 export default function Dms() {
+  /* Who is online right now — the web inbox's presence dots, from the same
+     shared channel. Listener first, then connect: a later channel rebuild
+     still reaches this screen without it re-subscribing. */
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const styles = useStyles(makeStyles);
   const { userId } = useSession();
   const { showToast } = useToast();
@@ -107,6 +112,33 @@ export default function Dms() {
 
   useEffect(() => {
     void load();
+
+  /* Presence: subscribe before the handshake so a channel rebuild still
+
+     reaches these dots (the web inbox's exact wiring). */
+
+  useEffect(() => {
+
+    if (!userId) {
+
+      setOnlineIds(new Set());
+
+      return;
+
+    }
+
+    const unsubscribe = presenceManager.subscribe((users) => {
+
+      setOnlineIds(new Set(users.map((user) => user.id)));
+
+    });
+
+    void presenceManager.connect(userId);
+
+    return unsubscribe;
+
+  }, [userId]);
+
   }, [load]);
 
   /* Refetch on focus: a message read in a thread has to clear its badge in the
@@ -215,6 +247,7 @@ export default function Dms() {
             preview={previews[item.id]}
             unreadCount={unread[item.id] ?? 0}
             locked={locked.has(item.id)}
+            online={userId ? onlineIds.has(otherParticipant(item, userId) ?? "") : false}
             onPress={() => {
               vibrate("tap");
               const other = userId ? otherParticipant(item, userId) : null;
@@ -258,6 +291,7 @@ function ConversationRowItem({
   preview,
   unreadCount,
   locked,
+  online,
   onPress,
 }: {
   conversation: ConversationRow;
@@ -266,6 +300,7 @@ function ConversationRowItem({
   unreadCount: number;
   locked: boolean;
   onPress: () => void;
+  online?: boolean;
 }) {
   const styles = useStyles(makeStyles);
   const other = otherParticipant(conversation, myId) ?? "";
@@ -294,7 +329,10 @@ function ConversationRowItem({
         style={[styles.row, unreadCount > 0 && styles.rowUnread]}
       >
         <View style={styles.rowInner}>
-          <Avatar authorId={other} size={50} />
+          <View>
+            <Avatar authorId={other} size={50} />
+            {online ? <View style={styles.onlineDot} /> : null}
+          </View>
 
           <View style={styles.rowText}>
             <View style={styles.rowTop}>
@@ -362,6 +400,17 @@ const makeStyles = () => StyleSheet.create({
     overflow: "hidden",
   },
   rowUnread: { borderColor: "rgba(34,211,238,0.3)" },
+  onlineDot: {
+    position: "absolute",
+    right: 1,
+    bottom: 1,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: COLORS.success,
+    borderWidth: 2.5,
+    borderColor: COLORS.surface,
+  },
   rowInner: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12 },
   rowText: { flex: 1, gap: 4 },
   rowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
