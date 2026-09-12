@@ -1,7 +1,9 @@
 import { Redirect } from "expo-router";
+import { useEffect, useState } from "react";
 
 import { LoadingScreen } from "@/components/Screen";
 import { Background } from "@/components/Background";
+import { isProfileComplete } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { COLORS } from "@/lib/theme";
 import { StyleSheet, View } from "react-native";
@@ -17,11 +19,41 @@ import { StyleSheet, View } from "react-native";
  * `Redirect` rather than an effect-driven `router.replace`: the declarative
  * form cannot double-fire, and a redirect that fires twice is how a back
  * gesture lands on a screen that should have been replaced.
+ *
+ * THE THIRD BRANCH, AND WHY IT HAS TO LIVE HERE
+ *
+ * An account whose profile step is unfinished — no username, no country, no
+ * recovery phrase, `profile_completed` still false — cannot message anyone:
+ * the database's own trigger refuses those rows, and forgot-password would
+ * have nothing to verify. This is the app's single chokepoint for that gate,
+ * the same job the web's `/complete-profile` redirect does at sign-in: every
+ * signed-in entry (app open, deep link, confirmation-link return) passes
+ * through here exactly once, so the check cannot be forgotten somewhere it
+ * matters. `settings` re-checks defensively, but this fork is the gate.
  */
 export default function Index() {
-  const { session, loading } = useSession();
+  const { session, userId, loading } = useSession();
+  const [profileCheck, setProfileCheck] = useState<"checking" | "complete" | "incomplete">("checking");
 
-  if (loading) {
+  useEffect(() => {
+    let alive = true;
+
+    async function check() {
+      if (!userId) {
+        setProfileCheck("checking");
+        return;
+      }
+      const complete = await isProfileComplete(userId);
+      if (alive) setProfileCheck(complete ? "complete" : "incomplete");
+    }
+
+    void check();
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+
+  if (loading || (session && profileCheck === "checking")) {
     return (
       <View style={styles.root}>
         <Background />
@@ -31,6 +63,9 @@ export default function Index() {
   }
 
   if (session) {
+    if (profileCheck === "incomplete") {
+      return <Redirect href="/complete-profile" />;
+    }
     return <Redirect href="/(tabs)/feed" />;
   }
 

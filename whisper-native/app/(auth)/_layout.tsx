@@ -48,7 +48,11 @@ export default function AuthLayout() {
   }
 
   if (session) {
-    return <Redirect href="/(tabs)/feed" />;
+    /* Through the fork rather than straight to the tabs: the fork is the
+       app's one profile-completeness gate, and an account that confirmed its
+       email but hasn't finished the profile step must land there, not in a
+       feed it cannot post to yet. */
+    return <Redirect href="/" />;
   }
 
   return (

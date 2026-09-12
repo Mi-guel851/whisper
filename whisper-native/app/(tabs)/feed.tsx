@@ -34,17 +34,98 @@ import {
   blockAuthor,
   createFeedPost,
   fetchFeedPage,
+  fetchSpotlight,
   fetchThread,
   reportPost,
   sliceFallback,
   type FeedSort,
 } from "@/lib/feed";
+import { dailyQuestionFor } from "@/lib/games";
 import type { FeedPost } from "@/lib/types";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { TAB_BAR_SPACE, COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, glow, GRADIENT_COLORS, GRADIENT_END, GRADIENT_START, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
+
+/**
+ * The Daily Whisper spotlight — the question of the day, plus the post the
+ * day's engagement lifted highest.
+ *
+ * WHY THIS CARD EXISTS AT ALL
+ *
+ * The web feed leads with the same pair (`DailyQuestionCard` +
+ * `WhisperOfTheDay`), for the same reason: a feed of other people's whispers
+ * has a cold first second. A question addressed to the reader gives the scroll
+ * a first thing to react to, and the spotlight proves that reacting is worth
+ * it — yesterday's answers are right there.
+ *
+ * The question itself is a pure function of the date, computed on mount — it
+ * costs no request and cannot be stale. The spotlight is one RPC; when there
+ * is nothing to crown yet (an empty morning) the card is the question alone,
+ * which is still a complete feature rather than a half-rendered one.
+ */
+function DailySpotlightCard({
+  question,
+  spotlight,
+}: {
+  question: string;
+  spotlight: FeedPost | null;
+}) {
+  return (
+    <View style={styles.spotlight}>
+      <View style={[styles.spotlightInner, glow(COLORS.purple, 22, 0.16)]}>
+        <View style={styles.spotlightHead}>
+          <LinearGradient
+            colors={GRADIENT_COLORS}
+            start={GRADIENT_START}
+            end={GRADIENT_END}
+            style={styles.spotlightMark}
+          >
+            <Ionicons name="sparkles" size={13} color={COLORS.background} />
+          </LinearGradient>
+          <Text style={styles.spotlightEyebrow}>Daily Whisper</Text>
+          <Text style={styles.spotlightDate}>
+            {new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}
+          </Text>
+        </View>
+
+        <Text style={styles.spotlightQuestion}>{question}</Text>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            vibrate("tap");
+            router.push("/create-whisper");
+          }}
+          style={styles.spotlightCta}
+        >
+          <Text style={styles.spotlightCtaText}>Whisper it</Text>
+          <Ionicons name="arrow-forward" size={13} color={COLORS.background} />
+        </Pressable>
+
+        {spotlight ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              vibrate("tap");
+              router.push({ pathname: "/whisper-detail", params: { postId: spotlight.id } });
+            }}
+            style={styles.dayPost}
+          >
+            <View style={styles.dayPostHead}>
+              <Text style={styles.dayPostLabel}>Whisper of the day</Text>
+              <Ionicons name="chevron-forward" size={13} color={COLORS.subtle} />
+            </View>
+            <Text style={styles.dayPostBody} numberOfLines={2}>
+              {spotlight.body}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
 
 /**
  * The feed.
@@ -117,6 +198,14 @@ export default function Feed() {
   const [replyBusy, setReplyBusy] = useState(false);
   const [tipPost, setTipPost] = useState<FeedPost | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
+
+  /* The Daily Whisper. The question is a pure function of the date — same
+     question for everyone, same day, no request — and the spotlight post is
+     the one the day's engagement lifted highest (null before anyone has
+     engaged, or on a server without the RPC). Both sit at the very top of the
+     feed, the way the web's FeedClient places them. */
+  const [spotlight, setSpotlight] = useState<FeedPost | null>(null);
+  const dailyQuestion = useMemo(() => dailyQuestionFor(new Date()), []);
 
   /* The bell's badge is the whisper inbox plus the alert history — the two
      lists the Notifications tab holds, which is exactly what the tab bar shows
@@ -216,6 +305,19 @@ export default function Feed() {
   useEffect(() => {
     if (userId) void refreshBadges(userId);
   }, [userId]);
+
+  /* The spotlight loads with the feed and again whenever the pull-to-refresh
+     runs — it is "of the day", but a refresh that didn't refresh it would be
+     one more thing to explain. */
+  useEffect(() => {
+    let alive = true;
+    void fetchSpotlight().then((post) => {
+      if (alive) setSpotlight(post);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   /* The badge store's subscriptions, started once per signed-in user. */
   useEffect(() => {
@@ -467,6 +569,7 @@ export default function Feed() {
                 </Pressable>
               )}
             />
+            <DailySpotlightCard question={dailyQuestion} spotlight={spotlight} />
           </>
         }
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: TAB_BAR_SPACE + 40 }}
@@ -480,6 +583,7 @@ export default function Feed() {
               setRefreshing(true);
               setHasMore(true);
               void load({ reset: true });
+              void fetchSpotlight().then((post) => setSpotlight(post));
               if (userId) void refreshBadges(userId);
             }}
           />
@@ -705,6 +809,67 @@ export default function Feed() {
 }
 
 const styles = StyleSheet.create({
+  spotlight: { marginTop: 14, marginBottom: 6 },
+  spotlightInner: {
+    padding: 16,
+    gap: 10,
+    borderRadius: RADIUS.xl,
+    backgroundColor: GLASS.background,
+    borderWidth: 1,
+    borderColor: "rgba(168,85,247,0.32)",
+    ...CARD_SHADOW,
+  },
+  spotlightHead: { flexDirection: "row", alignItems: "center", gap: 7 },
+  spotlightMark: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spotlightEyebrow: {
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.3,
+    textTransform: "uppercase",
+  },
+  spotlightDate: { marginLeft: "auto", color: COLORS.subtle, fontSize: 10.5, fontWeight: "700" },
+  spotlightQuestion: {
+    color: COLORS.text,
+    fontSize: 16.5,
+    fontWeight: "800",
+    lineHeight: 23,
+  },
+  spotlightCta: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(34,211,238,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.32)",
+  },
+  spotlightCtaText: { color: COLORS.cyan, fontSize: 12.5, fontWeight: "900" },
+  dayPost: {
+    marginTop: 2,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.07)",
+    gap: 4,
+  },
+  dayPostHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dayPostLabel: {
+    color: COLORS.purple,
+    fontSize: 10.5,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+  },
+  dayPostBody: { color: COLORS.muted, fontSize: 13, lineHeight: 18, fontStyle: "italic" },
   header: { paddingBottom: 4 },
   headerTop: {
     flexDirection: "row",

@@ -13,7 +13,7 @@ import { Sheet, SheetRow } from "@/components/Sheet";
 import { blockAuthor, fetchMyPosts, reportPost } from "@/lib/feed";
 import { timeAgo } from "@/lib/format";
 import { useAnonName } from "@/lib/identity";
-import { fetchProfile, whisperLink } from "@/lib/profile";
+import { fetchProfile, whisperLink, whisperLinkLabel } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
 import { COLORS, GLASS, RADIUS } from "@/lib/theme";
@@ -84,16 +84,18 @@ export default function UserProfile() {
 
           {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
 
-          {!isSelf && profile?.username ? (
+          {!isSelf ? (
             <>
               <GradientButton
                 label="Send an anonymous Whisper"
                 icon="mail-outline"
                 fullWidth
-                onPress={() => {
-                  void Clipboard.setStringAsync(link);
-                  showToast("Link copied — open it to send anonymously", { variant: "success" });
-                }}
+                onPress={() =>
+                  router.push({
+                    pathname: "/whisper",
+                    params: profile?.username ? { username: profile.username } : { userId: subjectId },
+                  })
+                }
                 style={styles.cta}
               />
 
@@ -106,7 +108,7 @@ export default function UserProfile() {
               >
                 <Ionicons name="link-outline" size={14} color={COLORS.cyan} />
                 <Text style={styles.linkText} numberOfLines={1}>
-                  whisper.app/u/{profile.username}
+                  {whisperLinkLabel(profile?.username)}
                 </Text>
               </Pressable>
             </>

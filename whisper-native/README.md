@@ -57,22 +57,36 @@ old key is the most common way "it works for me but not on the device" happens.
 ```
 app/                    the route tree (expo-router, file-based)
   _layout.tsx           providers + root Stack; badges, push taps, the loader
-  index.tsx             the fork: session ? (tabs)/feed : (auth)/login
+  index.tsx             the fork: profile-complete gate → feed / complete-profile / login
   (auth)/
-    _layout.tsx         the pre-account guard: redirects signed-in users
+    _layout.tsx         the pre-account guard: redirects signed-in users (through the fork)
     onboarding.tsx      the animated intro — "Say it. Anonymously."
     login.tsx           signInWithPassword, inline errors, forgot-password link
     signup.tsx          signUp with the username in metadata
   (tabs)/
     _layout.tsx         the floating glass tab bar (Feed · DMs · Alerts · Profile)
-    feed.tsx            the public feed: four sorts, topics, search, threads
+    feed.tsx            the public feed: four sorts, topics, search, threads,
+                        the Daily Whisper spotlight card
     dms.tsx             the inbox: conversations, previews, unread counts
     notifications.tsx   the whisper inbox + the durable alert history
     profile.tsx         identity, whisper link, wallet, your posts
+  complete-profile.tsx  the post-signup gate: username, country + phone, consent,
+                        recovery phrase → profile_completed = true
   coins.tsx             the coin store (Paystack) + transfer sheet + history
   create-whisper.tsx    the composer (post or reply; photo, poll, topic)
-  conversation.tsx      one chat: bubbles, voice notes, view-once, the 40-coin gate
+  conversation.tsx      one chat: bubbles, voice notes, view-once, the 40-coin gate,
+                        message pinning (bar + duration sheet + realtime)
   whisper-detail.tsx    one post, its replies, the free reply composer
+  whisper.tsx           send an anonymous Whisper to one person (the web's
+                        /u/[username] form: sender context, Cloudinary photo)
+  friends.tsx           friends / requests / discover tabs, start-chat, unfriend
+  games.tsx             Whisper Games: share or copy a prompt with your link
+  discover.tsx          the feature + utility hub
+  legal.tsx             Privacy / Terms / Community Guidelines (from lib/legal.ts)
+  help.tsx              Help Center: guides + FAQ accordion
+  support.tsx           Contact Support: category + subject + message → mailto
+  feedback.tsx          star rating + message → mailto
+  favorites.tsx         the web's "Coming Soon" page, natively
   settings.tsx          push switches, wallet address, log out
   forgot-password.tsx   reset by username + recovery phrase
   saved.tsx             saved posts (the feed's bookmark)
@@ -84,7 +98,13 @@ lib/                    data access, one file per surface, plus theme/format/err
   useFeedEngagement.ts  likes, poll votes, photo claims and saves, shared by the
                         feed and the saved-posts screen
   whispers.ts           anonymous whispers (public.messages) + paid sender hints
-  dms.ts                conversations, direct messages, view-once claims
+  dms.ts                conversations, direct messages, view-once claims, pins
+  friends.ts            the friends surface: roster, requests, discover scan, chats
+  games.ts              Whisper Games, the Daily Whisper pool + seeded rotation,
+                        and the feed's question of the day
+  legal.ts              the legal documents, verbatim from the web pages
+  countries.ts          the complete-profile country list (the web's, one for one)
+  consent.ts            the consent row (record_consent RPC) complete-profile writes
   notifications.ts      the durable alert history
   paystack.ts           the coin checkout
   push.ts               device tokens, taps, channels

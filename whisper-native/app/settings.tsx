@@ -82,6 +82,22 @@ export default function Settings() {
     void load();
   }, [load]);
 
+  /* The complete-profile gate, checked once per visit. An account that signed
+     up on the website may already be complete; the flag only reroutes people
+     who still owe the profile step — username, country and recovery phrase —
+     because without them the database blocks messaging and forgot-password
+     has nothing to verify. Same redirect target as the web app's
+     `/complete-profile`; here it replaces settings so back cannot land on a
+     screen whose account is not usable yet. */
+  const routedToCompletion = React.useRef(false);
+  useEffect(() => {
+    if (!profile || routedToCompletion.current) return;
+    if (profile.profile_completed === false) {
+      routedToCompletion.current = true;
+      router.replace("/complete-profile");
+    }
+  }, [profile]);
+
   const flip = async (key: keyof NotificationPrefs, value: boolean) => {
     if (!userId || savingKey) return;
 
@@ -278,6 +294,12 @@ export default function Settings() {
               {session?.user?.email ?? "—"}
             </Text>
           </View>
+          <SheetRow
+            icon="compass-outline"
+            label="Discover Whisper"
+            detail="Games, friends and more"
+            onPress={() => router.push("/discover")}
+          />
           <SheetRow
             icon="globe-outline"
             label="Open the website"

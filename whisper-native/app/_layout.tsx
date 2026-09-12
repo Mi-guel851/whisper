@@ -164,6 +164,30 @@ function RootShell() {
       <Stack.Screen name="forgot-password" />
       <Stack.Screen name="saved" />
       <Stack.Screen name="u" />
+
+      {/* Phase-2 surfaces. complete-profile is a full stop, not a modal: it
+          gates the account until the profile trigger lets messaging through.
+          The whisper composer presents as a modal, like the web's own form
+          feels — a card over the profile, dismissible, nothing underneath
+          navigated away from. The hub pages (discover / games / friends /
+          legal / help / support / feedback / favorites) push as ordinary
+          screens, the way the web app routes to them. */}
+      <Stack.Screen
+        name="complete-profile"
+        options={{ gestureEnabled: false, headerBackVisible: false }}
+      />
+      <Stack.Screen
+        name="whisper"
+        options={{ presentation: "modal", animation: "slide_from_bottom" }}
+      />
+      <Stack.Screen name="friends" />
+      <Stack.Screen name="games" />
+      <Stack.Screen name="discover" />
+      <Stack.Screen name="legal" />
+      <Stack.Screen name="help" />
+      <Stack.Screen name="support" />
+      <Stack.Screen name="feedback" />
+      <Stack.Screen name="favorites" />
     </Stack>
   );
 }

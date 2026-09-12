@@ -570,6 +570,27 @@ export function isCreatorPost(post: Pick<FeedPost, "author_role">): boolean {
   return post.author_role === "whisper_creator";
 }
 
+let spotlightAvailable: boolean | null = null;
+
+/**
+ * "Whisper of the Day" — the single post the day's engagement lifted highest.
+ * Null when nothing has been engaged with yet, or when the server predates the
+ * RPC (cached, the same way the page RPC is: an absent function must not be
+ * retried on every refresh).
+ */
+export async function fetchSpotlight(): Promise<FeedPost | null> {
+  if (spotlightAvailable === false) return null;
+
+  const { data, error } = await supabase.rpc("public_feed_spotlight");
+  if (error) {
+    if (isMissingSchema(error)) spotlightAvailable = false;
+    return null;
+  }
+  const rows = (data || []) as FeedPost[];
+  return rows[0] ?? null;
+}
+
+
 export const OFFICIAL_IDENTITY = {
   name: "Whisper",
   handle: "@whisper",

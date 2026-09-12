@@ -39,8 +39,12 @@ import {
   sendMessage,
   sendPhotoMessage,
   sendVoiceNote,
+  fetchPinnedMessageIds,
+  pinMessage,
+  PIN_DURATIONS,
   stampConversationRead,
   sweepExpiredPins,
+  unpinMessage,
   unlockChat,
 } from "@/lib/dms";
 import { safeErrorMessage } from "@/lib/errors";
@@ -58,6 +62,14 @@ import type { ConversationRow, DirectMessage, VoiceRecording } from "@/lib/types
 type Row =
   | { kind: "message"; id: string; message: DirectMessage }
   | { kind: "divider"; id: string; label: string };
+
+/** The one-line preview the pin bar and the duration sheet show. */
+function messagePreview(message: DirectMessage): string {
+  if (message.content?.trim()) return message.content.trim();
+  if (message.audio_path) return "Voice note";
+  if (message.image_path || message.image_viewed_at) return "Photo";
+  return "Message";
+}
 
 /**
  * One conversation.
@@ -114,6 +126,13 @@ export default function Conversation() {
   const [otherTyping, setOtherTyping] = useState(false);
   const [menuMessage, setMenuMessage] = useState<DirectMessage | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DirectMessage | null>(null);
+  /* Pins: which messages in this thread are pinned, the message awaiting a
+     duration pick, and where the header bar's cycle is. The bar advances only
+     when there is more than one pin — a single pin that cycles is a glitch,
+     not a feature. */
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [pinDurationFor, setPinDurationFor] = useState<DirectMessage | null>(null);
+  const [pinCursor, setPinCursor] = useState(0);
 
   const listRef = useRef<FlatList<Row>>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -159,6 +178,7 @@ export default function Conversation() {
        thread is opened rather than by a cron nobody watches. Fire and forget —
        housekeeping must never hold up the transcript. */
     void sweepExpiredPins(conversationId).catch(() => {});
+    void fetchPinnedMessageIds(conversationId).then((ids) => setPinnedIds(ids));
 
     const incomingIds = transcript
       .filter((message) => message.sender_id !== userId && !message.delivered_at)
@@ -234,6 +254,24 @@ export default function Conversation() {
           if (removed?.id) setMessages((current) => current.filter((message) => message.id !== removed.id));
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "pinned_messages", filter: `conversation_id=eq.${conversationId}` },
+        (payload) => {
+          const row = payload.new as { message_id: string };
+          vibrate("tap");
+          setPinnedIds((current) => new Set([...current, row.message_id]));
+        }
+      )
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "pinned_messages" }, (payload) => {
+        const row = payload.old as { message_id?: string };
+        if (!row?.message_id) return;
+        setPinnedIds((current) => {
+          const next = new Set(current);
+          next.delete(row.message_id as string);
+          return next;
+        });
+      })
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState() as Record<string, { user_id?: string; typing?: boolean }[]>;
         const typing = Object.values(state)
@@ -454,6 +492,61 @@ export default function Conversation() {
     return output;
   }, [messages]);
 
+  /* The pinned bar's data: pinned messages in transcript order, the one the
+     bar is showing, and the cycle. Only live messages count — a pin on a
+     deleted row would point at nothing. */
+  const pinnedMessages = useMemo(
+    () => messages.filter((message) => pinnedIds.has(message.id)),
+    [messages, pinnedIds]
+  );
+  const activePin = pinnedMessages.length > 0 ? pinnedMessages[pinCursor % pinnedMessages.length] : null;
+
+  const jumpToNextPin = useCallback(() => {
+    vibrate("tap");
+    if (pinnedMessages.length > 1) setPinCursor((cursor) => cursor + 1);
+  }, [pinnedMessages.length]);
+
+  const togglePin = useCallback(
+    (message: DirectMessage) => {
+      if (pinnedIds.has(message.id)) {
+        void unpinMessage(conversationId, message.id).then((result) => {
+          if (!result.ok) {
+            showToast(result.error || "Couldn't unpin that message.", { variant: "error" });
+            return;
+          }
+          setPinnedIds((current) => {
+            const next = new Set(current);
+            next.delete(message.id);
+            return next;
+          });
+          showToast("Unpinned", { variant: "subtle" });
+        });
+        return;
+      }
+      /* No duration yet — the sheet asks how long, exactly as the web chat's
+         own pin flow does before it writes the row. */
+      setMenuMessage(null);
+      setPinDurationFor(message);
+    },
+    [conversationId, pinnedIds, showToast]
+  );
+
+  const confirmPin = useCallback(
+    (message: DirectMessage, durationHours: number | null) => {
+      setPinDurationFor(null);
+      if (!userId) return;
+      void pinMessage(conversationId, message.id, userId, durationHours).then((result) => {
+        if (!result.ok) {
+          showToast(result.error || "Couldn't pin that message.", { variant: "error" });
+          return;
+        }
+        setPinnedIds((current) => new Set([...current, message.id]));
+        showToast(durationHours === null ? "Pinned" : `Pinned for ${PIN_DURATIONS.find((d) => d.hours === durationHours)?.label ?? "a while"}`, { variant: "subtle" });
+      });
+    },
+    [conversationId, showToast, userId]
+  );
+
   /* New messages land at the bottom, so the list stays pinned there. `inverted`
      is deliberately not used: the transcript is chronological, and a day divider
      only means anything in that direction. */
@@ -501,6 +594,41 @@ export default function Conversation() {
         </View>
       </BlurView>
 
+      {/* The pinned bar — the web chat's bar under the header, cycling through
+          every pin this thread holds. Tapping it advances; the crossed-out pin
+          unpins the one on show. */}
+      {activePin ? (
+        <View style={styles.pinBar}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              pinnedMessages.length > 1 ? `Jump to pinned message, ${pinCursor % pinnedMessages.length + 1} of ${pinnedMessages.length}` : "Jump to pinned message"
+            }
+            onPress={jumpToNextPin}
+            style={styles.pinBarMain}
+          >
+            <Ionicons name="pin" size={13} color={COLORS.warning} />
+            <Text style={styles.pinBarText} numberOfLines={1}>
+              {messagePreview(activePin)}
+            </Text>
+            {pinnedMessages.length > 1 ? (
+              <Text style={styles.pinBarCount}>
+                {(pinCursor % pinnedMessages.length) + 1}/{pinnedMessages.length}
+              </Text>
+            ) : null}
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Unpin this message"
+            onPress={() => togglePin(activePin)}
+            style={styles.pinBarUnpin}
+            hitSlop={6}
+          >
+            <Ionicons name="close" size={15} color={COLORS.warning} />
+          </Pressable>
+        </View>
+      ) : null}
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -523,6 +651,7 @@ export default function Conversation() {
                 claimedPhotoUri={claimedPhotos[item.message.id]}
                 claimedAudioUri={claimedAudio[item.message.id]}
                 claiming={Boolean(claiming[item.message.id])}
+                pinned={pinnedIds.has(item.message.id)}
                 onClaim={() => void openViewOnce(item.message)}
                 onLongPress={() => setMenuMessage(item.message)}
               />
@@ -636,6 +765,24 @@ export default function Conversation() {
                 router.push({ pathname: "/u", params: { userId: otherId } });
               }}
             />
+            {/* A pinned message un-pins from here; an unpinned one opens the
+                duration sheet. The web hides the action entirely when the
+                message is already pinned — showing the opposite action is the
+                same honesty with one less dead row. */}
+            <SheetRow
+              icon={pinnedIds.has(menuMessage.id) ? "close-circle" : "pin-outline"}
+              label={pinnedIds.has(menuMessage.id) ? "Unpin message" : "Pin message"}
+              detail={
+                pinnedIds.has(menuMessage.id)
+                  ? undefined
+                  : "Keeps it at the top of this chat for a while"
+              }
+              onPress={() => {
+                const target = menuMessage;
+                setMenuMessage(null);
+                if (target) togglePin(target);
+              }}
+            />
             {menuMessage.sender_id === userId && (
               <SheetRow
                 icon="trash-outline"
@@ -650,6 +797,26 @@ export default function Conversation() {
             )}
           </View>
         )}
+      </Sheet>
+
+      {/* The duration pick — the web chat's pin dialog, same four choices in
+          the same order. */}
+      <Sheet visible={Boolean(pinDurationFor)} onClose={() => setPinDurationFor(null)} title="Pin for how long?">
+        {pinDurationFor ? (
+          <View style={{ paddingBottom: 10 }}>
+            <Text style={styles.pinPreview} numberOfLines={2}>
+              {messagePreview(pinDurationFor)}
+            </Text>
+            {PIN_DURATIONS.map((duration) => (
+              <SheetRow
+                key={duration.label}
+                icon="time-outline"
+                label={duration.label}
+                onPress={() => confirmPin(pinDurationFor, duration.hours)}
+              />
+            ))}
+          </View>
+        ) : null}
       </Sheet>
 
       <ConfirmSheet
@@ -706,6 +873,7 @@ function MessageBubble({
   claimedPhotoUri,
   claimedAudioUri,
   claiming,
+  pinned,
   onClaim,
   onLongPress,
 }: {
@@ -714,6 +882,7 @@ function MessageBubble({
   claimedPhotoUri?: string;
   claimedAudioUri?: string;
   claiming: boolean;
+  pinned: boolean;
   onClaim: () => void;
   onLongPress: () => void;
 }) {
@@ -767,6 +936,7 @@ function MessageBubble({
       )}
 
       <View style={[styles.metaRow, mine && styles.metaRowMine]}>
+        {pinned ? <Ionicons name="pin" size={10} color={COLORS.warning} /> : null}
         <Text style={styles.meta}>{clockTime(message.created_at)}</Text>
         {mine && (
           <Ionicons
@@ -948,6 +1118,36 @@ function LockedBanner({
 }
 
 const styles = StyleSheet.create({
+  pinBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(245,158,11,0.28)",
+  },
+  pinBarMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 },
+  pinBarText: { flex: 1, color: COLORS.warning, fontSize: 12, fontWeight: "700" },
+  pinBarCount: { color: COLORS.warning, fontSize: 11, fontWeight: "800", opacity: 0.65 },
+  pinBarUnpin: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(245,158,11,0.12)",
+  },
+  pinPreview: {
+    color: COLORS.muted,
+    fontSize: 12.5,
+    lineHeight: 18,
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+    fontStyle: "italic",
+  },
+
   root: { flex: 1, backgroundColor: COLORS.background },
   flex: { flex: 1 },
 
