@@ -124,11 +124,6 @@ export default function Feed() {
   const badges = useBadges();
   const notifications = badges.unreadWhispers + badges.unreadAlerts;
 
-  /* The table-read fallback returns its whole window at once, so the extra
-     pages come from a local slice of the same response rather than from a
-     second round trip. */
-  const windowRef = useRef<FeedPost[]>([]);
-
   /* -----------------------------------------------------------------------
      Loading
      -------------------------------------------------------------------- */
@@ -182,8 +177,6 @@ export default function Feed() {
         setHasMore(
           page.mode === "rpc" ? page.rows.length === FEED_PAGE_SIZE : nextOffset + FEED_PAGE_SIZE < page.rows.length
         );
-
-        if (page.mode === "fallback") windowRef.current = page.rows;
 
         void markSaved(all);
       } catch (error) {

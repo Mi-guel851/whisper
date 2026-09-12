@@ -67,11 +67,6 @@ export default function Login() {
     };
   }, []);
 
-  const shake = useSharedValue(0);
-  useEffect(() => {
-    if (error) shake.value = withTiming(shake.value + 1, { duration: 0 });
-  }, [error, shake]);
-
   const submit = async () => {
     const trimmedEmail = email.trim().toLowerCase();
 
@@ -198,10 +193,10 @@ export default function Login() {
                 </Pressable>
 
                 {error ? (
-                  <Animated.View style={[styles.banner, errorStyle]}>
+                  <View style={styles.banner}>
                     <Ionicons name="alert-circle" size={16} color={COLORS.danger} />
                     <Text style={styles.bannerError}>{error}</Text>
-                  </Animated.View>
+                  </View>
                 ) : null}
 
                 <GradientButton
