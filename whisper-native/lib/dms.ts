@@ -24,7 +24,7 @@ const CONVERSATION_COLUMNS =
 
 /** The deployment serving `/api/*`, same default as the web client's own base. */
 function apiBase(): string {
-  return (process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://whisper-anonymous.vercel.app").replace(
+  return (process.env.EXPO_PUBLIC_API_BASE_URL || "https://whisper-anonymous.vercel.app").replace(
     /\/$/,
     ""
   );

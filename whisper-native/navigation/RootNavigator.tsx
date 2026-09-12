@@ -19,6 +19,7 @@ import { AuthScreen } from "@/screens/AuthScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { CoinStoreScreen } from "@/screens/CoinStoreScreen";
 import { CreateWhisperScreen } from "@/screens/CreateWhisperScreen";
+import { SavedScreen } from "@/screens/SavedScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { SingleWhisperScreen } from "@/screens/SingleWhisperScreen";
 import { SplashScreen } from "@/screens/SplashScreen";
@@ -75,27 +76,28 @@ const NAV_THEME: Theme = {
  */
 const LINKING: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL("/"), "https://whisper-anonymous.vercel.app"],
+  /* The paths are the website's own, so a link somebody copied from the web
+     opens the same thing in the app. The keys are the screens that actually
+     exist — `Tabs` rather than a `Main` wrapper, because the root renders one of
+     two navigators and the names in here have to be reachable from both. */
   config: {
     screens: {
-      Main: {
+      Tabs: {
         screens: {
-          Tabs: {
-            screens: {
-              Feed: "public-feed",
-              DMs: "inbox",
-              Notifications: "notifications",
-              Profile: "profile",
-            },
-          },
-          Chat: "chat/:conversationId",
-          SingleWhisper: "public-feed/post/:postId",
-          CoinStore: "premium",
-          Settings: "settings",
+          Feed: "public-feed",
+          DMs: "inbox",
+          Notifications: "notifications",
+          Profile: "profile",
         },
       },
-      Auth: {
-        screens: { Auth: "login" },
-      },
+      Chat: "chat/:conversationId",
+      SingleWhisper: "public-feed/post/:postId",
+      CoinStore: "premium",
+      Saved: "saved-posts",
+      Settings: "settings",
+      UserProfile: "u/:userId",
+      Splash: "",
+      Auth: "login",
     },
   },
 };
@@ -131,18 +133,15 @@ export function RootNavigator() {
         if (!ref?.isReady()) return;
 
         if (hint.conversationId) {
-          ref.navigate("Main", {
-            screen: "Chat",
-            params: { conversationId: hint.conversationId, otherId: "" },
-          });
+          ref.navigate("Chat", { conversationId: hint.conversationId });
           return;
         }
         if (hint.postId) {
-          ref.navigate("Main", { screen: "SingleWhisper", params: { postId: hint.postId } });
+          ref.navigate("SingleWhisper", { postId: hint.postId });
           return;
         }
         if (hint.route?.startsWith("/notifications")) {
-          ref.navigate("Main", { screen: "Tabs", params: { screen: "Notifications" } });
+          ref.navigate("Tabs", { screen: "Notifications" });
         }
       };
 
@@ -187,6 +186,7 @@ export function RootNavigator() {
 
           <MainStack.Group screenOptions={{ animation: "slide_from_right", contentStyle: styles.content }}>
             <MainStack.Screen name="SingleWhisper" component={SingleWhisperScreen} />
+            <MainStack.Screen name="Saved" component={SavedScreen} />
             <MainStack.Screen name="Chat" component={ChatScreen} />
             <MainStack.Screen name="UserProfile" component={UserProfileScreen} />
           </MainStack.Group>

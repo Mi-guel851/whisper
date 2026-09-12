@@ -35,8 +35,15 @@ export type MainStackParamList = {
   CreateWhisper: { parentPostId?: string; parentAuthorId?: string } | undefined;
   /** One post with its thread and a comment composer. */
   SingleWhisper: { postId: string };
-  /** One conversation. */
-  Chat: { conversationId: string; otherId: string };
+  /**
+   * One conversation.
+   *
+   * `otherId` is optional because not every entry point knows it: the inbox
+   * does, a notification tap and a deep link do not. The screen derives the
+   * other participant from the conversation row once it has loaded.
+   */
+  Chat: { conversationId: string; otherId?: string };
+  Saved: undefined;
   Settings: undefined;
   CoinStore: undefined;
   /** Reading another user's profile from a post or a conversation. */
@@ -44,15 +51,15 @@ export type MainStackParamList = {
 };
 
 /**
- * The root has no destinations of its own: it decides between the two stacks.
- * It is declared anyway so `useNavigation<RootStackParamList>()` types the
- * handful of places that navigate across the auth boundary (a sign-out landing
- * on Auth, a deep link landing on Chat).
+ * The root's flat view of the app.
+ *
+ * The container renders one of the two stacks depending on the session, which
+ * means there is no single nested tree to describe — the reachable screen names
+ * are simply the union of both stacks. That is what this type is: the names a
+ * deep link or a notification tap can address, and the shape the navigation ref
+ * and the linking config are typed against.
  */
-export type RootStackParamList = {
-  Auth: NavigatorScreenParams<AuthStackParamList>;
-  Main: NavigatorScreenParams<MainStackParamList>;
-};
+export type RootStackParamList = AuthStackParamList & MainStackParamList;
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

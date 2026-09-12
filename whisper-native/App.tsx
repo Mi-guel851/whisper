@@ -32,7 +32,7 @@ import { COLORS } from "@/lib/theme";
  * white screen.
  */
 export default function App() {
-  const paystackKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY ?? "";
+  const paystackKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
   return (
     <GestureHandlerRootView style={styles.root}>

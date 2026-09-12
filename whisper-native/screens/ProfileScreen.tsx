@@ -13,17 +13,19 @@ import { GradientButton, IconButton } from "@/components/GradientButton";
 import { FeedCard } from "@/components/feed/FeedCard";
 import { Field } from "@/components/Input";
 import { EmptyState, Screen, SkeletonRow } from "@/components/Screen";
-import { Sheet, SheetRow } from "@/components/Sheet";
+import { ConfirmSheet, Sheet, SheetRow } from "@/components/Sheet";
 import { TAB_BAR_SPACE } from "@/navigation/MainTabs";
 import type { MainStackParamList } from "@/navigation/types";
 import { fetchWallet } from "@/lib/coins";
 
-import { fetchMyPosts } from "@/lib/feed";
+import { apiBase, fetchMyPosts } from "@/lib/feed";
 import { timeAgo } from "@/lib/format";
+import { useFeedEngagement } from "@/lib/useFeedEngagement";
 import { BIO_LIMIT, fetchProfile, invalidateIdentity, saveProfile, whisperLink, whisperLinkLabel } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
 import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { supabase } from "@/lib/supabase";
 import { saveAvatarUrl, uploadAvatar } from "@/lib/uploads";
 import type { FeedPost, Profile } from "@/lib/types";
 
@@ -60,6 +62,28 @@ export function ProfileScreen() {
   const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [menuPost, setMenuPost] = useState<FeedPost | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FeedPost | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  /* Your own posts answer to the same card as everybody else's, so they use the
+     same engagement hook — the heart, the poll and the bookmark all behave here
+     exactly as they do in the feed. */
+  const {
+    liked,
+    likeCounts,
+    replyCounts,
+    savedIds,
+    savesAvailable,
+    pollCounts,
+    pollChoices,
+    pollPending,
+    seed,
+    markSaved,
+    toggleLike,
+    vote,
+    toggleSaved,
+  } = useFeedEngagement(userId);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -74,6 +98,8 @@ export function ProfileScreen() {
     setDisplayName(row?.display_name ?? row?.username ?? "");
     setBio(row?.bio ?? "");
     setPosts(mine);
+    seed(mine, userId);
+    void markSaved(mine);
     setBalance(wallet?.balance ?? 0);
     setLoading(false);
     setRefreshing(false);
@@ -84,6 +110,23 @@ export function ProfileScreen() {
       void load();
     }, [load])
   );
+
+  const removePost = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+
+    const { error } = await supabase.from("public_feed_posts").delete().eq("id", deleteTarget.id);
+    setDeleting(false);
+    setDeleteTarget(null);
+
+    if (error) {
+      showToast(error.message, { variant: "error" });
+      return;
+    }
+
+    setPosts((current) => current.filter((post) => post.id !== deleteTarget.id));
+    showToast("Whisper deleted", { variant: "subtle" });
+  };
 
   const copyLink = async () => {
     await Clipboard.setStringAsync(whisperLink(profile?.username));
@@ -262,13 +305,19 @@ export function ProfileScreen() {
           <FeedCard
             post={item}
             myId={userId ?? ""}
-            liked={Boolean(item.viewer_liked)}
-            likeCount={Number(item.like_count ?? 0)}
-            replyCount={Number(item.reply_count ?? 0)}
+            liked={Boolean(liked[item.id])}
+            likeCount={likeCounts[item.id] ?? 0}
+            replyCount={replyCounts[item.id] ?? Number(item.reply_count ?? 0)}
             imageState="spent"
-            onToggleLike={() => {}}
+            pollCounts={pollCounts[item.id]}
+            pollChoice={pollChoices[item.id] ?? null}
+            pollPending={Boolean(pollPending[item.id])}
+            onToggleLike={() => void toggleLike(item)}
+            onVote={(index) => void vote(item, index)}
             onOpenThread={() => navigation.navigate("SingleWhisper", { postId: item.id })}
-            onOpenMenu={() => navigation.navigate("SingleWhisper", { postId: item.id })}
+            onOpenMenu={() => setMenuPost(item)}
+            saved={savesAvailable ? Boolean(savedIds[item.id] ?? true) : null}
+            onToggleSave={() => void toggleSaved(item)}
             onTip={() => navigation.navigate("CoinStore")}
           />
         )}
@@ -301,6 +350,56 @@ export function ProfileScreen() {
           accessibilityLabel="Create a whisper"
         />
       </View>
+
+      <Sheet visible={Boolean(menuPost)} onClose={() => setMenuPost(null)} title="Your whisper">
+        {menuPost && (
+          <View style={{ paddingBottom: 10 }}>
+            <SheetRow
+              icon="chatbubbles-outline"
+              label="Open the thread"
+              detail={`${menuPost.reply_count ?? 0} replies`}
+              onPress={() => {
+                const target = menuPost;
+                setMenuPost(null);
+                if (target) navigation.navigate("SingleWhisper", { postId: target.id });
+              }}
+            />
+            <SheetRow
+              icon="share-social-outline"
+              label="Share it"
+              onPress={() => {
+                const target = menuPost;
+                setMenuPost(null);
+                if (!target) return;
+                void Share.share({
+                  message: `${target.body}\n\n${apiBase()}/public-feed?post=${target.id}`,
+                }).catch(() => {});
+              }}
+            />
+            <SheetRow
+              icon="trash-outline"
+              label="Delete"
+              danger
+              detail="This cannot be undone"
+              onPress={() => {
+                setDeleteTarget(menuPost);
+                setMenuPost(null);
+              }}
+            />
+          </View>
+        )}
+      </Sheet>
+
+      <ConfirmSheet
+        visible={Boolean(deleteTarget)}
+        title="Delete this whisper?"
+        message="It disappears from the feed for good."
+        confirmLabel="Delete"
+        destructive
+        busy={deleting}
+        onConfirm={() => void removePost()}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       <Sheet visible={editing} onClose={() => setEditing(false)} title="Edit profile">
         <View style={{ gap: 10, paddingBottom: 10 }}>

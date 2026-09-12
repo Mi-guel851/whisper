@@ -23,13 +23,18 @@ import { Field } from "@/components/Input";
 import { isMissingSchema, safeErrorMessage } from "@/lib/errors";
 import { vibrate } from "@/lib/haptics";
 import { completeProfile, fetchProfile, validateUsername } from "@/lib/profile";
-import { supabase } from "@/lib/supabase";
+import { hasSupabaseConfig, supabase } from "@/lib/supabase";
 import { useToast } from "@/lib/toast";
 import { COLORS, GLASS, RADIUS } from "@/lib/theme";
 import type { AuthStackParamList } from "@/navigation/types";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Auth">;
 type Mode = "login" | "signup";
+
+/** Shown when the build has no Supabase project — the one error the app can fix
+ *  by itself, so it names the fix. */
+const CONFIG_ERROR =
+  "This build has no backend configured. Put EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in whisper-native/.env, then restart with `npx expo start --clear`.";
 
 /**
  * Sign in and sign up, on one screen.
@@ -96,6 +101,14 @@ export function AuthScreen({ navigation, route }: Props) {
 
     setError(null);
     setNotice(null);
+
+    /* Nothing on this screen can work without a project to talk to, and the
+       failure without this check is a request to localhost that reads like a
+       bug in the app rather than a missing line in `.env`. */
+    if (!hasSupabaseConfig) {
+      setError(CONFIG_ERROR);
+      return;
+    }
 
     if (!trimmedEmail || !trimmedEmail.includes("@")) {
       setError("Enter a valid email address.");
@@ -215,6 +228,13 @@ export function AuthScreen({ navigation, route }: Props) {
             <GradientText style={styles.wordmark}>Whisper</GradientText>
             <Text style={styles.sub}>Anonymous messaging, on your phone.</Text>
           </View>
+
+          {!hasSupabaseConfig && (
+            <View style={[styles.banner, styles.bannerWarn, styles.bannerTop]}>
+              <Ionicons name="construct-outline" size={16} color={COLORS.warning} />
+              <Text style={styles.bannerWarnText}>{CONFIG_ERROR}</Text>
+            </View>
+          )}
 
           <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.card}>
             <View style={styles.cardInner}>
@@ -443,6 +463,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(34,211,238,0.1)",
     borderColor: "rgba(34,211,238,0.26)",
   },
+  bannerWarn: {
+    borderColor: "rgba(245,158,11,0.32)",
+    backgroundColor: "rgba(245,158,11,0.10)",
+  },
+  bannerWarnText: {
+    flex: 1,
+    color: COLORS.warning,
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  bannerTop: { marginBottom: 16 },
   bannerInfoText: { color: COLORS.cyan, fontSize: 13, flexShrink: 1, lineHeight: 18 },
 
   submit: { marginTop: 4 },

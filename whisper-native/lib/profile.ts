@@ -159,7 +159,7 @@ export function validateUsername(value: string): string | null {
  * produces its own link rather than a Whisper one.
  */
 export function whisperLink(username: string | null | undefined): string {
-  const base = (process.env.EXPO_PUBLIC_SITE_URL ?? "https://whisper-anonymous.vercel.app").replace(/\/$/, "");
+  const base = (process.env.EXPO_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app").replace(/\/$/, "");
   return username ? `${base}/u/${username}` : `${base}/setup`;
 }
 

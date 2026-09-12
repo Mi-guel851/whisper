@@ -285,7 +285,7 @@ export function SettingsScreen({ navigation }: Props) {
             icon="globe-outline"
             label="Open the website"
             onPress={() => {
-              void Linking.openURL(process.env.EXPO_PUBLIC_SITE_URL ?? "https://whisper-anonymous.vercel.app");
+              void Linking.openURL(process.env.EXPO_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app");
             }}
           />
         </Section>

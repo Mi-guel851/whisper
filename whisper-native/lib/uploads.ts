@@ -21,8 +21,8 @@ import { supabase } from "./supabase";
  * (`cloudinary_asset_owned_by` in SQL, `cloudinaryPublicId` in the API).
  */
 
-export const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "w3a15ebq";
-export const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "whisper_unsigned";
+export const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || "w3a15ebq";
+export const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "whisper_unsigned";
 
 /** Folders, one per feature. Mirrors `CLOUDINARY_FOLDERS` on the server. */
 export const CLOUDINARY_FOLDERS = {

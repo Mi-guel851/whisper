@@ -55,6 +55,8 @@ export function FeedCard({
   onOpenThread,
   onOpenMenu,
   onTip,
+  saved = null,
+  onToggleSave,
   onVote,
   pollCounts,
   pollChoice,
@@ -73,6 +75,14 @@ export function FeedCard({
   onOpenThread: () => void;
   onOpenMenu: () => void;
   onTip: () => void;
+  /**
+   * Whether this post is saved, or `null`/absent when the database has no
+   * `public_feed_saves` table — in which case the bookmark is not drawn at all.
+   * A control that looks tappable and does nothing costs more trust than a
+   * missing one, which is the rule the web app's menu follows too.
+   */
+  saved?: boolean | null;
+  onToggleSave?: () => void;
   onVote?: (index: number) => void;
   pollCounts?: number[];
   pollChoice?: number | null;
@@ -100,7 +110,7 @@ export function FeedCard({
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heart.value }] }));
 
   const share = async () => {
-    const url = `${process.env.EXPO_PUBLIC_SITE_URL ?? "https://whisper-anonymous.vercel.app"}/public-feed?post=${post.id}`;
+    const url = `${process.env.EXPO_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app"}/public-feed?post=${post.id}`;
     try {
       await Share.share({
         message: official
@@ -257,6 +267,25 @@ export function FeedCard({
             void share();
           }}
         />
+
+        {saved !== null && (
+          <Pressable
+            onPress={() => {
+              vibrate("select");
+              onToggleSave?.();
+            }}
+            style={styles.action}
+            accessibilityRole="button"
+            accessibilityState={{ selected: saved }}
+            accessibilityLabel={saved ? "Remove from saved" : "Save this whisper"}
+          >
+            <Ionicons
+              name={saved ? "bookmark" : "bookmark-outline"}
+              size={16}
+              color={saved ? COLORS.cyan : COLORS.muted}
+            />
+          </Pressable>
+        )}
 
         {/* The coin tip. It opens the transfer sheet rather than spending
             anything on its own — see CoinTipSheet for why a tip needs an

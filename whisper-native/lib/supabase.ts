@@ -31,9 +31,18 @@ import { AppState, Platform } from "react-native";
  * of silently talking to nothing.
  */
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "http://localhost:54321";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "missing-anon-key";
+/* `||` and not `??`: an env var that is present but blank is what an unfilled
+   `.env` produces, and `createClient("", "")` throws on import — the app would
+   die before it could say what was missing. */
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "http://localhost:54321";
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "missing-anon-key";
 
+/**
+ * Whether this build was given a backend.
+ *
+ * Read by the sign-in screen, which says so plainly instead of letting the first
+ * request fail with a DNS error against `http://localhost:54321`.
+ */
 export const hasSupabaseConfig = Boolean(
   process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 );

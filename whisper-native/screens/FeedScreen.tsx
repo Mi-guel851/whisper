@@ -20,19 +20,16 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { MainStackParamList, TabParamList } from "@/navigation/types";
 import { refreshBadges, useBadges, watchBadges } from "@/lib/badges";
 import { fetchWallet } from "@/lib/coins";
-import type { FeedImageState } from "@/lib/feedState";
-import { optimisticLike, optimisticVote } from "@/lib/feedState";
+import { useFeedEngagement } from "@/lib/useFeedEngagement";
 import {
   FEED_PAGE_SIZE,
   FEED_SORTS,
   FEED_TOPICS,
   apiBase,
   blockAuthor,
-  claimFeedPhoto,
   fetchFeedPage,
   reportPost,
   sliceFallback,
-  toggleLike as toggleLikeRow,
   type FeedSort,
 } from "@/lib/feed";
 import type { FeedPost } from "@/lib/types";
@@ -71,7 +68,7 @@ export function FeedScreen() {
      and typing each call for the destination it performs keeps both honest. */
   const tabNavigation = useNavigation<BottomTabNavigationProp<TabParamList>>();
   const insets = useSafeAreaInsets();
-  const { userId, session } = useSession();
+  const { userId } = useSession();
   const { showToast } = useToast();
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -85,14 +82,26 @@ export function FeedScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
 
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
-  const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
-  const [imageStates, setImageStates] = useState<Record<string, FeedImageState>>({});
-  const [imageUris, setImageUris] = useState<Record<string, string>>({});
-  const [pollCounts, setPollCounts] = useState<Record<string, number[]>>({});
-  const [pollChoices, setPollChoices] = useState<Record<string, number>>({});
-  const [pollPending, setPollPending] = useState<Record<string, boolean>>({});
+  /* Likes, polls, photo claims and saves all live in one hook, shared with the
+     saved-posts screen — same card, same answers. */
+  const {
+    liked,
+    likeCounts,
+    replyCounts,
+    imageStates,
+    imageUris,
+    pollCounts,
+    pollChoices,
+    pollPending,
+    savedIds,
+    savesAvailable,
+    seed,
+    markSaved,
+    toggleLike,
+    vote,
+    openPhoto,
+    toggleSaved,
+  } = useFeedEngagement(userId);
 
   const [menuPost, setMenuPost] = useState<FeedPost | null>(null);
   const [tipPost, setTipPost] = useState<FeedPost | null>(null);
@@ -135,40 +144,8 @@ export function FeedScreen() {
 
       if (fresh.length === 0) return;
 
-      setLiked((value) => {
-        const merged = { ...value };
-        for (const row of fresh) merged[row.id] = Boolean(row.viewer_liked);
-        return merged;
-      });
-      setLikeCounts((value) => {
-        const merged = { ...value };
-        for (const row of fresh) merged[row.id] = Number(row.like_count ?? 0);
-        return merged;
-      });
-      setReplyCounts((value) => {
-        const merged = { ...value };
-        for (const row of fresh) merged[row.id] = Number(row.reply_count ?? 0);
-        return merged;
-      });
-      setImageStates((value) => {
-        const merged = { ...value };
-        for (const row of fresh) {
-          if (row.has_image && !merged[row.id]) {
-            merged[row.id] = row.author_id === userId || row.viewer_image_viewed ? "spent" : "locked";
-          }
-        }
-        return merged;
-      });
-      setPollChoices((value) => {
-        const merged = { ...value };
-        for (const row of fresh) if (typeof row.viewer_vote === "number") merged[row.id] = row.viewer_vote;
-        return merged;
-      });
-      setPollCounts((value) => {
-        const merged = { ...value };
-        for (const row of fresh) if (row.poll_counts) merged[row.id] = row.poll_counts;
-        return merged;
-      });
+      /* The server's counts for the viewer, applied in one place. */
+      seed(fresh, userId ?? "");
     },
     [userId]
   );
@@ -196,6 +173,8 @@ export function FeedScreen() {
         );
 
         if (page.mode === "fallback") windowRef.current = page.rows;
+
+        void markSaved(all);
       } catch (error) {
         console.warn("[feed] load failed:", error);
         if (reset) setPosts([]);
@@ -206,7 +185,7 @@ export function FeedScreen() {
         setLoadingMore(false);
       }
     },
-    [applyRows, offset, query, showToast]
+    [applyRows, markSaved, offset, query, showToast]
   );
 
   /* First load, and every change of sort / topic / search. */
@@ -278,85 +257,8 @@ export function FeedScreen() {
      Engagement
      -------------------------------------------------------------------- */
 
-  const toggleLike = useCallback(
-    async (post: FeedPost) => {
-      if (!userId) return;
-
-      const wasLiked = Boolean(liked[post.id]);
-      const optimistic = optimisticLike(likeCounts[post.id] ?? 0, wasLiked);
-
-      setLiked((value) => ({ ...value, [post.id]: optimistic.liked }));
-      setLikeCounts((value) => ({ ...value, [post.id]: optimistic.count }));
-      vibrate("select");
-
-      try {
-        await toggleLikeRow(post.id, userId, wasLiked);
-      } catch {
-        /* Undo in both places, or the button disagrees with the server until
-           the next reload. */
-        setLiked((value) => ({ ...value, [post.id]: wasLiked }));
-        setLikeCounts((value) => ({ ...value, [post.id]: Math.max(0, optimistic.count - (wasLiked ? -1 : 1)) }));
-        showToast("Couldn't save that like.", { variant: "error" });
-      }
-    },
-    [likeCounts, liked, showToast, userId]
-  );
-
-  const vote = useCallback(
-    async (post: FeedPost, optionIndex: number) => {
-      if (!userId || pollPending[post.id]) return;
-
-      const previous = pollChoices[post.id] ?? null;
-      setPollPending((value) => ({ ...value, [post.id]: true }));
-      setPollChoices((value) => ({ ...value, [post.id]: optionIndex }));
-      setPollCounts((value) => ({
-        ...value,
-        [post.id]: optimisticVote(value[post.id] ?? post.poll_counts ?? [], previous, optionIndex),
-      }));
-      vibrate("select");
-
-      const { error } = await supabase.rpc("vote_public_feed_poll", {
-        p_post_id: post.id,
-        p_option_index: optionIndex,
-      });
-
-      setPollPending((value) => ({ ...value, [post.id]: false }));
-
-      if (error) {
-        setPollChoices((value) => {
-          const next = { ...value };
-          if (previous === null) delete next[post.id];
-          else next[post.id] = previous;
-          return next;
-        });
-        showToast("Couldn't record that vote.", { variant: "error" });
-      }
-    },
-    [pollChoices, pollPending, showToast, userId]
-  );
-
-  const openPhoto = useCallback(
-    async (post: FeedPost) => {
-      if (!session?.access_token) return;
-      if (post.author_id === userId) {
-        showToast("This is your own photo whisper.", { variant: "subtle" });
-        return;
-      }
-
-      setImageStates((value) => ({ ...value, [post.id]: "loading" }));
-      const result = await claimFeedPhoto(post.id, session.access_token);
-
-      if ("error" in result) {
-        setImageStates((value) => ({ ...value, [post.id]: "unavailable" }));
-        showToast(result.error, { variant: "error" });
-        return;
-      }
-
-      setImageUris((value) => ({ ...value, [post.id]: result.uri }));
-      setImageStates((value) => ({ ...value, [post.id]: "spent" }));
-    },
-    [session?.access_token, showToast, userId]
-  );
+  /* Liking, voting, claiming a photo and saving are the hook's — see
+     `useFeedEngagement`. The card's callbacks below name them directly. */
 
   /* -----------------------------------------------------------------------
      Menu actions
@@ -423,6 +325,12 @@ export function FeedScreen() {
             size={40}
             onPress={() => setSearchOpen((open) => !open)}
             accessibilityLabel={searchOpen ? "Close search" : "Search"}
+          />
+          <IconButton
+            icon="bookmark-outline"
+            size={40}
+            onPress={() => navigation.navigate("Saved")}
+            accessibilityLabel="Saved posts"
           />
           <IconButton
             icon="notifications-outline"
@@ -524,6 +432,8 @@ export function FeedScreen() {
             onOpenGallery={() => void openPhoto(item)}
             onOpenThread={() => navigation.navigate("SingleWhisper", { postId: item.id })}
             onOpenMenu={() => setMenuPost(item)}
+            saved={savesAvailable ? Boolean(savedIds[item.id]) : null}
+            onToggleSave={() => void toggleSaved(item)}
             onTip={() => setTipPost(item)}
           />
         )}
@@ -589,6 +499,18 @@ export function FeedScreen() {
           <View style={{ paddingBottom: 10 }}>
             <SheetRow icon="link-outline" label="Copy link" onPress={() => void copyLink(menuPost).then(() => setMenuPost(null))} />
             <SheetRow icon="share-social-outline" label="Share" onPress={() => void sharePost(menuPost).then(() => setMenuPost(null))} />
+            {savesAvailable && (
+              <SheetRow
+                icon={savedIds[menuPost.id] ? "bookmark" : "bookmark-outline"}
+                label={savedIds[menuPost.id] ? "Remove from saved" : "Save this whisper"}
+                detail="Private — the author is never told"
+                onPress={() => {
+                  const target = menuPost;
+                  setMenuPost(null);
+                  void toggleSaved(target);
+                }}
+              />
+            )}
             <SheetRow
               icon="flag-outline"
               label="Report"

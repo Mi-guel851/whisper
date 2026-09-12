@@ -667,7 +667,7 @@ export function ChatScreen({ navigation, route }: Props) {
           if (!target || !session?.access_token || !userId) return;
 
           void fetch(
-            `${(process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://whisper-anonymous.vercel.app").replace(/\/$/, "")}/api/chat/delete-message`,
+            `${(process.env.EXPO_PUBLIC_API_BASE_URL || "https://whisper-anonymous.vercel.app").replace(/\/$/, "")}/api/chat/delete-message`,
             {
               method: "POST",
               headers: {

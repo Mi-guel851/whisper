@@ -60,6 +60,8 @@ index.ts                registerRootComponent (no expo-router — React Navigati
 lib/                    data access, one file per surface, plus theme/format/errors/haptics
   supabase.ts           the client (AsyncStorage session, AppState refresh)
   feed.ts feedState.ts  the public feed: RPC-first, table fallback
+  useFeedEngagement.ts  likes, poll votes, photo claims and saves, shared by the
+                        feed and the saved-posts screen
   whispers.ts           anonymous whispers (public.messages) + paid sender hints
   dms.ts                conversations, direct messages, view-once claims
   notifications.ts      the durable alert history
@@ -68,7 +70,7 @@ lib/                    data access, one file per surface, plus theme/format/err
   badges.ts             the unread counts the tab bar shows
   session.tsx toast.tsx theme.ts identity.ts format.ts errors.ts uploads.ts
 components/             the design system + shared pieces (see below)
-screens/                the twelve screens
+screens/                the thirteen screens
 navigation/             RootNavigator, MainTabs, the typed param lists
 ```
 
@@ -89,6 +91,10 @@ Components worth knowing: `Background` (the gradient wash every screen sits on),
   `lib/theme.ts` as `GLASS.blurIntensity`, so it is one number, not forty.
 * **Motion in reanimated.** Fade-in on mount, spring on press, slide-up for
   sheets.
+* **A save is a pointer, not a copy.** `public_feed_saves` cascades with its
+  post, so the saved list empties as whispers expire — the product is
+  ephemeral and a private archive of other people's deleted words would break
+  that promise. Nothing counts saves and no author is ever told.
 * **The server owns the money and the paywall.** Coins are credited by
   `/api/paystack/verify`; chat unlocks, photo sends and hint unlocks are
   `spend*`/`unlock*` RPCs. The client never writes a balance.
