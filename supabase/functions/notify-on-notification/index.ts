@@ -240,16 +240,7 @@ Deno.serve(async (req) => {
           default_vibrate_timings: false,
           vibrate_timings: ["0s", "0.25s", "0.15s", "0.25s"],
         };
-        // Add actions to android.notification for background handling (FCM's notification payload)
-        // The SDK will render them when the app is killed; foreground path also reads data.actions
-        if (actions) {
-          // FCM's android.notification.actions expects {title, click_action} per spec; we include both click_action and our deep link
-          (androidNotification as Record<string, unknown>).actions = actions.map((a) => ({
-            title: a.title,
-            // click_action is the intent action string the manifest will catch
-            click_action: a.intent,
-          }));
-        }
+        
 
         const message: Record<string, unknown> = {
           token: t.fcm_token,
