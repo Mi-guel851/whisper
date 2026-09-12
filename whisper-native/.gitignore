@@ -31,3 +31,4 @@ node_modules/
 /dist/
 /.expo/
 /bundle-check/
+.expo-export-test/

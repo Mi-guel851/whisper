@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { router, useFocusEffect } from "expo-router";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
@@ -14,17 +13,14 @@ import { FeedCard } from "@/components/feed/FeedCard";
 import { Field } from "@/components/Input";
 import { EmptyState, Screen, SkeletonRow } from "@/components/Screen";
 import { ConfirmSheet, Sheet, SheetRow } from "@/components/Sheet";
-import { TAB_BAR_SPACE } from "@/navigation/MainTabs";
-import type { MainStackParamList } from "@/navigation/types";
 import { fetchWallet } from "@/lib/coins";
-
 import { apiBase, fetchMyPosts } from "@/lib/feed";
 import { timeAgo } from "@/lib/format";
 import { useFeedEngagement } from "@/lib/useFeedEngagement";
 import { BIO_LIMIT, fetchProfile, invalidateIdentity, saveProfile, whisperLink, whisperLinkLabel } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import { saveAvatarUrl, uploadAvatar } from "@/lib/uploads";
 import type { FeedPost, Profile } from "@/lib/types";
@@ -47,8 +43,7 @@ import type { FeedPost, Profile } from "@/lib/types";
  * The avatar is the only uploaded image in the product (everything else is
  * generated from an id), so this is the only screen with an image picker.
  */
-export function ProfileScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+export default function Profile() {
   const { userId, session } = useSession();
   const { showToast } = useToast();
 
@@ -208,7 +203,6 @@ export function ProfileScreen() {
     }
   };
 
-
   const header = (
     <View style={styles.headerWrap}>
       <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.identityCard}>
@@ -229,7 +223,7 @@ export function ProfileScreen() {
           {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
 
           <View style={styles.badgeRow}>
-            <CoinBadge balance={balance} variant="prominent" onPress={() => navigation.navigate("CoinStore")} />
+            <CoinBadge balance={balance} variant="prominent" onPress={() => router.push("/coins")} />
           </View>
 
           <View style={styles.linkCard}>
@@ -266,7 +260,7 @@ export function ProfileScreen() {
               label="Settings"
               icon="settings-outline"
               variant="glass"
-              onPress={() => navigation.navigate("Settings")}
+              onPress={() => router.push("/settings")}
               style={styles.actionButton}
             />
           </View>
@@ -314,11 +308,13 @@ export function ProfileScreen() {
             pollPending={Boolean(pollPending[item.id])}
             onToggleLike={() => void toggleLike(item)}
             onVote={(index) => void vote(item, index)}
-            onOpenThread={() => navigation.navigate("SingleWhisper", { postId: item.id })}
+            onOpenThread={() =>
+              router.push({ pathname: "/whisper-detail", params: { postId: item.id } })
+            }
             onOpenMenu={() => setMenuPost(item)}
             saved={savesAvailable ? Boolean(savedIds[item.id] ?? true) : null}
             onToggleSave={() => void toggleSaved(item)}
-            onTip={() => navigation.navigate("CoinStore")}
+            onTip={() => router.push("/coins")}
           />
         )}
         ListEmptyComponent={
@@ -333,20 +329,20 @@ export function ProfileScreen() {
               title="You haven't posted yet"
               body="Say something to the feed, or answer what somebody else said."
               actionLabel="Write a whisper"
-              onAction={() => navigation.navigate("CreateWhisper")}
+              onAction={() => router.push("/create-whisper")}
             />
           )
         }
       />
 
-      {/* The profile menu, reached from the tab bar's own header on the feed.
-          Kept here so the tab is self-sufficient. */}
+      {/* The compose shortcut, same corner as the feed's FAB: the primary
+          action of the product never moves. */}
       <View style={[styles.fab, { bottom: TAB_BAR_SPACE + 4 }]}>
         <IconButton
           icon="add"
           gradient
           size={54}
-          onPress={() => navigation.navigate("CreateWhisper")}
+          onPress={() => router.push("/create-whisper")}
           accessibilityLabel="Create a whisper"
         />
       </View>
@@ -361,7 +357,9 @@ export function ProfileScreen() {
               onPress={() => {
                 const target = menuPost;
                 setMenuPost(null);
-                if (target) navigation.navigate("SingleWhisper", { postId: target.id });
+                if (target) {
+                  router.push({ pathname: "/whisper-detail", params: { postId: target.id } });
+                }
               }}
             />
             <SheetRow
@@ -530,4 +528,3 @@ const styles = StyleSheet.create({
   counter: { color: COLORS.subtle, fontSize: 11.5, textAlign: "right" },
   fab: { position: "absolute", right: 18 },
 });
-

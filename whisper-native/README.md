@@ -55,31 +55,51 @@ old key is the most common way "it works for me but not on the device" happens.
 ## What is where
 
 ```
-App.tsx                 providers: gesture handler → safe area → session → toast → paystack
-index.ts                registerRootComponent (no expo-router — React Navigation)
+app/                    the route tree (expo-router, file-based)
+  _layout.tsx           providers + root Stack; badges, push taps, the loader
+  index.tsx             the fork: session ? (tabs)/feed : (auth)/login
+  (auth)/
+    _layout.tsx         the pre-account guard: redirects signed-in users
+    onboarding.tsx      the animated intro — "Say it. Anonymously."
+    login.tsx           signInWithPassword, inline errors, forgot-password link
+    signup.tsx          signUp with the username in metadata
+  (tabs)/
+    _layout.tsx         the floating glass tab bar (Feed · DMs · Alerts · Profile)
+    feed.tsx            the public feed: four sorts, topics, search, threads
+    dms.tsx             the inbox: conversations, previews, unread counts
+    notifications.tsx   the whisper inbox + the durable alert history
+    profile.tsx         identity, whisper link, wallet, your posts
+  coins.tsx             the coin store (Paystack) + transfer sheet + history
+  create-whisper.tsx    the composer (post or reply; photo, poll, topic)
+  conversation.tsx      one chat: bubbles, voice notes, view-once, the 40-coin gate
+  whisper-detail.tsx    one post, its replies, the free reply composer
+  settings.tsx          push switches, wallet address, log out
+  forgot-password.tsx   reset by username + recovery phrase
+  saved.tsx             saved posts (the feed's bookmark)
+  u.tsx                 somebody else's profile
 lib/                    data access, one file per surface, plus theme/format/errors/haptics
   supabase.ts           the client (AsyncStorage session, AppState refresh)
+  session.tsx           SessionProvider: getSession + onAuthStateChange, in context
   feed.ts feedState.ts  the public feed: RPC-first, table fallback
   useFeedEngagement.ts  likes, poll votes, photo claims and saves, shared by the
                         feed and the saved-posts screen
   whispers.ts           anonymous whispers (public.messages) + paid sender hints
   dms.ts                conversations, direct messages, view-once claims
   notifications.ts      the durable alert history
-  payments.ts (paystack) the coin checkout
+  paystack.ts           the coin checkout
   push.ts               device tokens, taps, channels
   badges.ts             the unread counts the tab bar shows
-  session.tsx toast.tsx theme.ts identity.ts format.ts errors.ts uploads.ts
+  profile.ts coins.ts identity.ts firstRun.ts toast.tsx theme.ts format.ts
+  errors.ts uploads.ts useVoiceRecorder.ts whispersAi.ts haptics.ts types.ts
 components/             the design system + shared pieces (see below)
-screens/                the thirteen screens
-navigation/             RootNavigator, MainTabs, the typed param lists
 ```
 
 Components worth knowing: `Background` (the gradient wash every screen sits on),
 `GlassCard`, `GradientButton`/`IconButton`, `GradientText`, `Avatar`, `Screen`
 (the shell: background + safe area + fade-in), `Sheet`/`ConfirmSheet`/`SheetRow`,
 `Toggle`, `CoinBadge`, `Waveform`, `VoiceNotePlayer`, `VoiceRecorderPanel`,
-`CoinTipSheet`, `WhisperCard`, `Input`/`SearchField`, and `feed/`'s `FeedCard`,
-`Poll` and `PhotoWhisper`.
+`CoinTipSheet`, `WhisperCard`, `Input`/`SearchField`, `Toast`, `TabIcon`, and
+`feed/`'s `FeedCard`, `Poll` and `PhotoWhisper`.
 
 ## The rules this app follows
 

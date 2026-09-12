@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
+import { router, useFocusEffect } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,16 +17,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FeedCard, TopicChip } from "@/components/feed/FeedCard";
 import { CoinBadge } from "@/components/CoinBadge";
 import { IconButton } from "@/components/GradientButton";
-import { LinearGradient } from "expo-linear-gradient";
 import { SearchField } from "@/components/Input";
 import { Logo } from "@/components/Logo";
 import { EmptyState, InlineLoader, Screen, SkeletonRow } from "@/components/Screen";
 import { Sheet, SheetRow } from "@/components/Sheet";
 import { WhispersAi } from "@/components/WhispersAi";
 import { CoinTipSheet } from "@/components/CoinTipSheet";
-import { TAB_BAR_SPACE } from "@/navigation/MainTabs";
-import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
-import type { MainStackParamList, TabParamList } from "@/navigation/types";
 import { refreshBadges, useBadges, watchBadges } from "@/lib/badges";
 import { fetchWallet } from "@/lib/coins";
 import { useFeedEngagement } from "@/lib/useFeedEngagement";
@@ -48,7 +43,7 @@ import type { FeedPost } from "@/lib/types";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
+import { TAB_BAR_SPACE, COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 
 /**
@@ -73,12 +68,7 @@ import { supabase } from "@/lib/supabase";
  * thread screen already shows the whole conversation with its own composer. The
  * reply *count* is live in both places, and tapping it lands on the same data.
  */
-export function FeedScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
-  /* Two hooks, one object: a tab screen's navigation can reach both its own
-     tabs and its parent stack (React Navigation bubbles an unknown route up),
-     and typing each call for the destination it performs keeps both honest. */
-  const tabNavigation = useNavigation<BottomTabNavigationProp<TabParamList>>();
+export default function Feed() {
   const insets = useSafeAreaInsets();
   const { userId, session } = useSession();
   const { showToast } = useToast();
@@ -405,7 +395,7 @@ export function FeedScreen() {
         <Logo compact showTagline={false} />
 
         <View style={styles.headerActions}>
-          <CoinBadge balance={balance} onPress={() => navigation.navigate("CoinStore")} />
+          <CoinBadge balance={balance} onPress={() => router.push("/coins")} />
           <IconButton
             icon="search-outline"
             size={40}
@@ -415,14 +405,14 @@ export function FeedScreen() {
           <IconButton
             icon="bookmark-outline"
             size={40}
-            onPress={() => navigation.navigate("Saved")}
+            onPress={() => router.push("/saved")}
             accessibilityLabel="Saved posts"
           />
           <IconButton
             icon="notifications-outline"
             size={40}
             badge={notifications}
-            onPress={() => tabNavigation.navigate("Notifications")}
+            onPress={() => router.push("/(tabs)/notifications")}
             accessibilityLabel="Alerts"
           />
         </View>
@@ -523,7 +513,9 @@ export function FeedScreen() {
             onToggleSave={() => void toggleSaved(item)}
             onTip={() => setTipPost(item)}
             threadOpen={Boolean(threads[item.id])}
-            onOpenThreadScreen={() => navigation.navigate("SingleWhisper", { postId: item.id })}
+            onOpenThreadScreen={() =>
+              router.push({ pathname: "/whisper-detail", params: { postId: item.id } })
+            }
           />
 
           {/* The thread, indented the way the site indents it — only one level,
@@ -551,7 +543,9 @@ export function FeedScreen() {
                 onToggleLike={() => void toggleLike(reply)}
                 onVote={(index) => void vote(reply, index)}
                 onOpenGallery={() => void openPhoto(reply)}
-                onOpenThread={() => navigation.navigate("SingleWhisper", { postId: reply.id })}
+                onOpenThread={() =>
+                  router.push({ pathname: "/whisper-detail", params: { postId: reply.id } })
+                }
                 onOpenMenu={() => setMenuPost(reply)}
                 saved={savesAvailable ? Boolean(savedIds[reply.id]) : null}
                 onToggleSave={() => void toggleSaved(reply)}
@@ -619,7 +613,7 @@ export function FeedScreen() {
                   : "The feed is quiet right now. Post the first whisper and get it started."
               }
               actionLabel="Write a whisper"
-              onAction={() => navigation.navigate("CreateWhisper")}
+              onAction={() => router.push("/create-whisper")}
             />
           )
         }
@@ -641,7 +635,7 @@ export function FeedScreen() {
       <Pressable
         onPress={() => {
           vibrate("select");
-          navigation.navigate("CreateWhisper");
+          router.push("/create-whisper");
         }}
         style={[styles.fab, { bottom: TAB_BAR_SPACE + 6 }]}
         accessibilityRole="button"

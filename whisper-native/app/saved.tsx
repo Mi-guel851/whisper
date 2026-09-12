@@ -1,5 +1,4 @@
-import { useFocusEffect } from "@react-navigation/native";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useFocusEffect, router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useRef, useState } from "react";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
@@ -17,9 +16,6 @@ import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
 import { useFeedEngagement } from "@/lib/useFeedEngagement";
 import type { FeedPost } from "@/lib/types";
-import type { MainStackParamList } from "@/navigation/types";
-
-type Props = NativeStackScreenProps<MainStackParamList, "Saved">;
 
 const PAGE_SIZE = 30;
 
@@ -38,7 +34,7 @@ const PAGE_SIZE = 30;
  * like the post that was saved — including its like button, its poll and its photo
  * claim. Only the menu differs: here the primary action is unsaving.
  */
-export function SavedScreen({ navigation }: Props) {
+export default function Saved() {
   const { userId } = useSession();
   const { showToast } = useToast();
 
@@ -185,7 +181,7 @@ export function SavedScreen({ navigation }: Props) {
               <IconButton
                 icon="arrow-back"
                 size={40}
-                onPress={() => navigation.goBack()}
+                onPress={() => router.back()}
                 accessibilityLabel="Back"
               />
               <View style={styles.headerText}>
@@ -213,7 +209,9 @@ export function SavedScreen({ navigation }: Props) {
             onToggleLike={() => void toggleLike(item)}
             onVote={(index) => void vote(item, index)}
             onOpenGallery={() => void openPhoto(item)}
-            onOpenThread={() => navigation.navigate("SingleWhisper", { postId: item.id })}
+            onOpenThread={() =>
+              router.push({ pathname: "/whisper-detail", params: { postId: item.id } })
+            }
             onOpenMenu={() => setMenuPost(item)}
             saved={savesAvailable ? Boolean(savedIds[item.id] ?? true) : null}
             onToggleSave={() => void unsave(item)}
@@ -238,7 +236,7 @@ export function SavedScreen({ navigation }: Props) {
               title="Nothing saved yet"
               body="Tap the bookmark on a whisper and it lands here — privately, for the rest of that whisper's 24 hours."
               actionLabel="Back to the feed"
-              onAction={() => navigation.goBack()}
+              onAction={() => router.back()}
             />
           )
         }
@@ -284,7 +282,9 @@ export function SavedScreen({ navigation }: Props) {
               onPress={() => {
                 const target = menuPost;
                 setMenuPost(null);
-                if (target) navigation.navigate("SingleWhisper", { postId: target.id });
+                if (target) {
+                  router.push({ pathname: "/whisper-detail", params: { postId: target.id } });
+                }
               }}
             />
             <SheetRow
@@ -293,7 +293,7 @@ export function SavedScreen({ navigation }: Props) {
               onPress={() => {
                 const target = menuPost;
                 setMenuPost(null);
-                if (target) navigation.navigate("UserProfile", { userId: target.author_id });
+                if (target) router.push({ pathname: "/u", params: { userId: target.author_id } });
               }}
             />
           </View>

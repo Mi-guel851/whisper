@@ -179,3 +179,13 @@ export const CARD_SHADOW = Platform.select({
   android: { elevation: 4 },
   default: {},
 });
+
+/**
+ * Room to leave at the bottom of every scrollable tab screen.
+ *
+ * The tab bar floats over content rather than displacing it (see the tabs
+ * layout), so a list that ends flush with the screen would end *under* the
+ * glass. The bar is 68 points tall plus its insets padding, and 96 covers both
+ * with room for the FABs that sit above it.
+ */
+export const TAB_BAR_SPACE = 96;

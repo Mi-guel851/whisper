@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
+import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -11,7 +11,6 @@ import { GradientButton } from "@/components/GradientButton";
 import { Screen } from "@/components/Screen";
 import { ConfirmSheet, SheetRow } from "@/components/Sheet";
 import { Toggle } from "@/components/Toggle";
-import type { MainStackParamList } from "@/navigation/types";
 import { resetBadges } from "@/lib/badges";
 import { maskAddress, fetchWallet } from "@/lib/coins";
 import { hapticsEnabled, setHapticsEnabled, vibrate } from "@/lib/haptics";
@@ -26,10 +25,8 @@ import {
 } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS, glow } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS } from "@/lib/theme";
 import type { Profile } from "@/lib/types";
-
-type Props = NativeStackScreenProps<MainStackParamList, "Settings">;
 
 /**
  * Settings.
@@ -53,7 +50,7 @@ type Props = NativeStackScreenProps<MainStackParamList, "Settings">;
  * exactly as long as the session does; the profile column is what actually
  * stops the pushes from being sent.
  */
-export function SettingsScreen({ navigation }: Props) {
+export default function Settings() {
   const { session, userId, signOut, refreshPush } = useSession();
   const { showToast } = useToast();
 
@@ -116,8 +113,8 @@ export function SettingsScreen({ navigation }: Props) {
     await signOut();
     setBusy(false);
     setConfirmSignOut(false);
-    /* The root navigator switches stacks on the session; there is nothing to
-       navigate to here. */
+    /* The root layout switches the route tree on the session; there is nothing
+       to navigate to here. */
   };
 
   const rows: { key: keyof NotificationPrefs; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -162,7 +159,7 @@ export function SettingsScreen({ navigation }: Props) {
   return (
     <Screen padded={false}>
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} accessibilityLabel="Go back">
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Settings</Text>
@@ -173,13 +170,13 @@ export function SettingsScreen({ navigation }: Props) {
         {/* Wallet */}
         <Section title="Wallet">
           <View style={styles.walletRow}>
-            <CoinBadge balance={balance} variant="prominent" onPress={() => navigation.navigate("CoinStore")} />
+            <CoinBadge balance={balance} variant="prominent" onPress={() => router.push("/coins")} />
             <GradientButton
               label="Buy coins"
               icon="add"
               variant="glass"
               size="sm"
-              onPress={() => navigation.navigate("CoinStore")}
+              onPress={() => router.push("/coins")}
             />
           </View>
 
@@ -462,6 +459,3 @@ const styles = StyleSheet.create({
   signOut: { marginTop: 4 },
   footer: { color: COLORS.subtle, fontSize: 11, textAlign: "center", lineHeight: 16, paddingHorizontal: 12 },
 });
-
-/** Re-exported so the profile screen can reuse the same card shape. */
-export const SETTINGS_GLOW = glow(COLORS.cyan, 14, 0.3);

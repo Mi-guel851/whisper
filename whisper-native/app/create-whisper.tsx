@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { router, useLocalSearchParams } from "expo-router";
 import { BlurView } from "expo-blur";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -23,7 +23,6 @@ import { GradientButton, IconButton } from "@/components/GradientButton";
 import { TopicChip } from "@/components/feed/FeedCard";
 import { Screen } from "@/components/Screen";
 import { Sheet, SheetRow } from "@/components/Sheet";
-import type { MainStackParamList } from "@/navigation/types";
 import { FEED_POST_COST, FEED_REPLY_COST, fetchWallet } from "@/lib/coins";
 import { FEED_TOPICS, createFeedPost } from "@/lib/feed";
 import { formatCoins } from "@/lib/format";
@@ -32,8 +31,6 @@ import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
 import { COLORS, GLASS, RADIUS } from "@/lib/theme";
 import { discardUpload, uploadImage } from "@/lib/uploads";
-
-type Props = NativeStackScreenProps<MainStackParamList, "CreateWhisper">;
 
 /* Mirrors FeedComposer.tsx on the web, which mirrors the route's own check. */
 const MAX_POLL_OPTIONS = 4;
@@ -54,9 +51,8 @@ const BODY_LIMIT = 500;
  * On, and locked on. Every identity in this product is generated from the
  * author's id — there is no name to attach and no display name to hide — so a
  * switch that could be turned off would be a lie with a gradient on it. It is
- * rendered as a switch anyway, because the brief asks for the affordance and
- * because "you are anonymous here" is worth saying out loud once, in the place
- * where somebody might worry about it.
+ * rendered as a switch anyway, because "you are anonymous here" is worth saying
+ * out loud once, in the place where somebody might worry about it.
  *
  * WHAT ACTUALLY GETS SENT
  *
@@ -66,13 +62,14 @@ const BODY_LIMIT = 500;
  * would bypass every one of them. A root post costs 2 coins, a reply is free,
  * and the response carries the row the feed should show.
  */
-export function CreateWhisperScreen({ navigation, route }: Props) {
+export default function CreateWhisper() {
   const insets = useSafeAreaInsets();
   const { userId, session } = useSession();
   const { showToast } = useToast();
 
-  const parentPostId = route.params?.parentPostId;
-  const isReply = Boolean(parentPostId);
+  const parentPostId = useLocalSearchParams()?.parentPostId;
+  const parentPostIdString = typeof parentPostId === "string" ? parentPostId : undefined;
+  const isReply = Boolean(parentPostIdString);
 
   const [body, setBody] = useState("");
   const [topic, setTopic] = useState<string | null>(null);
@@ -154,7 +151,7 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
       mimeType: asset.mimeType ?? "image/jpeg",
       fileName: asset.fileName ?? `whisper-${Date.now()}.jpg`,
     });
-  }, [showToast]);
+  }, [pollOptions, showToast]);
 
   /* The upload happens on submit rather than on pick, so an abandoned draft
      leaves nothing in Cloudinary. */
@@ -198,7 +195,7 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
     const result = await createFeedPost(
       {
         body: body.trim(),
-        parentPostId: parentPostId ?? null,
+        parentPostId: parentPostIdString ?? null,
         topic: isReply ? null : topic,
         imageUrl: url,
         /* The blurred placeholder the feed ships instead of the photo. Without
@@ -232,7 +229,7 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
     showToast(isReply ? "Reply posted" : "Whisper posted", { variant: "success" });
     if (userId) void fetchWallet(userId).then((wallet) => setBalance(wallet?.balance ?? 0));
 
-    navigation.goBack();
+    router.back();
   };
 
   const discardImage = async () => {
@@ -265,6 +262,7 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
     }
 
     setPollOptions(["", ""]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discardImage, image, pollOptions, showToast]);
 
   const topicLabel = useMemo(
@@ -279,7 +277,7 @@ export function CreateWhisperScreen({ navigation, route }: Props) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.header}>
-          <IconButton icon="close" size={40} onPress={() => navigation.goBack()} accessibilityLabel="Close" />
+          <IconButton icon="close" size={40} onPress={() => router.back()} accessibilityLabel="Close" />
 
           <View style={styles.headerText}>
             <Text style={styles.headerTitle}>{isReply ? "Reply" : "New whisper"}</Text>
@@ -634,8 +632,6 @@ const styles = StyleSheet.create({
   anonBody: { color: COLORS.muted, fontSize: 11.5, marginTop: 2, lineHeight: 16 },
 
   voiceHint: { color: COLORS.subtle, fontSize: 12, textAlign: "center" },
-  voiceButton: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "center", paddingVertical: 10 },
-  voiceText: { color: COLORS.cyan, fontSize: 13.5, fontWeight: "800" },
   footer: { color: COLORS.subtle, fontSize: 12, textAlign: "center", marginTop: 4 },
   footerNote: { color: COLORS.subtle, fontSize: 11, textAlign: "center", opacity: 0.75 },
 });

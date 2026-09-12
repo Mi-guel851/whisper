@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { router } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useState } from "react";
@@ -11,7 +11,6 @@ import { GradientButton } from "@/components/GradientButton";
 import { Screen } from "@/components/Screen";
 import { ConfirmSheet } from "@/components/Sheet";
 import { CoinTipSheet } from "@/components/CoinTipSheet";
-import type { MainStackParamList } from "@/navigation/types";
 import {
   COIN_PACKAGES,
   FEED_POST_COST,
@@ -30,8 +29,6 @@ import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
 import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
 import type { CoinTransaction, Wallet } from "@/lib/types";
-
-type Props = NativeStackScreenProps<MainStackParamList, "CoinStore">;
 
 /**
  * The coin store.
@@ -52,7 +49,7 @@ type Props = NativeStackScreenProps<MainStackParamList, "CoinStore">;
  * Getting that wrong by a factor of 100 is the classic version of this bug, so
  * the conversion lives in one place (`chargeFor`) rather than at the call site.
  */
-export function CoinStoreScreen({ navigation }: Props) {
+export default function Coins() {
   const { userId } = useSession();
   const { showToast } = useToast();
   const { purchase, ready, unavailableReason } = useCoinPurchase();
@@ -112,7 +109,7 @@ export function CoinStoreScreen({ navigation }: Props) {
   return (
     <Screen padded={false}>
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} accessibilityLabel="Go back">
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Coin Store</Text>
@@ -207,7 +204,6 @@ export function CoinStoreScreen({ navigation }: Props) {
         }}
         onCancel={() => setCancelNotice(false)}
       />
-
     </Screen>
   );
 }

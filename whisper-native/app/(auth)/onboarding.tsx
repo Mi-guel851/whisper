@@ -1,7 +1,7 @@
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -16,42 +16,39 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { GradientText } from "@/components/GradientText";
-import { GradientButton } from "@/components/GradientButton";
 import { Background } from "@/components/Background";
+import { GradientButton } from "@/components/GradientButton";
+import { GradientText } from "@/components/GradientText";
+import { markOnboarded } from "@/lib/firstRun";
+import { vibrate } from "@/lib/haptics";
 import { COLORS, GRADIENT_COLORS, glow } from "@/lib/theme";
-import type { AuthStackParamList } from "@/navigation/types";
-
-type Props = NativeStackScreenProps<AuthStackParamList, "Splash">;
 
 /**
- * The first screen.
+ * Onboarding — the first screen a new user ever sees.
  *
- * A gradient ghost that breathes, the wordmark, the tagline, and one button.
- * That is the whole page — the web app's landing is a hero plus a value
- * proposition, and a phone cannot hold a hero plus a value proposition without
- * becoming a scroll; a first-run screen that needs scrolling is a first-run
- * screen nobody reads.
+ * A gradient ghost that breathes, the wordmark, the tagline and one button.
+ * That is the whole page: the web app's landing is a hero plus a value
+ * proposition, and a phone cannot hold both without becoming a scroll — and a
+ * first-run screen that needs scrolling is a first-run screen nobody reads.
  *
  * THE ANIMATION
  *
  * Everything arrives in sequence rather than at once: the mark fades and lifts,
  * the wordmark follows, the tagline follows that, and the button last. Staggered
  * entrances are the cheapest way to make a static screen feel like it was
- * designed rather than assembled — and on a cold start it covers the moment the
- * session read is still in flight.
+ * designed rather than assembled.
  *
  * The ghost keeps breathing after the entrance, because a screen the user may
- * sit on for a second needs *something* alive on it. Motion is stopped by the
- * platform when "reduce motion" is on, so this is not an accessibility problem.
+ * sit on for a second needs *something* alive on it.
  *
- * Where it goes depends on the session, not on the user: an already-signed-in
- * user goes straight to the feed, and the Auth screen is only ever seen by
- * somebody who needs it. `useSession()` has the answer by the time the entrance
- * has finished — the read starts in `App.tsx`, before this screen mounts, so
- * the sequence is decorative rather than a mandatory wait.
+ * WHERE IT GOES
+ *
+ * `Get Started` is the only way forward, and it opens login with the flag set:
+ * the intro is seen once, and never again on any later sign-out. A signed-in
+ * user can never reach this screen at all — the (auth) layout redirects them
+ * to the tabs before it paints.
  */
-export function SplashScreen({ navigation }: Props) {
+export default function Onboarding() {
   const insets = useSafeAreaInsets();
 
   const markScale = useSharedValue(0.8);
@@ -87,15 +84,11 @@ export function SplashScreen({ navigation }: Props) {
     );
   }, [breathe, buttonOpacity, buttonShift, markOpacity, markScale, taglineOpacity, titleOpacity, titleShift]);
 
-  /* This screen is only ever mounted when there is no session — the root
-     navigator decides that, and it holds the splash while the session read is
-     in flight. So there is nothing to redirect *to* here: an existing user is
-     already past this stack, and a new one is meant to read the tagline. */
-
-  /* `Get Started` is the only way forward, and it opens on signup: the app's
-     first run is somebody creating an account, and a login form as the landing
-     tab is a form for a password they do not have yet. */
-  const start = () => navigation.navigate("Auth", { mode: "signup" });
+  const start = () => {
+    vibrate("tap");
+    void markOnboarded();
+    router.replace("/(auth)/login");
+  };
 
   const markStyle = useAnimatedStyle(() => ({
     opacity: markOpacity.value,
@@ -128,7 +121,7 @@ export function SplashScreen({ navigation }: Props) {
           >
             <View style={styles.markInner}>
               <Image
-                source={require("../assets/ghost-mark.png")}
+                source={require("../../assets/ghost-mark.png")}
                 style={styles.mark}
                 contentFit="contain"
               />

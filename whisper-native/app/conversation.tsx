@@ -1,7 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { router, useLocalSearchParams } from "expo-router";
 import { BlurView } from "expo-blur";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -26,7 +24,6 @@ import { LoadingScreen } from "@/components/Screen";
 import { ConfirmSheet, Sheet, SheetRow } from "@/components/Sheet";
 import { VoiceNotePlayer } from "@/components/VoiceNotePlayer";
 import { VoiceRecorderPanel } from "@/components/VoiceRecorderPanel";
-import type { MainStackParamList } from "@/navigation/types";
 import { refreshBadges } from "@/lib/badges";
 import { SEND_IMAGE_COST, SEND_VOICE_COST, UNLOCK_CHAT_COST, fetchWallet } from "@/lib/coins";
 import {
@@ -57,8 +54,6 @@ import { supabase } from "@/lib/supabase";
 import { useVoiceRecorder } from "@/lib/useVoiceRecorder";
 import type { ConversationRow, DirectMessage, VoiceRecording } from "@/lib/types";
 
-type Props = NativeStackScreenProps<MainStackParamList, "Chat">;
-
 /** One rendered line: a message, or a day divider. */
 type Row =
   | { kind: "message"; id: string; message: DirectMessage }
@@ -73,7 +68,7 @@ type Row =
  *
  *   unlock the thread   40 coins, one time, unless you are friends
  *   send a photo        10 coins
- *   send a voice note   5 coins
+ *   send a voice note    5 coins
  *
  * Every one of those is enforced by the database — `unlock_chat_with_coins`,
  * `spend_coins_for_image`, `send_voice_note` — and this screen only reflects
@@ -95,9 +90,11 @@ type Row =
  * "mark read" is one update and both sides can see it. Incoming messages are
  * stamped delivered on arrival, read once the screen has them.
  */
-export function ChatScreen({ navigation, route }: Props) {
-  const { conversationId } = route.params;
-  const rootNavigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+export default function Conversation() {
+  const params = useLocalSearchParams() as { conversationId?: string; otherId?: string };
+  const conversationId = typeof params.conversationId === "string" ? params.conversationId : "";
+  const otherIdParam = typeof params.otherId === "string" ? params.otherId : "";
+
   const insets = useSafeAreaInsets();
   const { userId, session } = useSession();
   const { showToast } = useToast();
@@ -123,7 +120,7 @@ export function ChatScreen({ navigation, route }: Props) {
   const recorder = useVoiceRecorder();
 
   /* WHOSE CHAT THIS IS
-     
+
      The route carries an `otherId` when we know it — the inbox does — but a
      notification tap only knows the conversation id, and a deep link may know
      neither. The conversation row has both participants, so the other side is
@@ -131,8 +128,8 @@ export function ChatScreen({ navigation, route }: Props) {
      placeholder until then. Everything downstream (the name, the friendship
      check) reads the derived value, never the parameter. */
   const otherId = useMemo(
-    () => (conversation && userId ? otherParticipant(conversation, userId) : route.params.otherId ?? ""),
-    [conversation, route.params.otherId, userId]
+    () => (conversation && userId ? otherParticipant(conversation, userId) : otherIdParam),
+    [conversation, otherIdParam, userId]
   );
 
   const name = useAnonName(otherId);
@@ -142,7 +139,7 @@ export function ChatScreen({ navigation, route }: Props) {
      -------------------------------------------------------------------- */
 
   const load = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !conversationId) return;
 
     const [row, transcript, friends, unlocked, wallet] = await Promise.all([
       fetchConversation(conversationId),
@@ -198,7 +195,7 @@ export function ChatScreen({ navigation, route }: Props) {
      typing. Typing is presence rather than a row — it should evaporate when
      somebody closes the app, and a database row cannot do that. */
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !conversationId) return;
 
     const channel = supabase
       .channel(`chat-${conversationId}`)
@@ -466,7 +463,7 @@ export function ChatScreen({ navigation, route }: Props) {
     return () => clearTimeout(timer);
   }, [rows.length]);
 
-  if (loading) return <LoadingScreen label={`Opening chat with ${name}`} />;
+  if (loading || !conversationId) return <LoadingScreen label={conversationId ? `Opening chat with ${name}` : "Opening chat"} />;
 
   return (
     <View style={styles.root}>
@@ -475,13 +472,13 @@ export function ChatScreen({ navigation, route }: Props) {
           <IconButton
             icon="chevron-back"
             size={40}
-            onPress={() => navigation.goBack()}
+            onPress={() => router.back()}
             accessibilityLabel="Go back"
           />
 
           <Pressable
             style={styles.headerWho}
-            onPress={() => rootNavigation.navigate("UserProfile", { userId: otherId })}
+            onPress={() => router.push({ pathname: "/u", params: { userId: otherId } })}
             accessibilityLabel={`Open ${name}'s profile`}
           >
             <Avatar authorId={otherId} size={36} />
@@ -498,7 +495,7 @@ export function ChatScreen({ navigation, route }: Props) {
           <IconButton
             icon="person-outline"
             size={40}
-            onPress={() => rootNavigation.navigate("UserProfile", { userId: otherId })}
+            onPress={() => router.push({ pathname: "/u", params: { userId: otherId } })}
             accessibilityLabel="View profile"
           />
         </View>
@@ -636,7 +633,7 @@ export function ChatScreen({ navigation, route }: Props) {
               label="View profile"
               onPress={() => {
                 setMenuMessage(null);
-                rootNavigation.navigate("UserProfile", { userId: otherId });
+                router.push({ pathname: "/u", params: { userId: otherId } });
               }}
             />
             {menuMessage.sender_id === userId && (
@@ -666,17 +663,15 @@ export function ChatScreen({ navigation, route }: Props) {
           setDeleteTarget(null);
           if (!target || !session?.access_token || !userId) return;
 
-          void fetch(
-            `${(process.env.EXPO_PUBLIC_API_BASE_URL || "https://whisper-anonymous.vercel.app").replace(/\/$/, "")}/api/chat/delete-message`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${session.access_token}`,
-              },
-              body: JSON.stringify({ messageId: target.id }),
-            }
-          )
+          const base = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://whisper-anonymous.vercel.app").replace(/\/$/, "");
+          void fetch(`${base}/api/chat/delete-message`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ messageId: target.id }),
+          })
             .then((res) => {
               if (!res.ok) throw new Error("delete failed");
               setMessages((current) => current.filter((message) => message.id !== target.id));

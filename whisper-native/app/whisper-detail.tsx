@@ -1,7 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { router, useLocalSearchParams } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,7 +20,6 @@ import { IconButton } from "@/components/GradientButton";
 import { LoadingScreen, Screen } from "@/components/Screen";
 import { Sheet, SheetRow } from "@/components/Sheet";
 import { FeedCard } from "@/components/feed/FeedCard";
-import type { MainStackParamList } from "@/navigation/types";
 import { FEED_REPLY_COST, fetchWallet } from "@/lib/coins";
 import {
   apiBase,
@@ -43,8 +40,6 @@ import { useToast } from "@/lib/toast";
 import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import type { FeedPost } from "@/lib/types";
-
-type Props = NativeStackScreenProps<MainStackParamList, "SingleWhisper">;
 
 /**
  * One post and its thread.
@@ -69,9 +64,10 @@ type Props = NativeStackScreenProps<MainStackParamList, "SingleWhisper">;
  * composer posts through the same `/api/coins/feed-post` route as a new post,
  * with `parentPostId` set.
  */
-export function SingleWhisperScreen({ navigation, route }: Props) {
-  const { postId } = route.params;
-  const rootNavigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+export default function WhisperDetail() {
+  const params = useLocalSearchParams() as { postId?: string };
+  const postId = typeof params.postId === "string" ? params.postId : "";
+
   const insets = useSafeAreaInsets();
   const { userId, session } = useSession();
   const { showToast } = useToast();
@@ -266,7 +262,7 @@ export function SingleWhisperScreen({ navigation, route }: Props) {
             onToggleLike={() => void toggle(root)}
             onVote={(index) => void vote(root, index)}
             onOpenGallery={() => void openPhoto(root)}
-            onOpenThread={() => navigation.goBack()}
+            onOpenThread={() => router.back()}
             onOpenMenu={() => setMenuPost(root)}
             onTip={() => setTipping(true)}
             highlight
@@ -288,12 +284,12 @@ export function SingleWhisperScreen({ navigation, route }: Props) {
     [root, replies.length, liked, likeCounts, replyCounts, imageState, claimedPhoto, pollChoices, pollCounts, userId]
   );
 
-  if (loading) return <LoadingScreen label="Opening whisper" />;
+  if (loading || !postId) return <LoadingScreen label="Opening whisper" />;
 
   return (
     <Screen padded={false}>
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
-        <IconButton icon="chevron-back" size={40} onPress={() => navigation.goBack()} accessibilityLabel="Go back" />
+        <IconButton icon="chevron-back" size={40} onPress={() => router.back()} accessibilityLabel="Go back" />
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Whisper</Text>
           <Text style={styles.headerSub}>
@@ -332,7 +328,9 @@ export function SingleWhisperScreen({ navigation, route }: Props) {
               onToggleLike={() => void toggle(item)}
               onVote={(index) => void vote(item, index)}
               onOpenGallery={() => void openPhoto(item)}
-              onOpenThread={() => navigation.push("SingleWhisper", { postId: item.id })}
+              onOpenThread={() =>
+                router.push({ pathname: "/whisper-detail", params: { postId: item.id } })
+              }
               onOpenMenu={() => setMenuPost(item)}
               onTip={() => setTipping(true)}
             />
@@ -395,7 +393,7 @@ export function SingleWhisperScreen({ navigation, route }: Props) {
               detail="See their profile and their link"
               onPress={() => {
                 setMenuPost(null);
-                rootNavigation.navigate("UserProfile", { userId: menuPost.author_id });
+                router.push({ pathname: "/u", params: { userId: menuPost.author_id } });
               }}
             />
             <SheetRow
@@ -420,7 +418,7 @@ export function SingleWhisperScreen({ navigation, route }: Props) {
                 void blockAuthor(userId, target.author_id)
                   .then(() => {
                     showToast("Blocked", { variant: "subtle" });
-                    navigation.goBack();
+                    router.back();
                   })
                   .catch(() => showToast("Couldn't block that account.", { variant: "error" }));
               }}
@@ -444,7 +442,7 @@ export function SingleWhisperScreen({ navigation, route }: Props) {
                         return;
                       }
                       showToast("Deleted", { variant: "subtle" });
-                      navigation.goBack();
+                      router.back();
                     });
                 }}
               />

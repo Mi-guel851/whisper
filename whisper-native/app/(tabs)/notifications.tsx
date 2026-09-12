@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { router, useFocusEffect } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -10,8 +9,6 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "
 import { ConfirmSheet, Sheet, SheetRow } from "@/components/Sheet";
 import { EmptyState, Screen, SkeletonRow } from "@/components/Screen";
 import { WhisperCard } from "@/components/WhisperCard";
-import { TAB_BAR_SPACE } from "@/navigation/MainTabs";
-import type { MainStackParamList } from "@/navigation/types";
 import { refreshBadges } from "@/lib/badges";
 import {
   fetchNotifications,
@@ -25,7 +22,7 @@ import { timeAgo } from "@/lib/format";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import type { NotificationRow, Whisper, WhisperHint } from "@/lib/types";
 import {
@@ -64,8 +61,7 @@ type Tab = "whispers" | "alerts";
  * the row without a refetch, which is what makes an anonymous message arrive
  * while the screen is open rather than after the next pull.
  */
-export function NotificationsScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+export default function Notifications() {
   const { userId, session } = useSession();
   const { showToast } = useToast();
 
@@ -138,9 +134,17 @@ export function NotificationsScreen() {
     void load();
   }, [load]);
 
-  /* Live arrivals. One channel per screen instance, torn down on blur-free
-     unmount — a subscription that outlives its screen is a leak with a
-     battery cost. */
+  /* The badges behind this screen are this screen's rows; when it opens they
+     are about to be seen, so the refresh belongs to focus as well. */
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      void refreshBadges(userId);
+    }, [userId])
+  );
+
+  /* Live arrivals. One channel per screen instance, torn down on unmount — a
+     subscription that outlives its screen is a leak with a battery cost. */
   useEffect(() => {
     if (!userId) return;
 
@@ -218,7 +222,7 @@ export function NotificationsScreen() {
       setHints((current) => [...current.filter((row) => row.message_id !== whisper.id), ...rows]);
       setExpandedHint(whisper.id);
     },
-    [hintUnlocks, hints, session?.access_token, showToast]
+    [hintUnlocks, hints, showToast]
   );
 
   const removeWhisper = async () => {
@@ -254,14 +258,17 @@ export function NotificationsScreen() {
 
       switch (target.kind) {
         case "chat":
-          navigation.navigate("Chat", { conversationId: target.conversationId, otherId: "" });
+          router.push({ pathname: "/conversation", params: { conversationId: target.conversationId } });
           break;
         case "feed":
-          if (target.postId) navigation.navigate("SingleWhisper", { postId: target.postId });
-          else setTab("whispers");
+          if (target.postId) {
+            router.push({ pathname: "/whisper-detail", params: { postId: target.postId } });
+          } else {
+            setTab("whispers");
+          }
           break;
         case "coins":
-          navigation.navigate("CoinStore");
+          router.push("/coins");
           break;
         case "whispers":
           setTab("whispers");
@@ -274,7 +281,7 @@ export function NotificationsScreen() {
           break;
       }
     },
-    [navigation, userId]
+    [userId]
   );
 
   const readAll = async () => {
@@ -404,7 +411,7 @@ export function NotificationsScreen() {
                 title="No whispers yet"
                 body="Share your link and anonymous messages will land here."
                 actionLabel="See your link"
-                onAction={() => navigation.navigate("Tabs", { screen: "Profile" })}
+                onAction={() => router.push("/(tabs)/profile")}
               />
             )
           }
@@ -469,7 +476,7 @@ export function NotificationsScreen() {
               detail="Where whispers are sent to you"
               onPress={() => {
                 setMenuWhisper(null);
-                navigation.navigate("Tabs", { screen: "Profile" });
+                router.push("/(tabs)/profile");
               }}
             />
             <SheetRow

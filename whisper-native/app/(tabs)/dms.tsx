@@ -1,15 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { router, useFocusEffect } from "expo-router";
 import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useState } from "react";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { Avatar } from "@/components/Avatar";
 import { SearchField } from "@/components/Input";
 import { EmptyState, Screen, SkeletonRow } from "@/components/Screen";
-import { TAB_BAR_SPACE } from "@/navigation/MainTabs";
-import type { MainStackParamList } from "@/navigation/types";
 import { refreshBadges } from "@/lib/badges";
 import { UNLOCK_CHAT_COST } from "@/lib/coins";
 import { fetchConversations, fetchPreviews, fetchUnreadCounts, otherParticipant } from "@/lib/dms";
@@ -18,10 +16,9 @@ import { vibrate } from "@/lib/haptics";
 import { useAnonName } from "@/lib/identity";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import type { ConversationRow, DirectMessage } from "@/lib/types";
-import { LinearGradient } from "expo-linear-gradient";
 
 /**
  * The inbox.
@@ -48,8 +45,7 @@ import { LinearGradient } from "expo-linear-gradient";
  * price instead of the preview so the tap is an informed one — discovering a
  * paywall after tapping is the thing that makes people stop tapping.
  */
-export function ConversationsScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+export default function Dms() {
   const { userId } = useSession();
   const { showToast } = useToast();
 
@@ -178,7 +174,7 @@ export function ConversationsScreen() {
           </View>
 
           <Pressable
-            onPress={() => navigation.navigate("Tabs", { screen: "Notifications" })}
+            onPress={() => router.push("/(tabs)/notifications")}
             style={styles.whispersButton}
             accessibilityLabel="Open your whisper inbox"
           >
@@ -221,8 +217,10 @@ export function ConversationsScreen() {
             onPress={() => {
               vibrate("tap");
               const other = userId ? otherParticipant(item, userId) : null;
-              if (!other) return;
-              navigation.navigate("Chat", { conversationId: item.id, otherId: other });
+              router.push({
+                pathname: "/conversation",
+                params: { conversationId: item.id, ...(other ? { otherId: other } : {}) },
+              });
             }}
           />
         )}
