@@ -14,19 +14,23 @@ import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
  * fix is a server-held credential: the client only ever holds something
  * short-lived or scoped to the call.
  *
- * WHY "STUN ONLY" WAS A BUG AND NOT A DEGRADATION
+ * WHY THIS ROUTE USED TO SILENTLY BREAK EVERY APP-TO-ANYTHING CALL
  *
- * This route used to answer `iceServers: []` whenever an operator had not set
- * two environment variables, and the client quietly ran STUN-only. That reads
- * like a graceful fallback in the code and behaves like a dead feature in the
- * field: two phones on cellular networks are almost always behind
- * symmetric/carrier-grade NAT, where STUN produces candidates that cannot
- * reach each other. The call rang, the callee picked up, both screens said
- * "Connecting…" for 25 seconds, and the call log then claimed the call had
- * lasted 25 seconds. So a relay is now ALWAYS supplied — from the operator's
- * own server when one is configured, from the shared public fallback when one
- * is not — and the operator can turn the fallback off deliberately, but not
- * by accident.
+ * The old default "floor" was openrelay.metered.ca, the free public relay
+ * from a 2019 blog post. It is dead: the endpoint resolves and accepts the
+ * connection, then closes it without answering a single TURN request. So a
+ * deployment with no TURN configured was not "STUN-only" — it was serving a
+ * relay that looked configured and relayed nothing. Two phones behind
+ * carrier NAT (the default shape for the app: mobile data) could never
+ * connect through it, and the only symptom was "Connecting…" for 25 seconds.
+ * Web-to-web calls between friendly networks still connected, which is how
+ * the feature "worked" for a while while every call involving the app died.
+ *
+ * A dead default is worse than no default: it hides the problem. So the
+ * floor is now EXPLICIT — an operator names the relay they actually use —
+ * and when nothing is configured the answer says `turnConfigured: false`,
+ * and the client tells the user at dial time that the call may not connect
+ * across different networks, instead of twenty-five seconds of mystery.
  *
  * CONFIGURATION, in the order it is tried:
  *
@@ -34,22 +38,26 @@ import { clientIp, consume, rateLimitedResponse } from "@/lib/apiGuard";
  *        TURN_URLS        "turn:turn.example.com:3478,turns:turn.example.com:5349"
  *        TURN_USERNAME    a long-term credential's username
  *        TURN_CREDENTIAL  its password
- *      Recommended for production: your own relay, your own bandwidth, and no
- *      third party in the media path at all.
  *
- *   2. TURN REST API (time-limited credentials):
+ *   2. Cloudflare Calls (recommended: 1TB free, global, no self-hosting):
+ *        TURN_CF_KEY_ID       the TURN key's id (Calls dashboard, or API)
+ *        TURN_CF_API_TOKEN    an API token with Calls:Edit on the account
+ *      The key stays server-side; only the short-lived credential leaves.
+ *
+ *   3. Any other TURN REST API (time-limited credentials):
  *        TURN_REST_API_URL  the service's mint endpoint
  *        TURN_CREDENTIALS   base64("username:api_key")
  *
- *   3. Public fallback relay (metered.ca's open relay), unless
- *      TURN_FALLBACK=off. Shared and rate-limited, so it is a floor to stand
- *      the product up on, not a ceiling: set option 1 for real traffic. The
- *      response names the source so an operator can see which one is live.
+ *   4. An explicit fallback relay, only if the operator names one:
+ *        TURN_FALLBACK_URLS  "turn:relay.example.com:3478,turns:..."
+ *        TURN_FALLBACK_USERNAME / TURN_FALLBACK_CREDENTIAL  (optional)
+ *      There is no built-in relay behind this. The last default was a dead
+ *      server, and the default now is an honest "none configured".
  *
  * NOTHING SECRETS: the request carries the user's session JWT (identity +
  * rate bucket), the body is empty, and the response contains only the
- * credential the client is entitled to use. The account key stays in the
- * server environment and is never echoed, logged or stored.
+ * credential the client is entitled to use. Account keys stay in the server
+ * environment and are never echoed, logged or stored.
  */
 
 /** TTL of a minted credential: one call, plus headroom for a renegotiation. */
@@ -59,24 +67,6 @@ const TURN_TTL_SECONDS = 1800;
 export const TURN_CREDENTIAL_TTL_SECONDS = TURN_TTL_SECONDS;
 
 const MINT_TIMEOUT_MS = 5_000;
-
-/**
- * The floor. A public relay that anyone may use, published for exactly this
- * purpose; the media is still DTLS-encrypted end to end, so the relay sees
- * packets and IP addresses, nothing else. Overridden by TURN_URLS, and
- * switched off with TURN_FALLBACK=off.
- */
-const PUBLIC_FALLBACK_ICE_SERVERS: RTCIceServer[] = [
-  {
-    urls: [
-      "turn:openrelay.metered.ca:80",
-      "turn:openrelay.metered.ca:443",
-      "turn:openrelay.metered.ca:443?transport=tcp",
-    ],
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-];
 
 type TurnMintResponse = {
   uri: string;
@@ -106,9 +96,77 @@ function staticIceServers(): RTCIceServer[] | null {
   return [{ urls, ...(needsAuth ? { username, credential } : {}) }];
 }
 
-function fallbackAllowed(): boolean {
-  const flag = (process.env.TURN_FALLBACK ?? "").trim().toLowerCase();
-  return !["off", "false", "0", "no"].includes(flag);
+/**
+ * Cloudflare Calls: a TURN key (long-lived, server-side) mints short-lived
+ * credentials through
+ *   POST https://rtc.live.cloudflare.com/v1/turn/keys/<key_id>/credentials/generate-ice-servers
+ *   Authorization: Bearer <api token>
+ *   body: {"ttl": <seconds>}
+ * The 201 response is a ready-to-use `iceServers` array (STUN + TURN, several
+ * transports) — exactly the shape RTCPeerConnection wants.
+ */
+async function cloudflareIceServers(): Promise<{ iceServers: RTCIceServer[]; expiresInSeconds: number } | null> {
+  const keyId = process.env.TURN_CF_KEY_ID;
+  const apiToken = process.env.TURN_CF_API_TOKEN;
+  if (!keyId || !apiToken) return null;
+
+  try {
+    const mint = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify({ ttl: TURN_TTL_SECONDS }),
+        signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
+      }
+    );
+
+    if (!mint.ok) {
+      console.error(
+        "[turn-credentials] cloudflare mint failed:",
+        mint.status,
+        (await mint.text()).slice(0, 300)
+      );
+      return null;
+    }
+
+    const body = (await mint.json()) as { iceServers?: RTCIceServer[] };
+    const urlsOf = (server: RTCIceServer): string[] =>
+      Array.isArray(server.urls) ? server.urls : [server.urls];
+    const servers = (body.iceServers ?? []).filter((server) => urlsOf(server).length > 0);
+    if (!servers.some((server) => urlsOf(server).some((url) => String(url).includes("turn:")))) {
+      console.error("[turn-credentials] cloudflare mint returned no turn: servers");
+      return null;
+    }
+    return { iceServers: servers, expiresInSeconds: TURN_TTL_SECONDS };
+  } catch (err) {
+    console.error("[turn-credentials] cloudflare mint request failed", err);
+    return null;
+  }
+}
+
+/** The explicit floor: a relay the OPERATOR named. Never a built-in default. */
+function fallbackIceServers(): RTCIceServer[] | null {
+  const urls = (process.env.TURN_FALLBACK_URLS ?? "")
+    .split(/[\s,]+/)
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (urls.length === 0) return null;
+
+  const username = process.env.TURN_FALLBACK_USERNAME;
+  const credential = process.env.TURN_FALLBACK_CREDENTIAL;
+  const needsAuth = urls.some((url) => url.startsWith("turn:") || url.startsWith("turns:"));
+  if (needsAuth && (!username || !credential)) {
+    console.error(
+      "[turn-credentials] TURN_FALLBACK_URLS carries turn: URLs but no " +
+        "TURN_FALLBACK_USERNAME/TURN_FALLBACK_CREDENTIAL; they cannot be used."
+    );
+    return null;
+  }
+  return [{ urls, ...(needsAuth ? { username, credential } : {}) }];
 }
 
 export async function POST(req: NextRequest) {
@@ -154,10 +212,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    /* 2. Cloudflare Calls: 1TB free, globally distributed, credentials that
+          mint per request and expire. The recommended floor for a product
+          whose calls cross carrier NATs. */
+    const cloudflare = await cloudflareIceServers();
+    if (cloudflare) {
+      return NextResponse.json({
+        iceServers: cloudflare.iceServers,
+        turnConfigured: true,
+        source: "cloudflare",
+        expiresInSeconds: cloudflare.expiresInSeconds,
+      });
+    }
+
     const restApiUrl = process.env.TURN_REST_API_URL;
     const credentials = process.env.TURN_CREDENTIALS;
 
-    /* 2. A TURN REST API: per-session credentials with their own TTL. */
+    /* 3. A generic TURN REST API: per-session credentials with their own TTL. */
     if (restApiUrl && credentials) {
       const minted = await mintFromRestApi(restApiUrl, credentials);
       if (minted) {
@@ -168,28 +239,28 @@ export async function POST(req: NextRequest) {
           expiresInSeconds: minted.expiresInSeconds,
         });
       }
-      /* The mint failed. Fall through to the public relay: a call on a
-         shared relay beats a call that cannot connect at all. */
     }
 
-    /* 3. The floor, so a call is never silently impossible. */
-    if (fallbackAllowed()) {
-      if (!own && !restApiUrl) {
-        console.warn(
-          "[turn-credentials] no TURN server configured; serving the public fallback relay. " +
-            "Set TURN_URLS/TURN_USERNAME/TURN_CREDENTIAL for production traffic."
-        );
-      }
+    /* 4. The explicit floor. */
+    const fallback = fallbackIceServers();
+    if (fallback) {
       return NextResponse.json({
-        iceServers: PUBLIC_FALLBACK_ICE_SERVERS,
+        iceServers: fallback,
         turnConfigured: true,
-        source: "public-fallback",
+        source: "fallback",
         expiresInSeconds: TURN_TTL_SECONDS,
       });
     }
 
-    /* Deliberately relay-less. The client says so out loud rather than
-       letting the user discover it as a call that never connects. */
+    /* Deliberately relay-less. No dead default hiding behind the product:
+       the client reads turnConfigured:false, and the call engine tells the
+       user at dial time that a call across different networks may not
+       connect — a sentence, not twenty-five seconds of "Connecting…". */
+    console.warn(
+      "[turn-credentials] no TURN configured (TURN_URLS, TURN_CF_KEY_ID+TURN_CF_API_TOKEN, " +
+        "TURN_REST_API_URL, or TURN_FALLBACK_URLS). Calls between peers on different " +
+        "networks will fail to connect. Cloudflare Calls has a free tier."
+    );
     return NextResponse.json({ iceServers: [], turnConfigured: false, source: "none" });
   } catch (err) {
     console.error("[turn-credentials]", err);

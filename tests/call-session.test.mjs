@@ -34,6 +34,7 @@ const [
   turnRoute,
   ice,
   outcomesMigration,
+  busyMigration,
 ] = await Promise.all([
   read("lib/whisperWords.ts"),
   read("components/dashboard/WordWall.tsx"),
@@ -52,6 +53,7 @@ const [
   read("app/api/calls/turn-credentials/route.ts"),
   read("lib/calls/iceServers.ts"),
   read("supabase/migrations/202609120003_honest_call_outcomes.sql"),
+  read("supabase/migrations/202609120004_call_busy_window_and_ring_finalization.sql"),
 ]);
 
 function ok(name, check) {
@@ -114,7 +116,9 @@ console.log("answering works from anywhere");
 
 ok("a ringing caller re-broadcasts its offer", /OFFER_RETRANSMIT_MS/.test(engine) && /this\.retransmitTimer = setInterval\(/.test(engine));
 ok("a late callee waits for that offer instead of failing", /OFFER_WAIT_MS/.test(engine) && /this\.awaitingOffer = true;/.test(engine));
-ok("a retransmitted offer refreshes the ring instead of answering busy", /if \(this\.state\.status === "incoming"\) \{\s*if \(sdp\) this\.pendingOfferSdp = sdp;/.test(engine));
+ok("a retransmitted offer refreshes the ring instead of answering busy", /if \(this\.state\.status === "incoming"\) \{[\s\S]{0,500}?if \(sdp\) this\.pendingOfferSdp = sdp;/.test(engine));
+ok("a second dialer to a ringing device gets busy now, not after 45s", /offer: busy — already ringing for a different call/.test(engine)
+  && /event: "busy",\s*payload: callId \? \{ callId \} : null,/.test(engine));
 ok("our ICE candidates are replayed to a peer who subscribed late", /private replayCandidates\(\)/.test(engine) && (engine.match(/this\.replayCandidates\(\);/g) || []).length >= 2);
 ok("their ICE candidates arriving early are queued, not dropped", /queuedRemoteCandidates/.test(engine) && /flushQueuedCandidates/.test(engine));
 
@@ -143,9 +147,9 @@ ok(
     && /sameCall === true \|\| \(sameCall === null && this\.pc\?\.remoteDescription\)/.test(offerBranch)
 );
 ok(
-  "the busy verdict is only reachable for a genuinely idle engine",
+  "the catch-all busy verdict is only reachable for a genuinely idle engine",
   offerBranch.indexOf('sameCall === true || (sameCall === null && this.pc?.remoteDescription)') <
-    offerBranch.indexOf('event: "busy"')
+    offerBranch.indexOf('offer: busy verdict for')
 );
 ok(
   "a restart offer is not allowed to skip the accept path",
@@ -279,15 +283,32 @@ ok("answering stamps the moment the call was taken",
 console.log('"Connecting…" has a way out');
 /* ------------------------------------------------------------------------- */
 
-/* The other half of the same report. With no TURN relay the peer connection
-   has nothing to fall back on, and two phones behind carrier NAT cannot reach
-   each other at all — the route used to answer `iceServers: []` whenever two
-   env vars were unset, which is to say by default. */
-ok("the relay route supplies a relay unless an operator switches it off",
-  /PUBLIC_FALLBACK_ICE_SERVERS/.test(turnRoute) && /fallbackAllowed\(\)/.test(turnRoute));
-ok("an operator's own relay wins over the fallback",
+/* The other half of the same report, revisited: the old default "floor" was
+   openrelay.metered.ca — a free relay from a 2019 blog post, dead since. It
+   answered no TURN request, so a default-configured deployment was not
+   STUN-only: it served a relay that looked configured and relayed nothing,
+   and every call involving a phone behind carrier NAT died on
+   "Connecting…". The floor is now explicit, and the absence of a relay is
+   a sentence the user hears at dial time, not 25 seconds of mystery. */
+/* The route's header still names the dead relay to explain why it is gone;
+   what must not survive is a configuration that would actually use it. */
+ok("the dead public relay is no longer configured anywhere",
+  !/turn:openrelay|turns:openrelay|stun:openrelay/.test(turnRoute)
+    && !/turn:openrelay|turns:openrelay|stun:openrelay/.test(ice));
+ok("Cloudflare Calls can mint the relay (1TB free tier, no self-hosting)",
+  /rtc\.live\.cloudflare\.com/.test(turnRoute)
+    && /TURN_CF_KEY_ID/.test(turnRoute) && /TURN_CF_API_TOKEN/.test(turnRoute));
+ok("an operator's own relay wins, then cloudflare, then the explicit fallback",
   /staticIceServers\(\)/.test(turnRoute)
-    && turnRoute.indexOf("staticIceServers()") < turnRoute.indexOf("PUBLIC_FALLBACK_ICE_SERVERS,"));
+    && turnRoute.indexOf("staticIceServers()") < turnRoute.indexOf("cloudflareIceServers()")
+    && turnRoute.indexOf("cloudflareIceServers()") < turnRoute.indexOf("fallbackIceServers()"));
+ok("the fallback relay is named by the operator, never built in",
+  /TURN_FALLBACK_URLS/.test(turnRoute)
+    && /Deliberately relay-less/.test(turnRoute));
+ok("no relay is an explicit answer the client can act on",
+  /turnConfigured: false, source: "none"/.test(turnRoute));
+ok("a STUN-only dial tells the user before the connect, not after",
+  /No call relay is configured on this server/.test(engine));
 ok("the client says so out loud when it ends up STUN-only",
   /no TURN relay available/.test(ice) && /includes\("turn:"\)/.test(ice));
 ok("a lost answer is retried instead of stranding both sides",
@@ -298,5 +319,56 @@ ok("a call that never connected does not make the user permanently busy",
     && /and cl\.started_at > now\(\) - v_live_window/.test(outcomesMigration));
 ok("and the sweep closes what a dead device left open",
   /set status = 'failed', ended_at = now\(\)\s*where status = 'answered'/.test(outcomesMigration));
+
+/* ------------------------------------------------------------------------- */
+console.log("a call that is over stays over");
+/* ------------------------------------------------------------------------- */
+
+/* The busy window and the orphan sweep are one number now — ten minutes —
+   so a killed device stops reading as "on another call" soon after its
+   owner notices the call died, instead of four hours later. */
+ok("an orphaned answered row is live for ten minutes, not four hours",
+  /v_live_window interval := interval '10 minutes'/.test(busyMigration)
+    && (busyMigration.match(/now\(\) - v_live_window/g) || []).length >= 2);
+ok("the busy check and the orphan sweep agree on the window",
+  /cl\.status = 'answered'[\s\S]{0,200}?started_at > now\(\) - v_live_window/.test(busyMigration));
+/* The ring row is the call: it retires on EVERY legal transition, so a
+   canceled/missed/declined/expired call cannot ring again on any device —
+   the open app stands down on the UPDATE, and a cold start finds the row
+   already read. */
+ok("every terminal transition retires the callee's ring row",
+  /update public\.notifications set is_read = true\s*where source_id = v_log\.id and type = 'call' and user_id = v_log\.callee_id;/.test(busyMigration));
+ok("the expiry sweep retires the ring row it expires",
+  /update public\.notifications set is_read = true\s*where source_id = v_row\.id and type = 'call';/.test(busyMigration));
+ok("the migration is transactional and re-runnable",
+  /^begin;/m.test(busyMigration) && /^commit;/m.test(busyMigration)
+    && /create or replace function public\.start_call_log/.test(busyMigration)
+    && /create or replace function public\.end_call_log/.test(busyMigration)
+    && /create or replace function public\.expire_stale_calls/.test(busyMigration));
+
+/* And the client's half of the same promise: a ring that has no row of its
+   own (a push tap, an offer that arrived first) is verified against the
+   server before it takes the screen. */
+ok("a payload ring is verified against call_logs before it rings",
+  /ring\.callId && !ring\.rowId/.test(engine)
+    && /maybeSingle/.test(engine)
+    && /TERMINAL_CALL_STATUSES\.has/.test(engine));
+/* A paused WebView kills the transport without a final state change; the
+   provider judges the call on resume instead of leaving a counting pill
+   over a ghost. */
+ok("a paused app's dead call is ended on resume",
+  /checkHealth = \(\) => \{/.test(engine)
+    && /pc\.connectionState === "failed" \|\| pc\.iceConnectionState === "failed"/.test(engine)
+    && /callSession\.checkHealth\(\);/.test(provider));
+/* The WebView's autoplay policy can refuse the peer's audio outright; the
+   retry is what keeps a connected call from being a silent one. */
+ok("a blocked remote audio is retried, not left silent",
+  /private startRemoteAudioRetry\(\)/.test(engine)
+    && /private stopRemoteAudioRetry\(\)/.test(engine)
+    && (engine.match(/this\.startRemoteAudioRetry\(\);/g) || []).length >= 1);
+/* A hang-up report that hits a dead link is the phantom-busy factory; it
+   gets one retry, and the server window is the backstop. */
+ok("a transient failure at call end is retried once",
+  /setTimeout\(\(\) => attempt\(false\), 1_500\)/.test(engine));
 
 console.log("\nCALL SESSION + WORD WALL GUARDS PASSED");

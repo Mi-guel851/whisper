@@ -107,9 +107,11 @@ export const supabase = {
   },
 
   from(table) {
-    /* Only the pre-0005 legacy write paths use this; the harness server
-       records them so a test can assert the engine did NOT fall back. */
-    const call = { table, method: null, payload: null, filters: [] };
+    /* Writes (the pre-0005 legacy paths) go to the harness server, which
+       records them so a test can assert the engine did NOT fall back;
+       reads (beginIncomingRing verifying a payload ring against call_logs)
+       come straight back from the same server, the way Postgres would. */
+    const call = { table, method: null, payload: null, columns: null, filters: [] };
     const builder = {
       insert(payload) {
         call.method = "insert";
@@ -121,12 +123,27 @@ export const supabase = {
         call.payload = payload;
         return builder;
       },
-      select() {
+      select(columns) {
+        call.columns = columns ?? null;
         return builder;
       },
       eq(column, value) {
         call.filters.push([column, value]);
         return builder;
+      },
+      order() {
+        return builder;
+      },
+      limit() {
+        return builder;
+      },
+      maybeSingle() {
+        const reqId = nextRequestId++;
+        const promise = new Promise((settle) => {
+          pendingRpc.set(reqId, settle);
+          parentPort.postMessage({ kind: "table-read", reqId, call });
+        });
+        return promise;
       },
       then(resolve, reject) {
         const reqId = nextRequestId++;
