@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Background } from "@/components/Background";
 import { GradientButton } from "@/components/GradientButton";
+import { GoogleButton } from "@/components/GoogleButton";
+import { signInWithGoogle, SIGNUPS_CLOSED } from "@/lib/googleAuth";
 import { GradientText } from "@/components/GradientText";
 import { GhostMark } from "@/components/Logo";
 import { Field } from "@/components/Input";
@@ -15,7 +17,7 @@ import { safeErrorMessage } from "@/lib/errors";
 import { vibrate } from "@/lib/haptics";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The CONFIG_ERROR copy lives once, next to the check that needs it.
@@ -47,6 +49,7 @@ const CONFIG_ERROR =
  * same destination is how a sign-in ends up pushing the feed twice.
  */
 export default function Login() {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
 
@@ -54,6 +57,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /* First-timers meet the intro before they meet this form. */
@@ -108,6 +112,28 @@ export default function Login() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /* The web login's Google branch: signups closed means this button is the
+     side door, so it routes to /signup instead of opening the picker. */
+  const onGoogle = async () => {
+    setError(null);
+    if (SIGNUPS_CLOSED) {
+      router.push("/(auth)/signup");
+      return;
+    }
+    setGoogleBusy(true);
+    const result = await signInWithGoogle();
+    setGoogleBusy(false);
+    if (result.cancelled) return;
+    if ("error" in result && result.error) {
+      setError(result.error);
+      vibrate("warning");
+      return;
+    }
+    vibrate("success");
+    showToast("Welcome back! 👋", { variant: "success" });
+    /* The layout reacts to the session; nothing navigates here. */
   };
 
   const errorStyle = useAnimatedStyle(() => ({ opacity: error ? 1 : 0 }));
@@ -205,10 +231,19 @@ export default function Login() {
                   size="lg"
                   fullWidth
                   loading={busy}
-                  disabled={busy}
+                  disabled={busy || googleBusy}
                   onPress={() => void submit()}
                   style={styles.submit}
                 />
+
+                {!SIGNUPS_CLOSED ? (
+                  <GoogleButton
+                    loading={googleBusy}
+                    disabled={busy}
+                    onPress={() => void onGoogle()}
+                    style={styles.googleButton}
+                  />
+                ) : null}
 
                 <Pressable
                   onPress={() => router.push("/forgot-password")}
@@ -273,7 +308,7 @@ function friendlyAuthError(message: string): string {
   return message;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   flex: { flex: 1 },
   scroll: { paddingHorizontal: 22, flexGrow: 1, justifyContent: "center" },
@@ -331,6 +366,7 @@ const styles = StyleSheet.create({
   },
   bannerTop: { marginBottom: 16 },
 
+  googleButton: { marginTop: 12 },
   submit: { marginTop: 4 },
   forgot: { alignItems: "center", paddingVertical: 2 },
   forgotText: { color: COLORS.cyan, fontSize: 13, fontWeight: "700" },

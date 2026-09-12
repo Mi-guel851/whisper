@@ -11,7 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The bottom sheet.
@@ -41,6 +41,7 @@ export function Sheet({
   children: React.ReactNode;
   dismissable?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
   const [mounted, setMounted] = React.useState(visible);
@@ -126,6 +127,7 @@ export function ConfirmSheet({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <Sheet visible={visible} onClose={onCancel} title={title}>
       {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -166,6 +168,7 @@ export function SheetRow({
   onPress: () => void;
   danger?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <Pressable style={styles.row} onPress={onPress} accessibilityRole="button">
       <View style={[styles.rowIcon, danger && { backgroundColor: "rgba(239,68,68,0.14)" }]}>
@@ -180,7 +183,7 @@ export function SheetRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(4,2,10,0.66)" },
   sheetWrap: {

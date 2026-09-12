@@ -29,7 +29,7 @@ import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/lib/toast";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/lib/theme";
 
 const PAGE_SIZE = 12;
 
@@ -64,6 +64,7 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
  * screen without a pull-to-refresh.
  */
 export default function Friends() {
+  const styles = useStyles(makeStyles);
   const params = useLocalSearchParams<{ tab?: string }>();
   const { userId } = useSession();
   const { showToast } = useToast();
@@ -543,7 +544,7 @@ export default function Friends() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   header: { gap: 3, marginBottom: 14 },
   title: { color: COLORS.text, fontSize: 22, fontWeight: "900" },
   subtitle: { color: COLORS.muted, fontSize: 13, fontWeight: "600" },
@@ -579,7 +580,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: COLORS.cyan,
   },
-  tabBadgeText: { color: "#08111a", fontSize: 9.5, fontWeight: "900" },
+  tabBadgeText: { color: COLORS.contrast, fontSize: 9.5, fontWeight: "900" },
 
   list: { gap: 10 },
   card: {

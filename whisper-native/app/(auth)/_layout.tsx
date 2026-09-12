@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { Background } from "@/components/Background";
 import { LoadingScreen } from "@/components/Screen";
 import { useSession } from "@/lib/session";
-import { COLORS, glow } from "@/lib/theme";
+import { COLORS, glow, useStyles } from "@/lib/theme";
 
 /**
  * The pre-account group.
@@ -19,6 +19,7 @@ import { COLORS, glow } from "@/lib/theme";
  * a deep link to /login while signed in lands on the feed instead of a form.
  */
 export default function AuthLayout() {
+  const styles = useStyles(makeStyles);
   const { session, loading } = useSession();
   const breathe = useSharedValue(1);
 
@@ -69,7 +70,7 @@ export default function AuthLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   content: { backgroundColor: COLORS.background },
   center: { alignItems: "center", justifyContent: "center" },

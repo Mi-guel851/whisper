@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
 import { LEGAL_PAGES, legalPageBySlug } from "@/lib/legal";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The legal pages — Privacy Policy, Terms of Service, Community Guidelines.
@@ -22,6 +22,7 @@ import { COLORS, GLASS, RADIUS } from "@/lib/theme";
  * a person looking for "Data Retention" taps rather than scrolls.
  */
 export default function Legal() {
+  const styles = useStyles(makeStyles);
   const router = useRouter();
   const params = useLocalSearchParams<{ slug?: string }>();
 
@@ -80,7 +81,7 @@ export default function Legal() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   scroll: { padding: 18, paddingBottom: 48, gap: 16 },
 
   back: {

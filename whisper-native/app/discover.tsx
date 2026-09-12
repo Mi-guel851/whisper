@@ -6,7 +6,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { Screen } from "@/components/Screen";
 import { useToast } from "@/lib/toast";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/lib/theme";
 
 type FeatureCard = {
   href: string;
@@ -62,6 +62,7 @@ const UTILITY_CARDS: UtilityCard[] = [
  * which is why it can render instantly on any device.
  */
 export default function Discover() {
+  const styles = useStyles(makeStyles);
   const { showToast } = useToast();
 
   function open(href: string) {
@@ -138,7 +139,7 @@ export default function Discover() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   scroll: { padding: 18, gap: 16 },
 
   header: { gap: 3 },

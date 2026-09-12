@@ -5,7 +5,7 @@ import { LoadingScreen } from "@/components/Screen";
 import { Background } from "@/components/Background";
 import { isProfileComplete } from "@/lib/profile";
 import { useSession } from "@/lib/session";
-import { COLORS } from "@/lib/theme";
+import { COLORS, useStyles } from "@/lib/theme";
 import { StyleSheet, View } from "react-native";
 
 /**
@@ -32,6 +32,7 @@ import { StyleSheet, View } from "react-native";
  * matters. `settings` re-checks defensively, but this fork is the gate.
  */
 export default function Index() {
+  const styles = useStyles(makeStyles);
   const { session, userId, loading } = useSession();
   const [profileCheck, setProfileCheck] = useState<"checking" | "complete" | "incomplete">("checking");
 
@@ -72,6 +73,6 @@ export default function Index() {
   return <Redirect href="/(auth)/login" />;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
 });

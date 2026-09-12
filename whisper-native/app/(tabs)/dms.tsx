@@ -16,7 +16,7 @@ import { vibrate } from "@/lib/haptics";
 import { useAnonName } from "@/lib/identity";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import type { ConversationRow, DirectMessage } from "@/lib/types";
 
@@ -46,6 +46,7 @@ import type { ConversationRow, DirectMessage } from "@/lib/types";
  * paywall after tapping is the thing that makes people stop tapping.
  */
 export default function Dms() {
+  const styles = useStyles(makeStyles);
   const { userId } = useSession();
   const { showToast } = useToast();
 
@@ -266,6 +267,7 @@ function ConversationRowItem({
   locked: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const other = otherParticipant(conversation, myId) ?? "";
   const name = useAnonName(other);
 
@@ -333,7 +335,7 @@ function ConversationRowItem({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
   headerTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   title: { color: COLORS.text, fontSize: 24, fontWeight: "900", letterSpacing: -0.5 },
@@ -379,5 +381,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  unreadText: { color: "#0a0814", fontSize: 11, fontWeight: "900" },
+  unreadText: { color: COLORS.contrast, fontSize: 11, fontWeight: "900" },
 });

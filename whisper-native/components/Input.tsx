@@ -11,7 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * Inputs.
@@ -60,6 +60,7 @@ export function Field({
   returnKeyType?: "done" | "next" | "go" | "send" | "search";
   blurOnSubmit?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const [focused, setFocused] = useState(false);
 
   return (
@@ -135,6 +136,7 @@ export function SearchField({
   placeholder?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles(makeStyles);
   const [focused, setFocused] = useState(false);
 
   return (
@@ -161,7 +163,7 @@ export function SearchField({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   label: {
     color: COLORS.muted,
     fontSize: 12,

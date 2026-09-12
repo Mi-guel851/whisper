@@ -19,6 +19,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Avatar } from "@/components/Avatar";
+import ChatDoodleBackground from "@/components/ChatDoodleBackground";
 import { IconButton } from "@/components/GradientButton";
 import { LoadingScreen } from "@/components/Screen";
 import { ConfirmSheet, Sheet, SheetRow } from "@/components/Sheet";
@@ -48,19 +49,26 @@ import {
   unlockChat,
 } from "@/lib/dms";
 import { safeErrorMessage } from "@/lib/errors";
+import { callSession } from "@/lib/calls/callSession";
+import {
+  canCallBack,
+  describeCallEntry,
+  type CallEntryInfo,
+} from "@/lib/calls/callFormat";
 import { clockTime, dayDivider } from "@/lib/format";
 import { vibrate } from "@/lib/haptics";
 import { useAnonName } from "@/lib/identity";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { CHAT, COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import { useVoiceRecorder } from "@/lib/useVoiceRecorder";
 import type { ConversationRow, DirectMessage, VoiceRecording } from "@/lib/types";
 
-/** One rendered line: a message, or a day divider. */
+/** One rendered line: a message, a call-log entry, or a day divider. */
 type Row =
   | { kind: "message"; id: string; message: DirectMessage }
+  | { kind: "call"; id: string; call: CallEntryInfo }
   | { kind: "divider"; id: string; label: string };
 
 /** The one-line preview the pin bar and the duration sheet show. */
@@ -103,6 +111,7 @@ function messagePreview(message: DirectMessage): string {
  * stamped delivered on arrival, read once the screen has them.
  */
 export default function Conversation() {
+  const styles = useStyles(makeStyles);
   const params = useLocalSearchParams() as { conversationId?: string; otherId?: string };
   const conversationId = typeof params.conversationId === "string" ? params.conversationId : "";
   const otherIdParam = typeof params.otherId === "string" ? params.otherId : "";
@@ -131,6 +140,10 @@ export default function Conversation() {
      when there is more than one pin — a single pin that cycles is a glitch,
      not a feature. */
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  /* Calls exist only between accepted friends — the same gate the web chat
+     applies before it attaches the thread to the engine. */
+  const [isFriend, setIsFriend] = useState(false);
+  const [callEntries, setCallEntries] = useState<Record<string, CallEntryInfo>>({});
   const [pinDurationFor, setPinDurationFor] = useState<DirectMessage | null>(null);
   const [pinCursor, setPinCursor] = useState(0);
 
@@ -171,6 +184,7 @@ export default function Conversation() {
     setConversation(row);
     setMessages(transcript);
     setLocked(!unlocked && !friends);
+    setIsFriend(friends);
     setBalance(wallet?.balance ?? 0);
     setLoading(false);
 
@@ -185,7 +199,77 @@ export default function Conversation() {
       .map((message) => message.id);
 
     if (incomingIds.length > 0) void markDelivered(incomingIds);
+
+    /* The timeline of call outcomes, fetched once with the thread and kept
+       exact by its own realtime channel below. */
+    const { data: logs } = await supabase
+      .from("call_logs")
+      .select("id,caller_id,callee_id,started_at,answered_at,ended_at,status")
+      .eq("conversation_id", conversationId)
+      .order("started_at", { ascending: true })
+      .limit(120);
+    if (logs) {
+      const next: Record<string, CallEntryInfo> = {};
+      for (const entry of logs as unknown as CallEntryInfo[]) {
+        next[entry.id] = entry;
+      }
+      setCallEntries(next);
+    }
   }, [conversationId, otherId, userId]);
+
+  /* "I am looking at this thread, it can ring." Detaching on unmount closes
+     the channel — unless a call is live on it, in which case the call's own
+     reference holds it open and the call carries on after this screen is
+     gone. This is the web chat's attachThread effect, one for one. */
+  useEffect(() => {
+    if (!conversationId || !otherId) return;
+    return callSession.attachThread({
+      conversationId,
+      peerId: otherId,
+      enabled: isFriend && !loading && Boolean(userId) && Boolean(otherId),
+    });
+  }, [conversationId, isFriend, loading, otherId, userId]);
+
+  /* The call-log channel: a settled row re-renders its timeline entry (and
+     stands the ringing label down) without a refetch. */
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = supabase
+      .channel(`call-logs-screen-${conversationId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "call_logs", filter: `conversation_id=eq.${conversationId}` },
+        () => {
+          void supabase
+            .from("call_logs")
+            .select("id,caller_id,callee_id,started_at,answered_at,ended_at,status")
+            .eq("conversation_id", conversationId)
+            .order("started_at", { ascending: true })
+            .limit(120)
+            .then(({ data }) => {
+              if (!data) return;
+              const next: Record<string, CallEntryInfo> = {};
+              for (const entry of data as unknown as CallEntryInfo[]) {
+                next[entry.id] = entry;
+              }
+              setCallEntries(next);
+            });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId]);
+
+  /** The one place a call is placed from: the header button and the
+      timeline's "Call back". Both go through the shared engine, so both get
+      the server's busy/friendship checks before a microphone opens. */
+  const startVoiceCall = useCallback(() => {
+    if (!conversationId || !otherId) return;
+    void callSession.startCall({ conversationId, peerId: otherId });
+  }, [conversationId, otherId]);
 
   useEffect(() => {
     void load();
@@ -480,17 +564,42 @@ export default function Conversation() {
     const output: Row[] = [];
     let lastDay = "";
 
+    /* Messages and call-log entries are one timeline: both carry a timestamp,
+       so they merge on their clock order — a call sits between the messages
+       it interrupted, exactly as the web chat renders it. */
+    const entries: { at: number; row: Row }[] = [];
+
     for (const message of messages) {
-      const divider = dayDivider(message.created_at);
+      entries.push({
+        at: Date.parse(message.created_at),
+        row: { kind: "message", id: message.id, message },
+      });
+    }
+    for (const entry of Object.values(callEntries)) {
+      entries.push({
+        at: Date.parse(entry.started_at),
+        row: { kind: "call", id: `call-${entry.id}`, call: entry },
+      });
+    }
+    entries.sort((a, b) => a.at - b.at);
+
+    for (const { row } of entries) {
+      const stamp =
+        row.kind === "message"
+          ? row.message.created_at
+          : row.kind === "call"
+            ? row.call.started_at
+            : "";
+      const divider = dayDivider(stamp);
       if (divider && divider !== lastDay) {
         output.push({ kind: "divider", id: `divider-${divider}`, label: divider });
         lastDay = divider;
       }
-      output.push({ kind: "message", id: message.id, message });
+      output.push(row);
     }
 
     return output;
-  }, [messages]);
+  }, [callEntries, messages]);
 
   /* The pinned bar's data: pinned messages in transcript order, the one the
      bar is showing, and the cycle. Only live messages count — a pin on a
@@ -585,6 +694,15 @@ export default function Conversation() {
             </View>
           </Pressable>
 
+          {isFriend && !locked ? (
+            <IconButton
+              icon="call-outline"
+              size={40}
+              onPress={startVoiceCall}
+              accessibilityLabel="Start a voice call"
+            />
+          ) : null}
+
           <IconButton
             icon="person-outline"
             size={40}
@@ -634,6 +752,9 @@ export default function Conversation() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
+        {/* The web chat's doodle wallpaper — the same SVG tile, behind the
+        thread, never intercepting a touch. */}
+        <ChatDoodleBackground />
         <FlatList
           ref={listRef}
           data={rows}
@@ -643,6 +764,16 @@ export default function Conversation() {
           initialNumToRender={20}
           renderItem={({ item }) => {
             if (item.kind === "divider") return <DayDivider label={item.label} />;
+            if (item.kind === "call" && "call" in item) {
+              const view = describeCallEntry(item.call, userId ?? "");
+              return (
+                <CallLogRow
+                  view={view}
+                  showCallBack={canCallBack(item.call, userId ?? "", isFriend)}
+                  onCallBack={startVoiceCall}
+                />
+              );
+            }
 
             return (
               <MessageBubble
@@ -720,7 +851,7 @@ export default function Conversation() {
                         end={{ x: 1, y: 1 }}
                         style={styles.sendButton}
                       >
-                        <Ionicons name="arrow-up" size={19} color="#0a0814" />
+                        <Ionicons name="arrow-up" size={19} color={COLORS.contrast} />
                       </LinearGradient>
                     </Pressable>
                   ) : (
@@ -886,6 +1017,7 @@ function MessageBubble({
   onClaim: () => void;
   onLongPress: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const hasVoice = Boolean(message.audio_path);
   /* `image_viewed_at` counts as evidence a photo was here, not just
      `image_path`: a spent view-once photo has no path any more — the route
@@ -930,7 +1062,7 @@ function MessageBubble({
           {body}
         </LinearGradient>
       ) : (
-        <BlurView intensity={GLASS.blurIntensity} tint="dark" style={[styles.bubble, styles.bubbleTheirs]}>
+        <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={[styles.bubble, styles.bubbleTheirs]}>
           {body}
         </BlurView>
       )}
@@ -974,7 +1106,8 @@ function BubbleBody({
   audioUri?: string;
   onClaim: () => void;
 }) {
-  const accent = mine ? "#0a0814" : COLORS.text;
+  const styles = useStyles(makeStyles);
+  const accent = mine ? COLORS.contrast : COLORS.text;
 
   return (
     <>
@@ -1038,6 +1171,7 @@ function BubbleBody({
     held in memory for as long as the bubble is mounted, and `expo-image`'s disk
     cache would outlive the claim it belongs to. */
 function FadingPhoto({ uri }: { uri: string }) {
+  const styles = useStyles(makeStyles);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
@@ -1053,7 +1187,60 @@ function FadingPhoto({ uri }: { uri: string }) {
   );
 }
 
+/**
+ * A call-log entry in the timeline — the web chat's call row, colours and all:
+ * accent green for a connected call, the theme's danger for a missed or
+ * failed one, neutral for busy/cancelled. The icon tilts for outgoing calls,
+ * the way every phone draws them. "Call back" appears only where the web's
+ * `canCallBack` says it can: an unanswered call from the other person, inside
+ * an accepted friendship.
+ */
+function CallLogRow({
+  view,
+  showCallBack,
+  onCallBack,
+}: {
+  view: ReturnType<typeof describeCallEntry>;
+  showCallBack: boolean;
+  onCallBack: () => void;
+}) {
+  const styles = useStyles(makeStyles);
+  const toneColor =
+    view.tone === "danger" ? COLORS.danger : view.tone === "accent" ? COLORS.success : COLORS.subtle;
+
+  return (
+    <View style={styles.callRow}>
+      <View style={[styles.callIconWrap, { backgroundColor: `${toneColor}1f` }]}>
+        <Ionicons
+          name="call"
+          size={15}
+          color={toneColor}
+          style={view.direction === "outgoing" ? styles.callIconOut : styles.callIconIn}
+        />
+      </View>
+      <View style={styles.callText}>
+        <Text style={[styles.callLabel, { color: toneColor }]} numberOfLines={1}>
+          {view.label}
+        </Text>
+        {showCallBack ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              vibrate("tap");
+              onCallBack();
+            }}
+            hitSlop={6}
+          >
+            <Text style={styles.callBack}>Call back</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function DayDivider({ label }: { label: string }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.divider}>
       <View style={styles.dividerLine} />
@@ -1075,6 +1262,7 @@ function LockedBanner({
   busy: boolean;
   onUnlock: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const affordable = balance === null || balance >= cost;
 
   return (
@@ -1105,7 +1293,7 @@ function LockedBanner({
           end={{ x: 1, y: 0 }}
           style={[styles.unlockButton, (!affordable || busy) && styles.disabled]}
         >
-          <Ionicons name="logo-bitcoin" size={16} color="#0a0814" />
+          <Ionicons name="logo-bitcoin" size={16} color={COLORS.contrast} />
           <Text style={styles.unlockText}>
             {busy ? "Unlocking…" : affordable ? `Unlock · ${cost} coins` : `Need ${cost} coins`}
           </Text>
@@ -1117,7 +1305,28 @@ function LockedBanner({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
+  callRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    alignSelf: "stretch",
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+  },
+  callIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  callIconOut: { transform: [{ rotate: "-30deg" }] },
+  callIconIn: { transform: [{ rotate: "30deg" }] },
+  callText: { flex: 1, gap: 2 },
+  callLabel: { fontSize: 13, fontWeight: "800" },
+  callBack: { color: COLORS.cyan, fontSize: 12.5, fontWeight: "800" },
+
   pinBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1148,7 +1357,7 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
 
-  root: { flex: 1, backgroundColor: COLORS.background },
+  root: { flex: 1, backgroundColor: CHAT.canvas },
   flex: { flex: 1 },
 
   header: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: GLASS.border, overflow: "hidden" },
@@ -1175,14 +1384,14 @@ const styles = StyleSheet.create({
   },
   bubbleMine: { borderColor: "transparent", borderBottomRightRadius: RADIUS.sm },
   bubbleTheirs: {
-    borderColor: GLASS.border,
-    backgroundColor: "rgba(23,18,42,0.6)",
+    borderColor: CHAT.bubbleInBorder,
+    backgroundColor: CHAT.bubbleIn,
     borderBottomLeftRadius: RADIUS.sm,
   },
   bubbleText: { fontSize: 15, lineHeight: 21 },
 
   media: { borderRadius: RADIUS.md, overflow: "hidden", marginBottom: 8, minWidth: 168 },
-  mediaTint: { backgroundColor: "rgba(10,8,20,0.14)" },
+  mediaTint: { backgroundColor: "rgba(0,0,0,0.14)" },
   mediaLocked: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 14 },
   mediaText: { fontSize: 13, fontWeight: "700" },
   photoWrap: { width: 200, height: 200, borderRadius: RADIUS.md, overflow: "hidden" },
@@ -1202,8 +1411,8 @@ const styles = StyleSheet.create({
   composerInner: {
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: GLASS.border,
-    backgroundColor: "rgba(23,18,42,0.6)",
+    borderColor: CHAT.chromeBorder,
+    backgroundColor: CHAT.field,
     padding: 8,
     overflow: "hidden",
   },
@@ -1225,7 +1434,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(34,211,238,0.12)",
+    backgroundColor: CHAT.ctrl,
   },
   recorderError: { color: COLORS.danger, fontSize: 12, marginTop: 6, paddingHorizontal: 6 },
   composerHint: { color: COLORS.subtle, fontSize: 10.5, textAlign: "center", marginTop: 6 },
@@ -1243,7 +1452,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     marginTop: 6,
   },
-  unlockText: { color: "#0a0814", fontSize: 15, fontWeight: "900" },
+  unlockText: { color: COLORS.contrast, fontSize: 15, fontWeight: "900" },
   lockedHint: { color: COLORS.subtle, fontSize: 12 },
   disabled: { opacity: 0.55 },
 });

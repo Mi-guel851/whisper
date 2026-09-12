@@ -12,7 +12,7 @@ import { formatCoins } from "@/lib/format";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The coin tip.
@@ -53,6 +53,7 @@ export function CoinTipSheet({
   presetAddress?: string;
   presetAmount?: number;
 }) {
+  const styles = useStyles(makeStyles);
   const { userId } = useSession();
   const { showToast } = useToast();
 
@@ -200,7 +201,7 @@ export function CoinTipSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   body: { gap: 10, paddingBottom: 10 },
   balanceRow: {
     flexDirection: "row",

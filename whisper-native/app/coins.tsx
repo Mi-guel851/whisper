@@ -27,7 +27,7 @@ import { vibrate } from "@/lib/haptics";
 import { describeOutcome, useCoinPurchase } from "@/lib/paystack";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow, useStyles } from "@/lib/theme";
 import type { CoinTransaction, Wallet } from "@/lib/types";
 
 /**
@@ -50,6 +50,7 @@ import type { CoinTransaction, Wallet } from "@/lib/types";
  * the conversion lives in one place (`chargeFor`) rather than at the call site.
  */
 export default function Coins() {
+  const styles = useStyles(makeStyles);
   const { userId } = useSession();
   const { showToast } = useToast();
   const { purchase, ready, unavailableReason } = useCoinPurchase();
@@ -221,6 +222,7 @@ function PackageCard({
   busy: boolean;
   onBuy: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const press = useSharedValue(1);
 
   const style = useAnimatedStyle(() => ({ transform: [{ scale: press.value }] }));
@@ -248,7 +250,7 @@ function PackageCard({
               end={{ x: 1, y: 1 }}
               style={styles.packageIcon}
             >
-              <Ionicons name="logo-bitcoin" size={20} color={pkg.popular ? "#0a0814" : COLORS.text} />
+              <Ionicons name="logo-bitcoin" size={20} color={pkg.popular ? COLORS.contrast : COLORS.text} />
             </LinearGradient>
 
             <View style={styles.packageText}>
@@ -279,6 +281,7 @@ function PackageCard({
 }
 
 function TransactionRow({ row }: { row: CoinTransaction }) {
+  const styles = useStyles(makeStyles);
   const incoming = row.amount > 0;
   const type = row.transaction_type;
 
@@ -320,7 +323,7 @@ const TYPE_LABELS: Record<string, string> = {
   transfer_out: "Coins sent",
 };
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",

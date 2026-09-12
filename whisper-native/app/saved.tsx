@@ -8,7 +8,7 @@ import { IconButton } from "@/components/GradientButton";
 import { EmptyState, Screen, SkeletonRow } from "@/components/Screen";
 import { Sheet, SheetRow } from "@/components/Sheet";
 import { CoinTipSheet } from "@/components/CoinTipSheet";
-import { COLORS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
+import { COLORS, GRADIENT_COLORS, RADIUS, glow, useStyles } from "@/lib/theme";
 import { fetchSavedPosts, type SavedPost } from "@/lib/feed";
 import { fetchWallet } from "@/lib/coins";
 import { vibrate } from "@/lib/haptics";
@@ -35,6 +35,7 @@ const PAGE_SIZE = 30;
  * claim. Only the menu differs: here the primary action is unsaving.
  */
 export default function Saved() {
+  const styles = useStyles(makeStyles);
   const { userId } = useSession();
   const { showToast } = useToast();
 
@@ -312,7 +313,7 @@ export default function Saved() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40, flexGrow: 1 },
   header: { paddingTop: 4, paddingBottom: 12 },
   headerRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },

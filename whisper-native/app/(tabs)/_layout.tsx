@@ -19,7 +19,7 @@ import {
 import { TabIcon } from "@/components/TabIcon";
 import { useBadges } from "@/lib/badges";
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The tab bar.
@@ -52,6 +52,7 @@ const ITEMS = [
 ] as const;
 
 function GlassTabBar({ state, navigation }: BottomTabBarProps) {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const badges = useBadges();
 
@@ -109,6 +110,7 @@ function TabButton({
   badge: number;
   onPress: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const progress = useSharedValue(focused ? 1 : 0);
   const scale = useSharedValue(1);
 
@@ -165,7 +167,7 @@ function TabButton({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   wrap: {
     position: "absolute",
     left: 0,
@@ -205,6 +207,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.background,
   },
-  badgeText: { color: "#fff", fontSize: 9.5, fontWeight: "900" },
+  badgeText: { color: COLORS.text, fontSize: 9.5, fontWeight: "900" },
   label: { fontSize: 10.5, fontWeight: "700" },
 });

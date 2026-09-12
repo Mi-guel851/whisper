@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { Screen } from "@/components/Screen";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /* The help-center content, verbatim from the web app's `/help-center` page —
    the same four guides and the same eight answers, because an answer that
@@ -38,6 +38,7 @@ const FAQS = [
  * three are open at once has no reading order.
  */
 export default function Help() {
+  const styles = useStyles(makeStyles);
   const router = useRouter();
   const [openIdx, setOpenIdx] = useState<number | null>(null);
 
@@ -101,7 +102,7 @@ export default function Help() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   scroll: { padding: 18, paddingBottom: 48, gap: 16 },
 
   back: {

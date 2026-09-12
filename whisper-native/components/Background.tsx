@@ -8,13 +8,13 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { COLORS, MOTION, RADIUS } from "@/lib/theme";
+import { BLOBS, COLORS, FILLS, MOTION, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The background of every screen.
  *
  * Two soft radial washes — cyan top-left, purple bottom-right — over the flat
- * `#0a0814`. This is the same treatment the web app's `Background` component
+ * `#000000`. This is the same treatment the web app's `Background` component
  * gives the landing and dashboard: the colour is never a decorative gradient
  * across the whole surface, it is two lights sitting behind the content, which
  * is what keeps the glass panels reading as glass.
@@ -25,16 +25,17 @@ import { COLORS, MOTION, RADIUS } from "@/lib/theme";
  * each rather than a shader.
  */
 export function Background({ children }: { children?: React.ReactNode }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.root} pointerEvents="none">
       <LinearGradient
-        colors={["rgba(34,211,238,0.16)", "rgba(34,211,238,0)"]}
+        colors={[BLOBS[2], "transparent"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.glowTop}
       />
       <LinearGradient
-        colors={["rgba(168,85,247,0.20)", "rgba(168,85,247,0)"]}
+        colors={[BLOBS[1], "transparent"]}
         start={{ x: 1, y: 1 }}
         end={{ x: 0, y: 0 }}
         style={styles.glowBottom}
@@ -93,6 +94,7 @@ export function Surface({
   style,
   ...rest
 }: ViewProps & { children: React.ReactNode }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={[styles.surface, style]} {...rest}>
       {children}
@@ -100,7 +102,7 @@ export function Surface({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: COLORS.background,
@@ -123,7 +125,7 @@ const styles = StyleSheet.create({
     borderRadius: 240,
   },
   surface: {
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: FILLS[1],
     borderRadius: RADIUS.md,
   },
 });

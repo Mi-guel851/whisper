@@ -2,7 +2,7 @@ import { BlurView } from "expo-blur";
 import React from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The glass card.
@@ -34,6 +34,7 @@ export function GlassCard({
   radius?: number;
   padded?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={[styles.shadow, { borderRadius: radius }, style]}>
       <BlurView
@@ -64,6 +65,7 @@ export function GlassRow({
   style?: StyleProp<ViewStyle>;
   radius?: number;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <BlurView
       intensity={GLASS.blurIntensity}
@@ -83,9 +85,9 @@ export function GlassRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   shadow: {
-    shadowColor: "#000000",
+    shadowColor: COLORS.background,
     shadowOpacity: 0.4,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },

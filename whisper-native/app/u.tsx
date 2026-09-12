@@ -16,7 +16,7 @@ import { useAnonName } from "@/lib/identity";
 import { fetchProfile, whisperLink, whisperLinkLabel } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 import type { FeedPost, Profile } from "@/lib/types";
 
 /**
@@ -33,6 +33,7 @@ import type { FeedPost, Profile } from "@/lib/types";
  * (report, block) — is below it.
  */
 export default function UserProfile() {
+  const styles = useStyles(makeStyles);
   const params = useLocalSearchParams() as { userId?: string };
   const subjectId = typeof params.userId === "string" ? params.userId : "";
 
@@ -231,7 +232,7 @@ export default function UserProfile() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",

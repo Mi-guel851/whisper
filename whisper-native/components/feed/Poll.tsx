@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { formatCount } from "@/lib/format";
-import { COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * A poll on a feed post.
@@ -32,6 +32,7 @@ export function Poll({
   pending: boolean;
   onVote: (index: number) => void;
 }) {
+  const styles = useStyles(makeStyles);
   const total = counts.reduce((sum, value) => sum + (Number(value) || 0), 0);
   const voted = choice !== null && choice !== undefined;
 
@@ -82,6 +83,7 @@ function PollOption({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const progress = useSharedValue(showResults ? share : 0);
 
   React.useEffect(() => {
@@ -127,7 +129,7 @@ function PollOption({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   wrap: { marginTop: 10, gap: 8 },
   option: {
     borderWidth: 1,

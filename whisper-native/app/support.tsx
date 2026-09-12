@@ -7,7 +7,7 @@ import { Field } from "@/components/Input";
 import { GradientButton } from "@/components/GradientButton";
 import { Screen } from "@/components/Screen";
 import { vibrate } from "@/lib/haptics";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /* The support categories, the web app's `/contact-support` list item for item.
    "Report Abuse" matters more than its neighbours: it is the escalation path
@@ -34,6 +34,7 @@ const SUPPORT_EMAIL = "whisper.anonymous.app@gmail.com";
  * than "was sent".
  */
 export default function ContactSupport() {
+  const styles = useStyles(makeStyles);
   const router = useRouter();
 
   const [subject, setSubject] = useState("");
@@ -77,7 +78,7 @@ export default function ContactSupport() {
 
         {submitted ? (
           <View style={[styles.card, styles.doneCard]}>
-            <Ionicons name="checkmark-circle" size={46} color="#4ade80" />
+            <Ionicons name="checkmark-circle" size={46} color={COLORS.green400} />
             <Text style={styles.doneTitle}>Message ready to send</Text>
             <Text style={styles.doneBody}>
               Your email app should have opened with your message ready to send.
@@ -147,7 +148,7 @@ export default function ContactSupport() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   scroll: { padding: 18, paddingBottom: 48, gap: 16 },
 
   back: {

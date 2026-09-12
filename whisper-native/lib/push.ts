@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 
 import { MISSING_FUNCTION_CODES } from "./coins";
 import { supabase } from "./supabase";
+import { COLORS } from "@/lib/theme";
 
 /**
  * Push notifications (FCM on Android, APNs on iOS).
@@ -47,6 +48,11 @@ export type PushRouteHint = {
   postId?: string;
   type?: string;
   route?: string;
+  /** Call pushes carry the caller's identity for the ring overlay. */
+  callerId?: string;
+  callId?: string;
+  callerName?: string | null;
+  callerAvatar?: string | null;
 };
 
 /**
@@ -90,7 +96,7 @@ export async function registerForPushNotifications(userId: string): Promise<stri
       name: "Whisper",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#22d3ee",
+      lightColor: COLORS.cyan,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
     });
   }
@@ -163,6 +169,26 @@ export function routeHintFromNotification(notification: Notifications.Notificati
         : undefined,
     type: typeof data.type === "string" ? data.type : undefined,
     route: typeof data.route === "string" ? data.route : undefined,
+    callerId:
+      typeof data.callerId === "string"
+        ? data.callerId
+        : typeof data.caller_id === "string"
+          ? data.caller_id
+          : undefined,
+    callId:
+      typeof data.callId === "string" ? data.callId : typeof data.call_id === "string" ? data.call_id : undefined,
+    callerName:
+      typeof data.callerName === "string"
+        ? data.callerName
+        : typeof data.caller_name === "string"
+          ? data.caller_name
+          : null,
+    callerAvatar:
+      typeof data.callerAvatar === "string"
+        ? data.callerAvatar
+        : typeof data.caller_avatar === "string"
+          ? data.caller_avatar
+          : null,
   };
 }
 

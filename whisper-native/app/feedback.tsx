@@ -7,7 +7,7 @@ import { Field } from "@/components/Input";
 import { GradientButton } from "@/components/GradientButton";
 import { Screen } from "@/components/Screen";
 import { vibrate } from "@/lib/haptics";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 const FEEDBACK_EMAIL = "whisper.anonymous.app@gmail.com";
 
@@ -21,6 +21,7 @@ const FEEDBACK_EMAIL = "whisper.anonymous.app@gmail.com";
  * still beats no feedback.
  */
 export default function Feedback() {
+  const styles = useStyles(makeStyles);
   const router = useRouter();
 
   const [rating, setRating] = useState(0);
@@ -63,7 +64,7 @@ export default function Feedback() {
 
         {submitted ? (
           <View style={[styles.card, styles.doneCard]}>
-            <Ionicons name="checkmark-circle" size={46} color="#4ade80" />
+            <Ionicons name="checkmark-circle" size={46} color={COLORS.green400} />
             <Text style={styles.doneTitle}>Thanks for the feedback!</Text>
             <Text style={styles.doneBody}>
               Your email app should have opened with your message ready to send.
@@ -89,7 +90,7 @@ export default function Feedback() {
                   <Ionicons
                     name={star <= rating ? "star" : "star-outline"}
                     size={32}
-                    color={star <= rating ? "#fbbf24" : COLORS.subtle}
+                    color={star <= rating ? COLORS.amber400 : COLORS.subtle}
                   />
                 </Pressable>
               ))}
@@ -125,7 +126,7 @@ export default function Feedback() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   scroll: { padding: 18, paddingBottom: 48, gap: 16 },
 
   back: {

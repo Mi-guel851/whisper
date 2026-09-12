@@ -19,7 +19,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow, useStyles } from "@/lib/theme";
 
 /**
  * The primary button.
@@ -62,6 +62,7 @@ export function GradientButton({
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles(makeStyles);
   const scale = useSharedValue(1);
   const pressed = useSharedValue(0);
   const inactive = disabled || loading;
@@ -81,14 +82,14 @@ export function GradientButton({
   const content = (
     <View style={[styles.content, { height: heights[size] }]}>
       {loading ? (
-        <ActivityIndicator color={variant === "primary" ? "#0a0814" : COLORS.text} size="small" />
+        <ActivityIndicator color={variant === "primary" ? COLORS.contrast : COLORS.text} size="small" />
       ) : (
         <>
           {icon && (
             <Ionicons
               name={icon}
               size={fontSizes[size] + 2}
-              color={variant === "primary" ? "#0a0814" : COLORS.text}
+              color={variant === "primary" ? COLORS.contrast : COLORS.text}
             />
           )}
           <Text
@@ -96,7 +97,7 @@ export function GradientButton({
               styles.label,
               {
                 fontSize: fontSizes[size],
-                color: variant === "primary" ? "#0a0814" : COLORS.text,
+                color: variant === "primary" ? COLORS.contrast : COLORS.text,
               },
             ]}
           >
@@ -106,7 +107,7 @@ export function GradientButton({
             <Ionicons
               name={iconRight}
               size={fontSizes[size] + 2}
-              color={variant === "primary" ? "#0a0814" : COLORS.text}
+              color={variant === "primary" ? COLORS.contrast : COLORS.text}
             />
           )}
         </>
@@ -192,6 +193,7 @@ export function IconButton({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
+  const styles = useStyles(makeStyles);
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -200,7 +202,7 @@ export function IconButton({
       <Ionicons
         name={icon}
         size={size * 0.45}
-        color={gradient ? "#0a0814" : color ?? COLORS.text}
+        color={gradient ? COLORS.contrast : color ?? COLORS.text}
       />
       {badge !== undefined && badge > 0 && (
         <View style={styles.badge}>
@@ -252,7 +254,7 @@ function label(icon: keyof typeof Ionicons.glyphMap): string {
   return String(icon).replace(/-outline$/, "").replace(/-/g, " ");
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   fullWidth: { width: "100%" },
   gradient: {
     borderRadius: RADIUS.pill,
@@ -278,7 +280,7 @@ const styles = StyleSheet.create({
   label: { fontWeight: "800", letterSpacing: 0.2 },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#ffffff",
+    backgroundColor: COLORS.text,
   },
   iconInner: { alignItems: "center", justifyContent: "center" },
   badge: {
@@ -295,7 +297,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.background,
   },
-  badgeText: { color: "#fff", fontSize: 10, fontWeight: "900" },
+  badgeText: { color: COLORS.text, fontSize: 10, fontWeight: "900" },
   disabled: { opacity: 0.5 },
 });
 

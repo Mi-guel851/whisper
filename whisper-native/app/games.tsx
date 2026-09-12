@@ -13,7 +13,7 @@ import { vibrate } from "@/lib/haptics";
 import { whisperLink } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * Whisper Games — the native port of the web app's `/games` page.
@@ -32,6 +32,7 @@ import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
  * URL and leave the text before it alone).
  */
 export default function Games() {
+  const styles = useStyles(makeStyles);
   const router = useRouter();
   const { userId } = useSession();
   const { showToast } = useToast();
@@ -183,7 +184,7 @@ export default function Games() {
                   <Ionicons
                     name={copiedId === game.id ? "checkmark" : "copy-outline"}
                     size={17}
-                    color={copiedId === game.id ? "#6ee7b7" : COLORS.subtle}
+                    color={copiedId === game.id ? COLORS.teal300 : COLORS.subtle}
                   />
                 </Pressable>
               </View>
@@ -195,7 +196,7 @@ export default function Games() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   scroll: { padding: 18, paddingBottom: 48, gap: 14 },
 
   header: { flexDirection: "row", alignItems: "center", gap: 7 },

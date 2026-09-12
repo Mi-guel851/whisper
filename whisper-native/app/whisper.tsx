@@ -16,7 +16,7 @@ import { sendWhisper, type SenderContext } from "@/lib/whispers";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 type Subject = {
   id: string;
@@ -53,6 +53,7 @@ const MESSAGE_LIMIT = 2000;
  * this app traverses the same Vercel edge the browser's does.
  */
 export default function SendWhisper() {
+  const styles = useStyles(makeStyles);
   const { username, userId } = useLocalSearchParams<{ username?: string; userId?: string }>();
   const { session, userId: myId } = useSession();
   const { showToast } = useToast();
@@ -346,7 +347,7 @@ export default function SendWhisper() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   back: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 18 },
   title: { color: COLORS.text, fontSize: 20, fontWeight: "800", flex: 1 },

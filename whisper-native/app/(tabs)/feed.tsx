@@ -45,7 +45,7 @@ import type { FeedPost } from "@/lib/types";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { CARD_SHADOW, COLORS, GLASS, glow, GRADIENT_COLORS, GRADIENT_END, GRADIENT_START, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, GRADIENT_COLORS, GRADIENT_END, GRADIENT_START, RADIUS, TAB_BAR_SPACE, glow, useStyles } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 
 /**
@@ -72,6 +72,7 @@ function DailySpotlightCard({
   question: string;
   spotlight: FeedPost | null;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.spotlight}>
       <View style={[styles.spotlightInner, glow(COLORS.purple, 22, 0.16)]}>
@@ -150,6 +151,7 @@ function DailySpotlightCard({
  * reply *count* is live in both places, and tapping it lands on the same data.
  */
 export default function Feed() {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { userId, session } = useSession();
   const { showToast } = useToast();
@@ -683,9 +685,9 @@ export default function Feed() {
                   style={styles.replySendGradient}
                 >
                   {replyBusy ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
+                    <ActivityIndicator color={COLORS.text} size="small" />
                   ) : (
-                    <Ionicons name="arrow-up" size={17} color="#ffffff" />
+                    <Ionicons name="arrow-up" size={17} color={COLORS.text} />
                   )}
                 </LinearGradient>
               </Pressable>
@@ -744,7 +746,7 @@ export default function Feed() {
           end={{ x: 1, y: 1 }}
           style={[styles.fabGradient, glow(COLORS.cyan, 22, 0.45)]}
         >
-          <Ionicons name="add" size={30} color="#0a0814" />
+          <Ionicons name="add" size={30} color={COLORS.contrast} />
         </LinearGradient>
       </Pressable>
 
@@ -808,7 +810,7 @@ export default function Feed() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   spotlight: { marginTop: 14, marginBottom: 6 },
   spotlightInner: {
     padding: 16,

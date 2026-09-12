@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
+import { ThemeProvider, useTheme } from "@/lib/ThemeProvider";
 import { Stack, router } from "expo-router";
 import { PaystackProvider } from "react-native-paystack-webview";
 import { useEffect } from "react";
@@ -11,9 +12,11 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSeq
 import { Background } from "@/components/Background";
 import { resetBadges, watchBadges } from "@/lib/badges";
 import { registerForPushNotifications, handleNotificationResponse } from "@/lib/push";
+import CallSessionProvider from "@/components/calls/CallSessionProvider";
+import { emitIncomingCallRing, ringFromPushData, stashPendingRing } from "@/lib/calls/pendingRing";
 import { SessionProvider, useSession } from "@/lib/session";
 import { ToastProvider } from "@/lib/toast";
-import { COLORS, glow } from "@/lib/theme";
+import { COLORS, glow, useStyles } from "@/lib/theme";
 
 /**
  * The root layout.
@@ -45,25 +48,38 @@ import { COLORS, glow } from "@/lib/theme";
  * — a missing build variable should be a visible configuration problem, not a
  * white screen.
  */
+/** The status bar content follows the resolved theme, like the web's
+    `color-scheme`. Light canvas → dark glyphs; dark canvas → light glyphs. */
+function ThemedStatusBar() {
+  const { resolvedTheme, ready } = useTheme();
+  return <StatusBar style={ready && resolvedTheme === "light" ? "dark" : "light"} />;
+}
+
 export default function RootLayout() {
+  const styles = useStyles(makeStyles);
   const paystackKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <View style={styles.root}>
-          {/* Light content on a #0a0814 app: the status bar is part of the
-              design, not a system bar sitting on top of it. */}
-          <StatusBar style="light" />
+        <ThemeProvider>
+          <View style={styles.root}>
+            <ThemedStatusBar />
 
           <SessionProvider>
             <ToastProvider>
               <PaystackProvider publicKey={paystackKey} currency="NGN">
                 <RootShell />
+                {/* The call surfaces mount beside the navigator on purpose:
+                    the ring takes the screen wherever the user is standing
+                    (including over the loading gate), and the minimized pill
+                    survives every navigation. */}
+                <CallSessionProvider />
               </PaystackProvider>
             </ToastProvider>
           </SessionProvider>
-        </View>
+          </View>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -81,7 +97,14 @@ export default function RootLayout() {
  * registered on the session that owns it.
  */
 function RootShell() {
+  const styles = useStyles(makeStyles);
   const { session, userId, loading } = useSession();
+  const { ready: themeReady, resolvedTheme } = useTheme();
+  /* The app canvas follows the palette — the native twin of the web's
+     `theme-bg-gradient` on <body>. Every stack screen inherits it, so no
+     screen carries its own background decision. */
+  const rootBackground =
+    resolvedTheme === "light" ? styles.rootLight : styles.root;
 
   /* Badges follow the session. */
   useEffect(() => {
@@ -101,6 +124,24 @@ function RootShell() {
      at that moment, and one frame of slack covers the read that resolves it. */
   useEffect(() => {
     return handleNotificationResponse((hint) => {
+      /* A call push is not a navigation — it is a ring. The same data blob
+         the web's service worker turns into an incoming-call event is turned
+         into the engine's ring here (and stashed first, so a tap that
+         cold-started the app still finds its payload after mount). */
+      if (hint.type === "call" && hint.conversationId) {
+        const ring = {
+          conversationId: hint.conversationId,
+          callerId: hint.callerId ?? "",
+          callId: hint.callId ?? null,
+          callerName: hint.callerName ?? null,
+          callerAvatar: hint.callerAvatar ?? null,
+        };
+        if (!ring.callerId) return;
+        void stashPendingRing(ring);
+        emitIncomingCallRing(ring);
+        return;
+      }
+
       const navigate = () => {
         if (hint.conversationId) {
           router.push({ pathname: "/conversation", params: { conversationId: hint.conversationId } });
@@ -119,9 +160,12 @@ function RootShell() {
     });
   }, []);
 
-  if (loading) {
+  if (loading || !themeReady) {
+    /* Held back until BOTH reads settle: the session (who you are) and the
+       theme (what the app looks like). Painting a screen between the two is
+       how a light-theme user gets one dark frame, or the reverse. */
     return (
-      <View style={[styles.root, styles.center]}>
+      <View style={[rootBackground, styles.center]}>
         <Background />
         <BreathingMark />
         <Text style={styles.loadingLabel}>Whisper</Text>
@@ -133,7 +177,7 @@ function RootShell() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: styles.content,
+        contentStyle: [rootBackground, styles.content],
       }}
     >
       <Stack.Screen name="index" />
@@ -194,6 +238,7 @@ function RootShell() {
 
 /** The session read can take a beat; this is what covers it. */
 function BreathingMark() {
+  const styles = useStyles(makeStyles);
   const breathe = useSharedValue(1);
 
   useEffect(() => {
@@ -216,8 +261,9 @@ function BreathingMark() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
+  rootLight: { flex: 1, backgroundColor: COLORS.background },
   content: { backgroundColor: COLORS.background },
   center: { alignItems: "center", justifyContent: "center", gap: 18 },
   mark: {

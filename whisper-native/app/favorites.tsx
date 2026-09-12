@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * Favorites — the native twin of the web app's `/favorites`, which is a
@@ -14,6 +14,7 @@ import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
  * promise are the whole contract for now.
  */
 export default function Favorites() {
+  const styles = useStyles(makeStyles);
   const router = useRouter();
 
   return (
@@ -38,7 +39,7 @@ export default function Favorites() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   wrap: { flex: 1 },
   back: {
     width: 36,

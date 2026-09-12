@@ -24,8 +24,9 @@ import {
   type NotificationPrefs,
 } from "@/lib/profile";
 import { useSession } from "@/lib/session";
+import { useTheme, type ThemePreference } from "@/lib/ThemeProvider";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, FILLS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 import type { Profile } from "@/lib/types";
 
 /**
@@ -51,8 +52,10 @@ import type { Profile } from "@/lib/types";
  * stops the pushes from being sent.
  */
 export default function Settings() {
+  const styles = useStyles(makeStyles);
   const { session, userId, signOut, refreshPush } = useSession();
   const { showToast } = useToast();
+  const { themeId, setThemeId } = useTheme();
 
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -245,6 +248,43 @@ export default function Settings() {
           />
         </Section>
 
+        {/* Appearance — the web app's /appearance page, in place: three
+            choices, each with the same three-swatch preview, check on the
+            active one. `system` follows the OS live. */}
+        <Section title="Appearance" subtitle="Matches the website's themes">
+          {THEME_CHOICES.map((choice) => {
+            const active = choice.id === themeId;
+            return (
+              <Pressable
+                key={choice.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Theme: ${choice.name}`}
+                onPress={() => {
+                  vibrate("tap");
+                  setThemeId(choice.id as ThemePreference);
+                }}
+                style={({ pressed }) => [
+                  styles.themeRow,
+                  active && styles.themeRowActive,
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <View style={styles.swatchStack}>
+                  {choice.swatch.map((c) => (
+                    <View key={c} style={[styles.swatch, { backgroundColor: c }]} />
+                  ))}
+                </View>
+                <Text style={[styles.themeLabel, active && { color: COLORS.text }]}>{choice.name}</Text>
+                {active ? (
+                  <View style={styles.themeCheck}>
+                    <Ionicons name="checkmark" size={15} color={COLORS.contrast} />
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </Section>
+
         {/* Account */}
         <Section title="Account">
           <SheetRow
@@ -354,6 +394,7 @@ function Section({
   subtitle?: string;
   children: React.ReactNode;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>
@@ -383,6 +424,7 @@ function SettingRow({
   onChange: (value: boolean) => void;
   disabled?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const dim = useSharedValue(disabled ? 0.45 : 1);
 
   useEffect(() => {
@@ -409,7 +451,45 @@ function SettingRow({
   );
 }
 
-const styles = StyleSheet.create({
+/** The web app's `lib/themes.ts` swatches, one for one. */
+const THEME_CHOICES: { id: string; name: string; swatch: [string, string, string] }[] = [
+  { id: "system", name: "System", swatch: ["#FFFFFF", "#8B5CF6", "#000000"] },
+  { id: "light", name: "Light", swatch: ["#FFFFFF", "#F5F5F5", "#EC4899"] },
+  { id: "dark", name: "Dark", swatch: ["#000000", "#111111", "#8B5CF6"] },
+];
+
+const makeStyles = () => StyleSheet.create({
+  themeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  themeRowActive: {
+    borderColor: GLASS.borderStrong,
+    backgroundColor: FILLS[1],
+  },
+  swatchStack: {
+    flexDirection: "row",
+    width: 44,
+    height: 26,
+    borderRadius: RADIUS.sm,
+    overflow: "hidden",
+  },
+  swatch: { width: 44 / 3, height: "100%" },
+  themeLabel: { flex: 1, color: COLORS.muted, fontSize: 14.5, fontWeight: "700" },
+  themeCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.violet,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",

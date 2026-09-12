@@ -29,7 +29,7 @@ import { formatCoins } from "@/lib/format";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 import { discardUpload, uploadImage } from "@/lib/uploads";
 
 /* Mirrors FeedComposer.tsx on the web, which mirrors the route's own check. */
@@ -63,6 +63,7 @@ const BODY_LIMIT = 500;
  * and the response carries the row the feed should show.
  */
 export default function CreateWhisper() {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { userId, session } = useSession();
   const { showToast } = useToast();
@@ -459,7 +460,7 @@ export default function CreateWhisper() {
                   showToast("Anonymous is the only option here — that's the point.", { variant: "subtle" });
                 }}
                 trackColor={{ false: "rgba(255,255,255,0.12)", true: COLORS.cyan }}
-                thumbColor="#ffffff"
+                thumbColor={COLORS.text}
                 disabled
               />
             </View>
@@ -524,7 +525,7 @@ export default function CreateWhisper() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   flex: { flex: 1 },
   header: {
     flexDirection: "row",

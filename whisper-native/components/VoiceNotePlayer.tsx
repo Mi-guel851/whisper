@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { Waveform } from "./Waveform";
 import { formatDuration } from "@/lib/format";
-import { COLORS } from "@/lib/theme";
+import { COLORS, useStyles } from "@/lib/theme";
 
 /**
  * Plays a voice note.
@@ -38,6 +38,7 @@ export function VoiceNotePlayer({
   /** `incoming` is a glass bubble; `outgoing` is the gradient one. */
   tone?: "incoming" | "outgoing";
 }) {
+  const styles = useStyles(makeStyles);
   const soundRef = useRef<Audio.Sound | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "playing" | "paused" | "error">("idle");
   const [position, setPosition] = useState(0);
@@ -132,7 +133,7 @@ export function VoiceNotePlayer({
   const total = (durationMs ?? 0) / 1000;
   const progress = total > 0 ? Math.min(1, position / 1000 / total) : 0;
 
-  const accent = tone === "outgoing" ? "#0a0814" : COLORS.text;
+  const accent = tone === "outgoing" ? COLORS.contrast : COLORS.text;
 
   return (
     <View style={[styles.row, tone === "outgoing" && styles.rowOutgoing]}>
@@ -156,7 +157,7 @@ export function VoiceNotePlayer({
           progress={progress}
           bars={30}
           height={24}
-          color={tone === "outgoing" ? "#0a0814" : COLORS.cyan}
+          color={tone === "outgoing" ? COLORS.contrast : COLORS.cyan}
           inactiveColor={tone === "outgoing" ? "rgba(10,8,20,0.35)" : "rgba(255,255,255,0.2)"}
         />
         <Text style={[styles.time, tone === "outgoing" && { color: "rgba(10,8,20,0.75)" }]}>
@@ -171,7 +172,7 @@ export function VoiceNotePlayer({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 190 },
   rowOutgoing: {},
   button: {

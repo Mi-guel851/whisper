@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { NotificationRow } from "./types";
+import { COLORS } from "@/lib/theme";
 
 /**
  * The notification history — `public.notifications`.
@@ -143,20 +144,20 @@ export function notificationVisual(type: string): {
 } {
   switch (type) {
     case "whisper":
-      return { icon: "chatbubble-ellipses-outline", accent: "#22d3ee" };
+      return { icon: "chatbubble-ellipses-outline", accent: COLORS.cyan };
     case "message":
-      return { icon: "mail-unread-outline", accent: "#22d3ee" };
+      return { icon: "mail-unread-outline", accent: COLORS.cyan };
     case "public_feed":
     case "reply":
-      return { icon: "sparkles-outline", accent: "#a855f7" };
+      return { icon: "sparkles-outline", accent: COLORS.purple };
     case "friend_request":
-      return { icon: "person-add-outline", accent: "#a855f7" };
+      return { icon: "person-add-outline", accent: COLORS.purple };
     case "coin_transfer":
     case "coins":
-      return { icon: "logo-bitcoin", accent: "#f59e0b" };
+      return { icon: "logo-bitcoin", accent: COLORS.warning };
     case "call":
-      return { icon: "call-outline", accent: "#22c55e" };
+      return { icon: "call-outline", accent: COLORS.success };
     default:
-      return { icon: "notifications-outline", accent: "#22d3ee" };
+      return { icon: "notifications-outline", accent: COLORS.cyan };
   }
 }

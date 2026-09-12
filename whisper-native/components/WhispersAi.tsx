@@ -23,7 +23,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, glow, useStyles } from "@/lib/theme";
 import { vibrate } from "@/lib/haptics";
 import {
   AI_LIMITS,
@@ -51,6 +51,7 @@ const nextId = () => `ai-${++bubbleSeq}`;
  * composer stays on screen while typing.
  */
 export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
   const [open, setOpen] = useState(false);
@@ -170,7 +171,7 @@ export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
           end={{ x: 1, y: 1 }}
           style={[styles.fab, glow(COLORS.purple, 18, 0.45)]}
         >
-          <Ionicons name="sparkles" size={20} color="#0a0814" />
+          <Ionicons name="sparkles" size={20} color={COLORS.contrast} />
         </LinearGradient>
       </Pressable>
 
@@ -195,7 +196,7 @@ export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
                   end={{ x: 1, y: 1 }}
                   style={styles.headerMark}
                 >
-                  <Ionicons name="sparkles" size={17} color="#0a0814" />
+                  <Ionicons name="sparkles" size={17} color={COLORS.contrast} />
                 </LinearGradient>
 
                 <View style={styles.headerText}>
@@ -306,7 +307,7 @@ export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
                     end={{ x: 1, y: 0 }}
                     style={styles.sendGradient}
                   >
-                    <Ionicons name="arrow-up" size={18} color="#0a0814" />
+                    <Ionicons name="arrow-up" size={18} color={COLORS.contrast} />
                   </LinearGradient>
                 </Pressable>
               </View>
@@ -318,7 +319,7 @@ export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   fabWrap: { position: "absolute", right: 18 },
   fab: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
 
@@ -367,7 +368,7 @@ const styles = StyleSheet.create({
 
   userRow: { alignItems: "flex-end" },
   userBubble: { maxWidth: "86%", borderRadius: 18, borderBottomRightRadius: 6, paddingHorizontal: 14, paddingVertical: 10 },
-  userText: { color: "#0a0814", fontSize: 14, fontWeight: "700", lineHeight: 20 },
+  userText: { color: COLORS.contrast, fontSize: 14, fontWeight: "700", lineHeight: 20 },
 
   aiRow: { alignItems: "flex-start" },
   aiBubble: {

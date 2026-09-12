@@ -16,7 +16,7 @@ import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/session";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/lib/toast";
-import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { CARD_SHADOW, COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * Complete your profile — the native port of the web app's `/complete-profile`.
@@ -45,6 +45,7 @@ import { CARD_SHADOW, COLORS, GLASS, RADIUS } from "@/lib/theme";
  * `index` and the auth layout check, so this screen is the only door out.
  */
 export default function CompleteProfile() {
+  const styles = useStyles(makeStyles);
   const router = useRouter();
   const { session, userId } = useSession();
   const { showToast } = useToast();
@@ -366,7 +367,7 @@ export default function CompleteProfile() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   flex: { flex: 1 },
   scroll: { padding: 18, paddingBottom: 48 },
 

@@ -5,14 +5,14 @@ import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 
 import { Background, FadeIn } from "./Background";
 import { GlassCard } from "./GlassCard";
-import { COLORS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 
 /**
  * The screen shell.
  *
- * Every screen in this app is the same three things: the `#0a0814` background,
+ * Every screen in this app is the same three things: the `#000000` background,
  * a safe-area inset, and a fade-in on mount. Putting them in one component is
  * not just convenience — it is what makes "no white screens anywhere" a
  * structural property rather than a rule forty files have to remember.
@@ -26,6 +26,7 @@ export function Screen({
   edges?: Edge[];
   padded?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.root}>
       <Background />
@@ -40,10 +41,11 @@ export function Screen({
  * The full-screen gate.
  *
  * Shown while a session read or a first page is in flight — and always on
- * `#0a0814`, so the splash is part of the app rather than a white flash with a
+ * `#000000`, so the splash is part of the app rather than a white flash with a
  * spinner on it.
  */
 export function LoadingScreen({ label = "Loading" }: { label?: string }) {
+  const styles = useStyles(makeStyles);
   const rotation = useSharedValue(0);
 
   React.useEffect(() => {
@@ -74,6 +76,7 @@ export function LoadingScreen({ label = "Loading" }: { label?: string }) {
 
 /** A centred spinner sized for a section rather than a screen. */
 export function InlineLoader({ label }: { label?: string }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.inlineLoader}>
       <ActivityIndicator color={COLORS.cyan} size="small" />
@@ -102,6 +105,7 @@ export function EmptyState({
   actionLabel?: string;
   onAction?: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.emptyWrap}>
       <GlassCard style={styles.emptyCard} radius={RADIUS.xl}>
@@ -131,6 +135,7 @@ export function EmptyState({
 
 /** A pulse placeholder for a list that is still loading. */
 export function SkeletonRow({ height = 72 }: { height?: number }) {
+  const styles = useStyles(makeStyles);
   const opacity = useSharedValue(0.35);
 
   React.useEffect(() => {
@@ -142,7 +147,7 @@ export function SkeletonRow({ height = 72 }: { height?: number }) {
   return <Animated.View style={[styles.skeleton, { height }, style]} />;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   flex: { flex: 1 },
   padded: { paddingHorizontal: 16 },

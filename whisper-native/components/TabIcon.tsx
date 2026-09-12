@@ -34,7 +34,7 @@ export function TabIcon({
     <Ionicons
       name={focused ? on : off}
       size={22}
-      color={focused ? "#0a0814" : COLORS.muted}
+      color={focused ? COLORS.contrast : COLORS.muted}
     />
   );
 }

@@ -37,7 +37,7 @@ import { vibrate } from "@/lib/haptics";
 import { useAnonName } from "@/lib/identity";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import type { FeedPost } from "@/lib/types";
 
@@ -65,6 +65,7 @@ import type { FeedPost } from "@/lib/types";
  * with `parentPostId` set.
  */
 export default function WhisperDetail() {
+  const styles = useStyles(makeStyles);
   const params = useLocalSearchParams() as { postId?: string };
   const postId = typeof params.postId === "string" ? params.postId : "";
 
@@ -363,7 +364,7 @@ export default function WhisperDetail() {
                 end={{ x: 1, y: 1 }}
                 style={[styles.sendButton, (!draft.trim() || sending) && styles.disabled]}
               >
-                <Ionicons name="arrow-up" size={19} color="#0a0814" />
+                <Ionicons name="arrow-up" size={19} color={COLORS.contrast} />
               </LinearGradient>
             </Pressable>
           </BlurView>
@@ -460,7 +461,7 @@ export default function WhisperDetail() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   flex: { flex: 1 },
   header: {
     flexDirection: "row",

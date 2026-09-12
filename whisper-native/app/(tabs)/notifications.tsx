@@ -22,7 +22,7 @@ import { timeAgo } from "@/lib/format";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import type { NotificationRow, Whisper, WhisperHint } from "@/lib/types";
 import {
@@ -62,6 +62,7 @@ type Tab = "whispers" | "alerts";
  * while the screen is open rather than after the next pull.
  */
 export default function Notifications() {
+  const styles = useStyles(makeStyles);
   const { userId, session } = useSession();
   const { showToast } = useToast();
 
@@ -497,6 +498,7 @@ export default function Notifications() {
 
 /** One row of the durable alert history. */
 function AlertRow({ row, onPress }: { row: NotificationRow; onPress: () => void }) {
+  const styles = useStyles(makeStyles);
   const visual = notificationVisual(row.type);
 
   return (
@@ -526,7 +528,7 @@ function AlertRow({ row, onPress }: { row: NotificationRow; onPress: () => void 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
   headerTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   title: { color: COLORS.text, fontSize: 24, fontWeight: "900", letterSpacing: -0.5 },
@@ -564,7 +566,7 @@ const styles = StyleSheet.create({
   },
   switchButton: { flex: 1, alignItems: "center", justifyContent: "center" },
   switchText: { color: COLORS.muted, fontSize: 13, fontWeight: "700" },
-  switchTextActive: { color: "#0a0814", fontWeight: "900" },
+  switchTextActive: { color: COLORS.contrast, fontWeight: "900" },
 
   list: { paddingHorizontal: 16, paddingBottom: TAB_BAR_SPACE + 24 },
 

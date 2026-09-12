@@ -20,7 +20,7 @@ import { useFeedEngagement } from "@/lib/useFeedEngagement";
 import { BIO_LIMIT, fetchProfile, invalidateIdentity, saveProfile, whisperLink, whisperLinkLabel } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS, TAB_BAR_SPACE } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 import { saveAvatarUrl, uploadAvatar } from "@/lib/uploads";
 import type { FeedPost, Profile } from "@/lib/types";
@@ -44,6 +44,7 @@ import type { FeedPost, Profile } from "@/lib/types";
  * generated from an id), so this is the only screen with an image picker.
  */
 export default function Profile() {
+  const styles = useStyles(makeStyles);
   const { userId, session } = useSession();
   const { showToast } = useToast();
 
@@ -211,7 +212,7 @@ export default function Profile() {
             <View style={styles.avatarWrap}>
               <Avatar authorId={userId} size={86} imageUrl={profile?.avatar_url} />
               <View style={styles.avatarEdit}>
-                <Ionicons name={uploadingAvatar ? "hourglass-outline" : "camera"} size={13} color="#0a0814" />
+                <Ionicons name={uploadingAvatar ? "hourglass-outline" : "camera"} size={13} color={COLORS.contrast} />
               </View>
             </View>
           </Pressable>
@@ -457,7 +458,7 @@ export default function Profile() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   headerWrap: { paddingHorizontal: 16, paddingTop: 12 },
   identityCard: {
     borderRadius: RADIUS.xxl,

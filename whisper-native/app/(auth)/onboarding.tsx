@@ -21,7 +21,7 @@ import { GradientButton } from "@/components/GradientButton";
 import { GradientText } from "@/components/GradientText";
 import { markOnboarded } from "@/lib/firstRun";
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GRADIENT_COLORS, glow } from "@/lib/theme";
+import { COLORS, GRADIENT_COLORS, glow, useStyles } from "@/lib/theme";
 
 /**
  * Onboarding — the first screen a new user ever sees.
@@ -49,6 +49,7 @@ import { COLORS, GRADIENT_COLORS, glow } from "@/lib/theme";
  * to the tabs before it paints.
  */
 export default function Onboarding() {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
   const markScale = useSharedValue(0.8);
@@ -161,7 +162,7 @@ export default function Onboarding() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
   markRing: { width: 132, height: 132, borderRadius: 66, padding: 3 },

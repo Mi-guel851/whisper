@@ -21,7 +21,7 @@ import { Field } from "@/components/Input";
 import { apiBase } from "@/lib/feed";
 import { vibrate } from "@/lib/haptics";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * Reset password — the no-email path.
@@ -38,6 +38,7 @@ import { COLORS, GLASS, RADIUS } from "@/lib/theme";
  * spent on either.
  */
 export default function ForgotPassword() {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
 
@@ -246,7 +247,7 @@ export default function ForgotPassword() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   flex: { flex: 1 },
   scroll: { paddingHorizontal: 22, flexGrow: 1, justifyContent: "center" },

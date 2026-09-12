@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Background } from "@/components/Background";
 import { GradientButton } from "@/components/GradientButton";
+import { GoogleButton } from "@/components/GoogleButton";
+import { signInWithGoogle, SIGNUPS_CLOSED, SIGNUPS_OPEN } from "@/lib/googleAuth";
 import { GradientText } from "@/components/GradientText";
 import { GhostMark } from "@/components/Logo";
 import { Field } from "@/components/Input";
@@ -15,7 +17,7 @@ import { isMissingSchema, safeErrorMessage } from "@/lib/errors";
 import { vibrate } from "@/lib/haptics";
 import { completeProfile, fetchProfile, validateUsername } from "@/lib/profile";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /** Same copy as login's — the two auth screens share one truth about the build. */
 const CONFIG_ERROR =
@@ -44,6 +46,7 @@ const CONFIG_ERROR =
  * form that is still there is the confusing part of most apps' first run.
  */
 export default function Signup() {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState("");
@@ -51,6 +54,7 @@ export default function Signup() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -129,7 +133,26 @@ export default function Signup() {
     } finally {
       setBusy(false);
     }
+  }
+  /* Google creates the account on first use — which is exactly why the
+     button only exists while signups are open. */
+  const onGoogle = async () => {
+    setError(null);
+    setGoogleBusy(true);
+    const result = await signInWithGoogle();
+    setGoogleBusy(false);
+    if (result.cancelled) return;
+    if ("error" in result && result.error) {
+      setError(result.error);
+      vibrate("warning");
+      return;
+    }
+    vibrate("success");
+    void markOnboarded();
+    /* The session state change sends the user where they belong — a fresh
+       account lands on complete-profile, same as the web's flow. */
   };
+;
 
   return (
     <View style={styles.root}>
@@ -245,10 +268,19 @@ export default function Signup() {
                   size="lg"
                   fullWidth
                   loading={busy}
-                  disabled={busy}
+                  disabled={busy || googleBusy}
                   onPress={() => void submit()}
                   style={styles.submit}
                 />
+
+                {SIGNUPS_OPEN ? (
+                  <GoogleButton
+                    loading={googleBusy}
+                    disabled={busy}
+                    onPress={() => void onGoogle()}
+                    style={styles.googleButton}
+                  />
+                ) : null}
 
                 <Text style={styles.terms}>
                   By continuing you agree to be kind. Whisper never posts as you and
@@ -293,7 +325,7 @@ function friendlyAuthError(message: string): string {
   return message;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.background },
   flex: { flex: 1 },
   scroll: { paddingHorizontal: 22, flexGrow: 1, justifyContent: "center" },
@@ -357,6 +389,7 @@ const styles = StyleSheet.create({
   bannerInfoText: { color: COLORS.cyan, fontSize: 13, flexShrink: 1, lineHeight: 18 },
 
   submit: { marginTop: 4 },
+  googleButton: { marginTop: 12 },
   terms: { color: COLORS.subtle, fontSize: 11, lineHeight: 16, textAlign: "center", paddingHorizontal: 6 },
   swap: { alignItems: "center", paddingVertical: 6 },
   swapText: { color: COLORS.muted, fontSize: 13, fontWeight: "600" },
