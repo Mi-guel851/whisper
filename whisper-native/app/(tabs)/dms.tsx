@@ -325,7 +325,7 @@ function ConversationRowItem({
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`Conversation with ${name}`}>
       <BlurView
         intensity={GLASS.blurIntensity}
-        tint="dark"
+        tint={GLASS.tint}
         style={[styles.row, unreadCount > 0 && styles.rowUnread]}
       >
         <View style={styles.rowInner}>

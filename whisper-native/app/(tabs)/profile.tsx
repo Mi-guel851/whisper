@@ -206,7 +206,7 @@ export default function Profile() {
 
   const header = (
     <View style={styles.headerWrap}>
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.identityCard}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.identityCard}>
         <View style={styles.identityInner}>
           <Pressable onPress={() => void pickAvatar()} accessibilityLabel="Change your avatar">
             <View style={styles.avatarWrap}>

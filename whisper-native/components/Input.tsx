@@ -69,7 +69,7 @@ export function Field({
 
       <BlurView
         intensity={GLASS.blurIntensity}
-        tint="dark"
+        tint={GLASS.tint}
         style={[
           styles.frame,
           multiline && styles.frameMultiline,
@@ -109,7 +109,7 @@ export function Field({
             blurOnSubmit={blurOnSubmit}
             /* The app is dark everywhere; without this the iOS keyboard's
                suggestion bar renders in light mode over a dark screen. */
-            keyboardAppearance="dark"
+            keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
             style={[styles.input, multiline && styles.inputMultiline]}
           />
         </View>
@@ -142,7 +142,7 @@ export function SearchField({
   return (
     <BlurView
       intensity={GLASS.blurIntensity}
-      tint="dark"
+      tint={GLASS.tint}
       style={[styles.searchFrame, { borderColor: focused ? COLORS.cyan : GLASS.border }, style]}
     >
       <Ionicons name="search" size={16} color={COLORS.subtle} />
@@ -154,7 +154,7 @@ export function SearchField({
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
-        keyboardAppearance="dark"
+        keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={styles.searchInput}

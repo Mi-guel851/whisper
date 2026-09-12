@@ -178,7 +178,7 @@ export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
       <Modal transparent visible={mounted} animationType="none" onRequestClose={() => setOpen(false)}>
         <View style={styles.root}>
           <Animated.View style={[styles.backdrop, backdropStyle]}>
-            <BlurView intensity={24} tint="dark" style={StyleSheet.absoluteFill} />
+            <BlurView intensity={24} tint={GLASS.tint} style={StyleSheet.absoluteFill} />
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel="Close" />
           </Animated.View>
 
@@ -187,7 +187,7 @@ export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
             style={styles.avoider}
           >
             <Animated.View style={[styles.panel, panelStyle, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-              <BlurView intensity={GLASS.blurIntensity} tint="dark" style={StyleSheet.absoluteFill} />
+              <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={StyleSheet.absoluteFill} />
 
               <View style={styles.header}>
                 <LinearGradient
@@ -290,7 +290,7 @@ export function WhispersAi({ bottomOffset = 0 }: { bottomOffset?: number }) {
                   onChangeText={(value) => setDraft(value.slice(0, AI_LIMITS.MAX_QUESTION_CHARS))}
                   placeholder="Ask a question…"
                   placeholderTextColor={COLORS.subtle}
-                  keyboardAppearance="dark"
+                  keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
                   multiline
                   style={styles.input}
                 />

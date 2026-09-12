@@ -118,7 +118,7 @@ export default function Coins() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <BlurView intensity={GLASS.blurIntensity} tint="dark" style={[styles.hero, glow(COLORS.purple, 24, 0.35)]}>
+        <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={[styles.hero, glow(COLORS.purple, 24, 0.35)]}>
           <View style={styles.heroInner}>
             <Text style={styles.heroTitle}>Whisper Coins</Text>
             <Text style={styles.heroBody}>
@@ -240,7 +240,7 @@ function PackageCard({
       >
         <BlurView
           intensity={GLASS.blurIntensity}
-          tint="dark"
+          tint={GLASS.tint}
           style={[styles.package, pkg.popular && styles.packagePopular]}
         >
           <View style={styles.packageInner}>

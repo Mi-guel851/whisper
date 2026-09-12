@@ -7,7 +7,7 @@ import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 /**
  * The glass card.
  *
- * `BlurView` with `tint="dark"` and `intensity={40}` — the brief's numbers, and
+ * `BlurView` with `tint={GLASS.tint}` and `intensity={40}` — the brief's numbers, and
  * also the combination that reads as glass rather than as a translucent slab:
  * the frost does the work, the alpha only tints it.
  *
@@ -39,7 +39,7 @@ export function GlassCard({
     <View style={[styles.shadow, { borderRadius: radius }, style]}>
       <BlurView
         intensity={GLASS.blurIntensity}
-        tint="dark"
+        tint={GLASS.tint}
         style={[
           styles.blur,
           {
@@ -69,7 +69,7 @@ export function GlassRow({
   return (
     <BlurView
       intensity={GLASS.blurIntensity}
-      tint="dark"
+      tint={GLASS.tint}
       style={[
         styles.blur,
         {

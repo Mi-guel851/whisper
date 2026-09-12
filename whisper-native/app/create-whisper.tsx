@@ -299,7 +299,7 @@ export default function CreateWhisper() {
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 30 }]}
           keyboardShouldPersistTaps="handled"
         >
-          <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.composer}>
+          <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.composer}>
             <TextInput
               value={body}
               onChangeText={(value) => setBody(value.slice(0, BODY_LIMIT))}
@@ -307,7 +307,7 @@ export default function CreateWhisper() {
               placeholderTextColor={COLORS.subtle}
               multiline
               autoFocus
-              keyboardAppearance="dark"
+              keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
               style={styles.input}
             />
 
@@ -369,7 +369,7 @@ export default function CreateWhisper() {
                       onChangeText={(value) => setPollOption(index, value)}
                       placeholder={`Option ${index + 1}`}
                       placeholderTextColor={COLORS.subtle}
-                      keyboardAppearance="dark"
+                      keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
                       style={styles.pollInput}
                     />
                     {pollOptions.length > 2 && (

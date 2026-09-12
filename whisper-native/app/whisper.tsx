@@ -267,7 +267,7 @@ export default function SendWhisper() {
             <Text style={styles.title}>Anonymous Whisper</Text>
           </View>
 
-          <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.identity}>
+          <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.identity}>
             <View style={styles.identityInner}>
               <Avatar authorId={subject.id} size={54} imageUrl={subject.avatar_url} />
               <View style={styles.identityText}>

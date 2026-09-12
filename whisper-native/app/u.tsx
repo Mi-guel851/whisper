@@ -67,7 +67,7 @@ export default function UserProfile() {
 
   const header = (
     <View style={styles.header}>
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.identityCard}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.identityCard}>
         <View style={styles.identityInner}>
           <Avatar authorId={subjectId} size={78} imageUrl={profile?.avatar_url} />
 

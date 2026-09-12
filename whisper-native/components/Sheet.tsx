@@ -78,7 +78,7 @@ export function Sheet({
     <Modal transparent visible animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.root}>
         <Animated.View style={[styles.backdrop, backdropStyle]}>
-          <BlurView intensity={24} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={24} tint={GLASS.tint} style={StyleSheet.absoluteFill} />
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={dismissable ? onClose : undefined}

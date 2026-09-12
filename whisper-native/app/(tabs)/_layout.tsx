@@ -19,7 +19,7 @@ import {
 import { TabIcon } from "@/components/TabIcon";
 import { useBadges } from "@/lib/badges";
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, NAV, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * The tab bar.
@@ -64,7 +64,7 @@ function GlassTabBar({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]} pointerEvents="box-none">
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.bar}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.bar}>
         {state.routes.map((route, index) => {
           const item = ITEMS.find((candidate) => candidate.name === route.name);
           if (!item) return null;
@@ -183,7 +183,7 @@ const makeStyles = () => StyleSheet.create({
     borderRadius: RADIUS.xxl,
     borderWidth: 1,
     borderColor: GLASS.border,
-    backgroundColor: "rgba(10,8,20,0.72)",
+    backgroundColor: NAV.gloss,
     paddingHorizontal: 8,
     paddingVertical: 8,
     overflow: "hidden",

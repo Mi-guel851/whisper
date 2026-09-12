@@ -47,7 +47,7 @@ export function VoiceRecorderPanel({
   const styles = useStyles(makeStyles);
   if (pending) {
     return (
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.panel}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.panel}>
         <View style={styles.reviewRow}>
           <VoiceNotePlayer
             uri={pending.uri}
@@ -98,7 +98,7 @@ export function VoiceRecorderPanel({
   }
 
   return (
-    <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.panel}>
+    <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.panel}>
       <View style={styles.liveRow}>
         <RecordingPulse active={recorder.status === "recording"} />
 

@@ -152,7 +152,7 @@ export function GradientButton({
             {content}
           </LinearGradient>
         ) : variant === "glass" ? (
-          <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.glass}>
+          <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.glass}>
             <Animated.View style={[styles.overlay, overlayStyle]} />
             {content}
           </BlurView>
@@ -240,7 +240,7 @@ export function IconButton({
             {inner}
           </LinearGradient>
         ) : (
-          <BlurView intensity={GLASS.blurIntensity} tint="dark" style={{ borderRadius: size / 2 }}>
+          <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={{ borderRadius: size / 2 }}>
             {inner}
           </BlurView>
         )}

@@ -415,7 +415,7 @@ function Section({
         {subtitle ? <Text style={styles.sectionSub}>{subtitle}</Text> : null}
       </View>
 
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.sectionCard}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.sectionCard}>
         <View style={styles.sectionInner}>{children}</View>
       </BlurView>
     </View>

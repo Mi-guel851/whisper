@@ -2,16 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FeedCard, TopicChip } from "@/components/feed/FeedCard";
@@ -666,6 +657,7 @@ export default function Feed() {
           ))}
 
           {threads[item.id] && (
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
             <View style={styles.replyBox}>
               <TextInput
                 value={replyTo === item.id ? replyDraft : ""}
@@ -676,7 +668,7 @@ export default function Feed() {
                 }}
                 placeholder="Reply anonymously…"
                 placeholderTextColor={COLORS.subtle}
-                keyboardAppearance="dark"
+                keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
                 multiline
                 style={styles.replyInput}
               />
@@ -704,6 +696,7 @@ export default function Feed() {
                 </LinearGradient>
               </Pressable>
             </View>
+            </KeyboardAvoidingView>
           )}
           </View>
         )}

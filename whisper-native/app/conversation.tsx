@@ -669,7 +669,7 @@ export default function Conversation() {
 
   return (
     <View style={styles.root}>
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.header}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.header}>
         <View style={[styles.headerInner, { paddingTop: insets.top + 6 }]}>
           <IconButton
             icon="chevron-back"
@@ -810,7 +810,7 @@ export default function Conversation() {
 
         {!locked && (
           <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-            <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.composerInner}>
+            <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.composerInner}>
               {recorder.isRecording || pendingVoice ? (
                 <VoiceRecorderPanel
                   recorder={recorder}
@@ -839,7 +839,7 @@ export default function Conversation() {
                     placeholder="Message…"
                     placeholderTextColor={COLORS.subtle}
                     multiline
-                    keyboardAppearance="dark"
+                    keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
                     style={styles.input}
                   />
 

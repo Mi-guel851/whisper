@@ -503,7 +503,7 @@ function AlertRow({ row, onPress }: { row: NotificationRow; onPress: () => void 
 
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={row.title}>
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={[styles.alert, !row.is_read && styles.alertUnread]}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={[styles.alert, !row.is_read && styles.alertUnread]}>
         <View style={styles.alertInner}>
           <View style={[styles.alertIcon, { backgroundColor: `${visual.accent}22` }]}>
             <Ionicons name={visual.icon as never} size={17} color={visual.accent} />

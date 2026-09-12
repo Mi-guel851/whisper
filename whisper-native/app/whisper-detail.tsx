@@ -346,14 +346,14 @@ export default function WhisperDetail() {
         />
 
         <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.composerInner}>
+          <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.composerInner}>
             <TextInput
               value={draft}
               onChangeText={setDraft}
               placeholder="Reply anonymously…"
               placeholderTextColor={COLORS.subtle}
               multiline
-              keyboardAppearance="dark"
+              keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
               style={styles.input}
             />
 
