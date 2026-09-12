@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The Expo app is not web code and these rules are not its rules — linting
+    // it here reports 74 errors about React Native and Metro conventions it
+    // should not follow. It is checked by its own `tsc` and `expo export` in
+    // `whisper-native/`; see the note in tsconfig.json for the same exclusion.
+    "whisper-native/**",
   ]),
 ]);
 

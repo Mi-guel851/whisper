@@ -30,5 +30,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
- "exclude": ["node_modules", "supabase/functions"]
+ // `whisper-native` is its own TypeScript project (it has its own tsconfig and
+ // its own `@/*` -> `./*` root), and it must stay out of this one: the include
+ // globs below would otherwise sweep its 63 source files into the Next build's
+ // type-check, where `@/lib/theme` resolves to this repo's `lib/` instead of the
+ // app's and every import fails — 377 errors, which is what turned the Vercel
+ // deploy red from the moment the native app landed under `whisper-native/`.
+ "exclude": ["node_modules", "supabase/functions", "whisper-native"]
 }
