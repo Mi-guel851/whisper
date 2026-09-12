@@ -112,34 +112,21 @@ export default function Dms() {
 
   useEffect(() => {
     void load();
+  }, [load]);
 
   /* Presence: subscribe before the handshake so a channel rebuild still
-
      reaches these dots (the web inbox's exact wiring). */
-
   useEffect(() => {
-
     if (!userId) {
-
       setOnlineIds(new Set());
-
       return;
-
     }
-
     const unsubscribe = presenceManager.subscribe((users) => {
-
       setOnlineIds(new Set(users.map((user) => user.id)));
-
     });
-
     void presenceManager.connect(userId);
-
     return unsubscribe;
-
   }, [userId]);
-
-  }, [load]);
 
   /* Refetch on focus: a message read in a thread has to clear its badge in the
      list behind it, and coming back to a stale unread count is the most common

@@ -196,7 +196,7 @@ export default function Signup() {
           <Animated.View entering={FadeInUp.delay(80).duration(420).easing(Easing.out(Easing.cubic))}>
             <View style={styles.card}>
               <View style={styles.cardInner}>
-                <Text style={styles.title}>Create account</Text>
+                <Text style={styles.title}>Create Account</Text>
                 <Text style={styles.subtitle}>No name. No number. Just a whisper.</Text>
 
                 <Field
@@ -309,7 +309,7 @@ export default function Signup() {
                   accessibilityRole="link"
                 >
                   <Text style={styles.swapText}>
-                    Already have an account? <Text style={styles.swapLink}>Log in</Text>
+                    Already have an account? <Text style={styles.swapLink}>Login</Text>
                   </Text>
                 </Pressable>
               </View>

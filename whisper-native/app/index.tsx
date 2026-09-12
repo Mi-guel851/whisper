@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { LoadingScreen } from "@/components/Screen";
 import { Background } from "@/components/Background";
 import { isProfileComplete } from "@/lib/profile";
+import { isOnboarded } from "@/lib/firstRun";
 import { useSession } from "@/lib/session";
 import { COLORS, useStyles } from "@/lib/theme";
 import { StyleSheet, View } from "react-native";
@@ -35,9 +36,18 @@ export default function Index() {
   const styles = useStyles(makeStyles);
   const { session, userId, loading } = useSession();
   const [profileCheck, setProfileCheck] = useState<"checking" | "complete" | "incomplete">("checking");
+  /* First launch sees the landing — the web's marketing page — and everyone
+     after that goes straight to login. Without this the hero would paint once
+     in a build nobody opens again, and a returning user would sit through a
+     pitch they already accepted. */
+  const [landing, setLanding] = useState<"checking" | "hero" | "login">("checking");
 
   useEffect(() => {
     let alive = true;
+
+    void isOnboarded().then((onboarded) => {
+      if (alive) setLanding(onboarded ? "login" : "hero");
+    });
 
     async function check() {
       if (!userId) {
@@ -54,7 +64,7 @@ export default function Index() {
     };
   }, [userId]);
 
-  if (loading || (session && profileCheck === "checking")) {
+  if (loading || landing === "checking" || (session && profileCheck === "checking")) {
     return (
       <View style={styles.root}>
         <Background />
@@ -70,7 +80,7 @@ export default function Index() {
     return <Redirect href="/(tabs)/feed" />;
   }
 
-  return <Redirect href="/(auth)/login" />;
+  return <Redirect href={landing === "hero" ? "/(auth)/onboarding" : "/(auth)/login"} />;
 }
 
 const makeStyles = () => StyleSheet.create({

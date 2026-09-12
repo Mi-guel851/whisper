@@ -161,7 +161,7 @@ export default function Login() {
             </View>
 
             <GradientText style={styles.wordmark}>Whisper</GradientText>
-            <Text style={styles.sub}>Welcome back</Text>
+            <Text style={styles.sub}>Login to your Whisper account</Text>
           </Animated.View>
 
           {!hasSupabaseConfig && (
@@ -260,7 +260,7 @@ export default function Login() {
                   accessibilityRole="link"
                 >
                   <Text style={styles.swapText}>
-                    New here? <Text style={styles.swapLink}>Create an account</Text>
+                    Don't have an account? <Text style={styles.swapLink}>Sign Up</Text>
                   </Text>
                 </Pressable>
               </View>

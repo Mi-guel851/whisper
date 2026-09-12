@@ -60,14 +60,17 @@ old key is the most common way "it works for me but not on the device" happens.
 ```
 app/                    the route tree (expo-router, file-based)
   _layout.tsx           providers + root Stack; badges, push taps, the loader
-  index.tsx             the fork: profile-complete gate → feed / complete-profile / login
+  index.tsx             the fork: signed-in → feed / complete-profile; first run
+                        → the landing, after that → login
   (auth)/
     _layout.tsx         the pre-account guard: redirects signed-in users (through the fork)
-    onboarding.tsx      the animated intro — "Say it. Anonymously."
+    onboarding.tsx      the landing — the web hero: pill, word-sweep headline,
+                        Create My Link, social proof, the four-step how-it-works
     login.tsx           signInWithPassword, inline errors, forgot-password link
     signup.tsx          signUp with the username in metadata
   (tabs)/
-    _layout.tsx         the floating glass tab bar (Feed · DMs · Alerts · Profile)
+    _layout.tsx         the floating glass tab bar (Feed · DMs · Alerts · Profile);
+                        mounts the "Before you whisper..." agreement once per session
     feed.tsx            the public feed: four sorts, topics, search, threads,
                         the Daily Whisper spotlight card
     dms.tsx             the inbox: conversations, previews, unread counts
@@ -82,12 +85,15 @@ app/                    the route tree (expo-router, file-based)
   whisper-detail.tsx    one post, its replies, the free reply composer
   whisper.tsx           send an anonymous Whisper to one person (the web's
                         /u/[username] form: sender context, Cloudinary photo)
-  friends.tsx           friends / requests / discover tabs, start-chat, unfriend
+  friends.tsx           discover / active / requests / friends tabs — anonymous
+                        names, presence dots, Active-now rows, start-chat, unfriend
   games.tsx             Whisper Games: share or copy a prompt with your link
   discover.tsx          the feature + utility hub
   legal.tsx             Privacy / Terms / Community Guidelines (from lib/legal.ts)
   help.tsx              Help Center: guides + FAQ accordion
   support.tsx           Contact Support: category + subject + message → mailto
+  banned.tsx            the ban screen: reason, expiry, appeal, sign out —
+                        reached from the root BanGate (my_ban_status, 60s recheck)
   feedback.tsx          star rating + message → mailto
   favorites.tsx         the web's "Coming Soon" page, natively
   creator.tsx           the creator console: official posts behind `is_whisper_creator`

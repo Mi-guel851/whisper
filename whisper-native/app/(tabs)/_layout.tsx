@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BlurView } from "expo-blur";
 import { withLayoutContext } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,6 +20,7 @@ import {
 import { TabIcon } from "@/components/TabIcon";
 import { useBadges } from "@/lib/badges";
 import { vibrate } from "@/lib/haptics";
+import TermsModal from "@/components/TermsModal";
 import { COLORS, GLASS, GRADIENT_COLORS, NAV, RADIUS, useStyles } from "@/lib/theme";
 
 /**
@@ -51,7 +53,20 @@ const ITEMS = [
   { name: "profile", label: "Profile" },
 ] as const;
 
+/** The web dashboard's sessionStorage flag — a module flag here, because the
+    app's session IS the JS context: one show per launch of the agreement. */
+let termsShownThisLaunch = false;
+
+function termsShownThisSession() {
+  if (termsShownThisLaunch) return true;
+  termsShownThisLaunch = true;
+  return false;
+}
+
 function GlassTabBar({ state, navigation }: BottomTabBarProps) {
+  /* The "Before you whisper..." agreement, once per app session — the web
+     dashboard's sessionStorage flag is a module flag here. */
+  const [showTerms, setShowTerms] = useState(() => termsShownThisSession());
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const badges = useBadges();
@@ -93,6 +108,8 @@ function GlassTabBar({ state, navigation }: BottomTabBarProps) {
           );
         })}
       </BlurView>
+
+      {showTerms ? <TermsModal onAccept={() => setShowTerms(false)} /> : null}
     </View>
   );
 }

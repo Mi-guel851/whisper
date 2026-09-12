@@ -13,6 +13,7 @@ import { Background } from "@/components/Background";
 import { resetBadges, watchBadges } from "@/lib/badges";
 import { registerForPushNotifications, handleNotificationResponse } from "@/lib/push";
 import CallSessionProvider from "@/components/calls/CallSessionProvider";
+import { BanGate } from "@/components/BanGate";
 import AnnouncementPrompt from "@/components/AnnouncementPrompt";
 import { emitIncomingCallRing, ringFromPushData, stashPendingRing } from "@/lib/calls/pendingRing";
 import { SessionProvider, useSession } from "@/lib/session";
@@ -71,6 +72,10 @@ export default function RootLayout() {
             <ToastProvider>
               <PaystackProvider publicKey={paystackKey} currency="NGN">
                 <RootShell />
+                {/* A banned account is stopped in its tracks on every route,
+                    the web BanGate's contract. Lives inside the session so it
+                    can read it, above the call surfaces so it covers them. */}
+                <BanGate />
                 <AnnouncementPrompt />
                 {/* The call surfaces mount beside the navigator on purpose:
                     the ring takes the screen wherever the user is standing

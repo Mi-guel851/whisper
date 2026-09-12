@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Avatar } from "@/components/Avatar";
@@ -25,6 +25,7 @@ import {
   type FriendRow,
   type RelatedUserIds,
 } from "@/lib/friends";
+import { useAnonName } from "@/lib/identity";
 import { vibrate } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
@@ -34,14 +35,15 @@ import { CARD_SHADOW, COLORS, GLASS, RADIUS, TAB_BAR_SPACE, useStyles } from "@/
 
 const PAGE_SIZE = 12;
 
-type Tab = "friends" | "requests" | "discover";
+type Tab = "discover" | "active" | "requests" | "friends";
 
 type RequestEntry = { kind: "in" | "out"; row: FriendRequestRow };
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "friends", label: "Friends", icon: "people-outline" },
-  { key: "requests", label: "Requests", icon: "mail-outline" },
   { key: "discover", label: "Discover", icon: "compass-outline" },
+  { key: "active", label: "Active", icon: "flash-outline" },
+  { key: "requests", label: "Requests", icon: "mail-outline" },
+  { key: "friends", label: "Friends", icon: "people-outline" },
 ];
 
 /**
@@ -64,6 +66,20 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
  * to a full refresh, so an acceptance made on the website reorders this
  * screen without a pull-to-refresh.
  */
+/**
+ * One row's name, resolved through the same anonymous-identity map the web
+ * friends page uses (`useAnonNames` over every id any tab renders) — Friends,
+ * Discover, Requests and Active alike show Whisper names, never real ones.
+ */
+function AnonName({ userId, style }: { userId: string; style: object }) {
+  const name = useAnonName(userId);
+  return (
+    <Text style={style} numberOfLines={1}>
+      {name}
+    </Text>
+  );
+}
+
 export default function Friends() {
   const styles = useStyles(makeStyles);
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -71,7 +87,7 @@ export default function Friends() {
   const { showToast } = useToast();
 
   const [tab, setTab] = useState<Tab>(
-    params.tab === "discover" || params.tab === "requests" ? (params.tab as Tab) : "friends"
+    TABS.some((entry) => entry.key === params.tab) ? (params.tab as Tab) : "discover"
   );
 
   const [loading, setLoading] = useState(true);
@@ -86,6 +102,16 @@ export default function Friends() {
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [related, setRelated] = useState<RelatedUserIds | null>(null);
   const [handle, setHandle] = useState("");
+  /* Everyone online but me — the web's "Active now" tab. The web deliberately
+     does NOT exclude friends here: the people online are overwhelmingly the
+     ones already added, and filtering them made the tab read empty in a full
+     room. The row's action changes instead: Message vs Add Friend. */
+  const activeNow = useMemo(() => [...onlineIds].filter((id) => id !== userId), [onlineIds, userId]);
+  const friendIdSet = useMemo(() => new Set(friends.map((row) => row.friend_id)), [friends]);
+  const pendingIdSet = useMemo(
+    () => new Set([...incoming.map((row) => row.sender_id), ...outgoing.map((row) => row.receiver_id)]),
+    [incoming, outgoing]
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadPeople = useCallback(
@@ -349,7 +375,7 @@ export default function Friends() {
             <EmptyState
               icon="people-outline"
               title="No friends yet"
-              body="Find people on the Discover tab — or share your Whisper link and let them find you."
+              body="Add someone from Discover and you can chat privately, without either of you giving up a name."
             />
           }
           renderItem={({ item }) => (
@@ -360,11 +386,9 @@ export default function Friends() {
                   {onlineIds.has(item.friend_id) ? <View style={styles.onlineDot} /> : null}
                 </View>
                 <View style={styles.personText}>
-                  <Text style={styles.personName} numberOfLines={1}>
-                    {item.friend?.display_name?.trim() || item.friend?.username || "Anonymous user"}
-                  </Text>
+                  <AnonName userId={item.friend_id} style={styles.personName} />
                   <Text style={styles.personSub} numberOfLines={1}>
-                    {item.friend?.username ? `@${item.friend.username}` : "Friends on Whisper"}
+                    {onlineIds.has(item.friend_id) ? "Active now" : "Friend"}
                   </Text>
                 </View>
               </View>
@@ -403,7 +427,6 @@ export default function Friends() {
           }
           renderItem={({ item }) => {
             const them = item.kind === "in" ? item.row.sender : item.row.receiver;
-            const name = them?.display_name?.trim() || them?.username || "Anonymous user";
             const busy = busyId === item.row.id;
             return (
               <View style={styles.card}>
@@ -414,11 +437,12 @@ export default function Friends() {
                     imageUrl={them?.avatar_url}
                   />
                   <View style={styles.personText}>
-                    <Text style={styles.personName} numberOfLines={1}>
-                      {name}
-                    </Text>
+                    <AnonName
+                      userId={item.kind === "in" ? item.row.sender_id : item.row.receiver_id}
+                      style={styles.personName}
+                    />
                     <Text style={styles.personSub} numberOfLines={1}>
-                      {item.kind === "in" ? "Wants to be your friend" : "Waiting for a reply"}
+                      {item.kind === "in" ? "Wants to be friends" : "Request pending"}
                     </Text>
                   </View>
                 </View>
@@ -457,6 +481,65 @@ export default function Friends() {
                         style={styles.actionBtn}
                       />
                     </>
+                  )}
+                </View>
+              </View>
+            );
+          }}
+        />
+      ) : null}
+
+      {tab === "active" ? (
+        <FlatList
+          data={activeNow}
+          keyExtractor={(id) => id}
+          contentContainerStyle={[styles.list, { paddingBottom: TAB_BAR_SPACE + 24 }]}
+          ListEmptyComponent={
+            <EmptyState
+              icon="flash-outline"
+              title="No one else is online"
+              body="Active friends appear here the moment they open Whisper. Check back soon."
+            />
+          }
+          renderItem={({ item: id }) => {
+            const isFriend = friendIdSet.has(id);
+            const isPending = pendingIdSet.has(id);
+            return (
+              <View style={styles.card}>
+                <View style={styles.personRow}>
+                  <View>
+                    <Avatar authorId={id} size={44} />
+                    <View style={styles.onlineDot} />
+                  </View>
+                  <View style={styles.personText}>
+                    <AnonName userId={id} style={styles.personName} />
+                    <Text style={styles.personSub} numberOfLines={1}>
+                      Active now
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.actions}>
+                  {isFriend ? (
+                    <GradientButton
+                      label={busyId === id ? "…" : "Message"}
+                      icon="chatbubble-ellipses-outline"
+                      size="sm"
+                      onPress={() => void message(id)}
+                      style={styles.actionBtn}
+                    />
+                  ) : isPending ? (
+                    /* Requested already — shown disabled rather than hidden, so
+                       the row doesn't vanish the moment you tap it (the web's
+                       exact reasoning on its Active tab). */
+                    <GradientButton label="Requested" variant="glass" size="sm" disabled onPress={() => {}} style={styles.actionBtn} />
+                  ) : (
+                    <GradientButton
+                      label={busyId === id ? "…" : "Add Friend"}
+                      icon="person-add-outline"
+                      size="sm"
+                      onPress={() => void addFriend(id)}
+                      style={styles.actionBtn}
+                    />
                   )}
                 </View>
               </View>
@@ -519,11 +602,9 @@ export default function Friends() {
                 <View style={styles.personRow}>
                   <Avatar authorId={item.id} size={44} imageUrl={item.avatar_url} />
                   <View style={styles.personText}>
-                    <Text style={styles.personName} numberOfLines={1}>
-                      {item.display_name?.trim() || item.username || "Anonymous user"}
-                    </Text>
+                    <AnonName userId={item.id} style={styles.personName} />
                     <Text style={styles.personSub} numberOfLines={1}>
-                      {item.username ? `@${item.username}` : item.bio || "On Whisper"}
+                      {onlineIds.has(item.id) ? "Active now" : "Anonymous Whisper user"}
                     </Text>
                   </View>
                 </View>
