@@ -22,6 +22,7 @@ import { Logo } from "@/components/Logo";
 import { EmptyState, InlineLoader, Screen, SkeletonRow } from "@/components/Screen";
 import { Sheet, SheetRow } from "@/components/Sheet";
 import { WhispersAi } from "@/components/WhispersAi";
+import { FabButton } from "@/components/FabButton";
 import { CoinTipSheet } from "@/components/CoinTipSheet";
 import { refreshBadges, useBadges, watchBadges } from "@/lib/badges";
 import { fetchWallet } from "@/lib/coins";
@@ -157,6 +158,14 @@ export default function Feed() {
   const { showToast } = useToast();
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
+
+  /* The initial-load entrance: the first page staggers in (55ms steps, the
+
+     web's stagger default); pages loaded after it appear without delay, the
+
+     way a scroll-fill must not replay the choreography. */
+
+  const [firstPaint, setFirstPaint] = useState(true);
   const [sort, setSort] = useState<FeedSort>("for_you");
   const [topic, setTopic] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -263,6 +272,8 @@ export default function Feed() {
         );
 
         applyRows(all, reset);
+        /* The first page has painted; later pages mount without the stagger. */
+        if (reset) setFirstPaint(false);
 
         setOffset(nextOffset + FEED_PAGE_SIZE);
         setHasMore(
@@ -590,9 +601,10 @@ export default function Feed() {
             }}
           />
         }
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <View>
           <FeedCard
+            enteringIndex={firstPaint ? index : undefined}
             post={item}
             myId={userId ?? ""}
             liked={Boolean(liked[item.id])}
@@ -730,16 +742,10 @@ export default function Feed() {
 
       {/* The floating compose button — the app's primary action, in the thumb's
           corner, on the gradient. One pressable, not a pressable inside a
-          pressable: nested touchables both fire, which navigates twice. */}
-      <Pressable
-        onPress={() => {
-          vibrate("select");
-          router.push("/create-whisper");
-        }}
-        style={[styles.fab, { bottom: TAB_BAR_SPACE + 6 }]}
-        accessibilityRole="button"
-        accessibilityLabel="Create a whisper"
-      >
+          pressable: nested touchables both fire, which navigates twice.
+          Entrance and press are the web FAB's own specs: {opacity:0, scale:.6}
+          arriving on the snappy spring, .92 under the finger. */}
+      <FabButton accessibilityLabel="Create a whisper" onPress={() => router.push("/create-whisper")} style={[styles.fab, { bottom: TAB_BAR_SPACE + 6 }]}>
         <LinearGradient
           colors={GRADIENT_COLORS}
           start={{ x: 0, y: 0 }}
@@ -748,7 +754,7 @@ export default function Feed() {
         >
           <Ionicons name="add" size={30} color={COLORS.contrast} />
         </LinearGradient>
-      </Pressable>
+      </FabButton>
 
       {/* The overflow sheet, rendered once at screen level rather than per card:
           forty mounted portals to serve one open sheet is how a list gets slow. */}

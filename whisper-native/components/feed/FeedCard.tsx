@@ -3,6 +3,7 @@ import React from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
+  FadeInDown,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -20,7 +21,7 @@ import { isCreatorPost, topicMeta } from "@/lib/feed";
 import type { FeedPost } from "@/lib/types";
 import { useAnonName } from "@/lib/identity";
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
+import { COLORS, EASINGS, GLASS, GRADIENT_COLORS, MOTION, RADIUS, useStyles } from "@/lib/theme";
 import { LinearGradient } from "expo-linear-gradient";
 
 /**
@@ -63,6 +64,7 @@ export function FeedCard({
   pollCounts,
   pollChoice,
   pollPending,
+  enteringIndex,
   onOpenGallery,
   highlight = false,
 }: {
@@ -95,6 +97,12 @@ export function FeedCard({
   pollCounts?: number[];
   pollChoice?: number | null;
   pollPending?: boolean;
+  /**
+   * The card's position in the feed's FIRST page — the initial-load entrance
+   * staggers in 55ms steps (the web's stagger default) up to a visible cap.
+   * `undefined` (every page after the first) enters without delay.
+   */
+  enteringIndex?: number;
   onOpenGallery?: () => void;
   highlight?: boolean;
 }) {
@@ -132,6 +140,15 @@ export function FeedCard({
   };
 
   return (
+    <Animated.View
+      entering={
+        enteringIndex === undefined
+          ? undefined
+          : FadeInDown.duration(MOTION.base)
+              .delay(Math.min(enteringIndex, 8) * MOTION.stagger)
+              .easing(Easing.bezier(0.22, 1, 0.36, 1))
+      }
+    >
     <GlassCard
       style={[styles.card, highlight && styles.highlighted]}
       radius={RADIUS.xl}
@@ -323,6 +340,7 @@ export function FeedCard({
         </Pressable>
       </View>
     </GlassCard>
+    </Animated.View>
   );
 }
 

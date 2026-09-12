@@ -7,11 +7,12 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, SPRINGS, useStyles } from "@/lib/theme";
 
 /**
  * The bottom sheet.
@@ -50,11 +51,16 @@ export function Sheet({
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      progress.value = withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) });
+      /* The web's `sheetUp` enters on the base-soft spring (320/32/.9) from
+         y:100% — the same physics here; Reanimated's mass/damping map one to
+         one. The backdrop keeps a timing fade (the web's `backdrop` variant). */
+      progress.value = withSpring(1, SPRINGS.smooth);
       return;
     }
 
-    progress.value = withTiming(0, { duration: 200, easing: Easing.in(Easing.cubic) }, (finished) => {
+    /* The exit is the web's y:100% leave on `--ease-soft`: a timed slide, not
+       a spring — a spring on the way out overshoots past the screen edge. */
+    progress.value = withTiming(0, { duration: 260, easing: Easing.bezier(0.65, 0, 0.35, 1) }, (finished) => {
       if (finished) runOnJS(setMounted)(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
