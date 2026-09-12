@@ -1,0 +1,3 @@
+import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+export default function TabsLayout() { return <Tabs screenOptions={{ headerShown: false, tabBarStyle: { backgroundColor: "#151021", borderTopColor: "#29223a", height: 78, paddingTop: 8 }, tabBarActiveTintColor: "#22d3ee", tabBarInactiveTintColor: "#8d879e" }}>{[["feed", "home-outline"], ["messages", "chatbubbles-outline"], ["notifications", "notifications-outline"], ["profile", "person-outline"]].map(([name, icon]) => <Tabs.Screen key={name} name={name} options={{ title: name[0].toUpperCase() + name.slice(1), tabBarIcon: ({ color, size }) => <Ionicons name={icon as keyof typeof Ionicons.glyphMap} color={color} size={size} /> }} />)}</Tabs>; }

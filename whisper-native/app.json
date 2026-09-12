@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Whisper",
+    "slug": "whisper-native",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "whisper",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      ["expo-notifications", { "sounds": [] }],
+      ["expo-av", { "microphonePermission": "Whisper uses your microphone for voice notes." }]
+    ],
+    "android": {
+      "package": "com.whisper.anonymous",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0a0814"
+      },
+      "permissions": ["RECORD_AUDIO", "POST_NOTIFICATIONS", "VIBRATE"]
+    },
+    "ios": {
+      "bundleIdentifier": "com.whisper.anonymous",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Whisper uses your microphone for voice notes."
+      }
+    },
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0814"
+    },
+    "assetBundlePatterns": ["**/*"]
+  }
+}
