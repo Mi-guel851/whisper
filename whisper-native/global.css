@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Global stylesheet for NativeWind.
+ *
+ * Kept intentionally small. A `@layer components` block here would only be
+ * meaningful for classes NativeWind can compile into React Native styles, and
+ * the glass/gradient surfaces in this app need BlurView and LinearGradient
+ * rather than CSS, so they live as components (`components/GlassCard.tsx`,
+ * `components/GradientButton.tsx`) instead of as utility classes pretending to
+ * be a design system.
+ */

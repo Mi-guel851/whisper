@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "Whisper",
+    "slug": "whisper",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "whisper",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a0814",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#0a0814"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.whisper.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "NSMicrophoneUsageDescription": "Whisper uses your microphone to record voice notes you choose to send.",
+        "NSCameraUsageDescription": "Whisper uses your camera so you can attach a photo to a chat message.",
+        "NSPhotoLibraryUsageDescription": "Whisper needs access to your photos so you can attach one to a chat message."
+      }
+    },
+    "android": {
+      "package": "com.whisper.app",
+      "googleServicesFile": "./google-services.json",
+      "userInterfaceStyle": "dark",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0a0814"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.INTERNET"
+      ],
+      "softwareKeyboardLayoutMode": "resize",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Whisper uses your microphone to record voice notes you choose to send."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#22d3ee",
+          "androidMode": "default",
+          "androidCollapsedTitle": "Whisper"
+        }
+      ],
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Whisper needs access to your photos so you can attach one to a chat message."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
+    }
+  }
+}
