@@ -314,11 +314,24 @@ export default function Settings() {
           />
           <SheetRow
             icon="shield-checkmark-outline"
-            label="Privacy"
+            label="Privacy policy"
             detail="Anonymous by design — we never ask for your real name"
-            onPress={() =>
-              showToast("Whispers are anonymous. Only your email is on file.", { variant: "subtle" })
-            }
+            onPress={() => {
+              showToast("Whispers are anonymous. Only your email is on file.", { variant: "subtle" });
+              router.push({ pathname: "/legal", params: { slug: "privacy" } });
+            }}
+          />
+          <SheetRow
+            icon="document-text-outline"
+            label="Terms of service"
+            detail="The rules of the road"
+            onPress={() => router.push({ pathname: "/legal", params: { slug: "terms" } })}
+          />
+          <SheetRow
+            icon="people-outline"
+            label="Community guidelines"
+            detail="What keeps Whisper kind"
+            onPress={() => router.push({ pathname: "/legal", params: { slug: "guidelines" } })}
           />
         </Section>
 

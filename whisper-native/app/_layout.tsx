@@ -13,6 +13,7 @@ import { Background } from "@/components/Background";
 import { resetBadges, watchBadges } from "@/lib/badges";
 import { registerForPushNotifications, handleNotificationResponse } from "@/lib/push";
 import CallSessionProvider from "@/components/calls/CallSessionProvider";
+import AnnouncementPrompt from "@/components/AnnouncementPrompt";
 import { emitIncomingCallRing, ringFromPushData, stashPendingRing } from "@/lib/calls/pendingRing";
 import { SessionProvider, useSession } from "@/lib/session";
 import { ToastProvider } from "@/lib/toast";
@@ -70,6 +71,7 @@ export default function RootLayout() {
             <ToastProvider>
               <PaystackProvider publicKey={paystackKey} currency="NGN">
                 <RootShell />
+                <AnnouncementPrompt />
                 {/* The call surfaces mount beside the navigator on purpose:
                     the ring takes the screen wherever the user is standing
                     (including over the loading gate), and the minimized pill

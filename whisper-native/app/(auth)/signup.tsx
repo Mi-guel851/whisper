@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, FadeInDown, FadeInUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -45,6 +45,12 @@ const CONFIG_ERROR =
  * screen says so instead of pretending to sign in: a "welcome" toast over a
  * form that is still there is the confusing part of most apps' first run.
  */
+/** The web app's legal pages, in the device browser. */
+function openLegal(slug: string) {
+  const base = process.env.EXPO_PUBLIC_SITE_URL || "https://whisper-anonymous.vercel.app";
+  return Linking.openURL(`${base}/${slug}`).catch(() => {});
+}
+
 export default function Signup() {
   const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
@@ -282,9 +288,19 @@ export default function Signup() {
                   />
                 ) : null}
 
+                {/* The agreement, with the two documents the web signup points
+                    at — opened in the device browser, where a long legal text
+                    belongs. */}
                 <Text style={styles.terms}>
-                  By continuing you agree to be kind. Whisper never posts as you and
-                  never shows your email to anyone.
+                  {"By signing up you agree to our "}
+                  <Text style={styles.termsLink} onPress={() => void openLegal("terms")}>
+                    Terms of Service
+                  </Text>
+                  {" and "}
+                  <Text style={styles.termsLink} onPress={() => void openLegal("privacy")}>
+                    Privacy Policy
+                  </Text>
+                  {"."}
                 </Text>
 
                 <Pressable
@@ -391,6 +407,7 @@ const makeStyles = () => StyleSheet.create({
   submit: { marginTop: 4 },
   googleButton: { marginTop: 12 },
   terms: { color: COLORS.subtle, fontSize: 11, lineHeight: 16, textAlign: "center", paddingHorizontal: 6 },
+  termsLink: { color: COLORS.cyan, fontWeight: "800" },
   swap: { alignItems: "center", paddingVertical: 6 },
   swapText: { color: COLORS.muted, fontSize: 13, fontWeight: "600" },
   swapLink: { color: COLORS.cyan, fontWeight: "800" },
