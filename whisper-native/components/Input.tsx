@@ -11,7 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 
 /**
  * Inputs.
@@ -60,6 +60,7 @@ export function Field({
   returnKeyType?: "done" | "next" | "go" | "send" | "search";
   blurOnSubmit?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const [focused, setFocused] = useState(false);
 
   return (
@@ -68,7 +69,7 @@ export function Field({
 
       <BlurView
         intensity={GLASS.blurIntensity}
-        tint="dark"
+        tint={GLASS.tint}
         style={[
           styles.frame,
           multiline && styles.frameMultiline,
@@ -108,7 +109,7 @@ export function Field({
             blurOnSubmit={blurOnSubmit}
             /* The app is dark everywhere; without this the iOS keyboard's
                suggestion bar renders in light mode over a dark screen. */
-            keyboardAppearance="dark"
+            keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
             style={[styles.input, multiline && styles.inputMultiline]}
           />
         </View>
@@ -135,12 +136,13 @@ export function SearchField({
   placeholder?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles(makeStyles);
   const [focused, setFocused] = useState(false);
 
   return (
     <BlurView
       intensity={GLASS.blurIntensity}
-      tint="dark"
+      tint={GLASS.tint}
       style={[styles.searchFrame, { borderColor: focused ? COLORS.cyan : GLASS.border }, style]}
     >
       <Ionicons name="search" size={16} color={COLORS.subtle} />
@@ -152,7 +154,7 @@ export function SearchField({
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
-        keyboardAppearance="dark"
+        keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={styles.searchInput}
@@ -161,7 +163,7 @@ export function SearchField({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   label: {
     color: COLORS.muted,
     fontSize: 12,

@@ -1,139 +1,229 @@
+import { useState } from "react";
 import { BlurView } from "expo-blur";
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, View, Platform } from "react-native";
+import { withLayoutContext } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  createBottomTabNavigator,
+  type BottomTabBarProps,
+} from "@react-navigation/bottom-tabs";
+
+import { TabIcon } from "@/components/TabIcon";
+import { useBadges } from "@/lib/badges";
+import { vibrate } from "@/lib/haptics";
+import TermsModal from "@/components/TermsModal";
+import { COLORS, GLASS, GRADIENT_COLORS, NAV, RADIUS, useStyles } from "@/lib/theme";
 
 /**
- * The dark glass tab bar.
+ * The tab bar.
  *
- * Cyan when active, white/60 when inactive, and the whole bar sits on a BlurView
- * with a subtle top border — exactly the treatment the brief asks for.
+ * The web app's `BottomNavigation`, translated to native: a floating glass bar,
+ * four destinations, the active one carrying the brand gradient. The navigator
+ * is created here and wrapped with `withLayoutContext` so the file-system
+ * routes in this folder become its screens — `feed`, `dms`, `notifications`
+ * and `profile` are files, and this is the thing that gives them a bar.
+ *
+ * The bar floats over the content instead of displacing it, so a list can
+ * scroll under the glass the way it does on the site. Every tab screen adds
+ * `TAB_BAR_SPACE` at the bottom of its list for exactly this reason.
  */
-function TabBar({ state, descriptors, navigation }: any) {
+const { Navigator } = createBottomTabNavigator();
+
+const BottomTabs = withLayoutContext(Navigator);
+
+export default function TabsLayout() {
+  return (
+    <BottomTabs screenOptions={{ headerShown: false }} tabBar={(props) => <GlassTabBar {...props} />} />
+  );
+}
+
+const ITEMS = [
+  { name: "feed", label: "Feed" },
+  { name: "dms", label: "DMs" },
+  { name: "notifications", label: "Alerts" },
+  { name: "profile", label: "Profile" },
+] as const;
+
+/** The web dashboard's sessionStorage flag — a module flag here, because the
+    app's session IS the JS context: one show per launch of the agreement. */
+let termsShownThisLaunch = false;
+
+function termsShownThisSession() {
+  if (termsShownThisLaunch) return true;
+  termsShownThisLaunch = true;
+  return false;
+}
+
+function GlassTabBar({ state, navigation }: BottomTabBarProps) {
+  /* The "Before you whisper..." agreement, once per app session — the web
+     dashboard's sessionStorage flag is a module flag here. */
+  const [showTerms, setShowTerms] = useState(() => termsShownThisSession());
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  const badges = useBadges();
+
+  const countFor = (name: string) => {
+    if (name === "dms") return badges.unreadMessages;
+    if (name === "notifications") return badges.unreadWhispers + badges.unreadAlerts;
+    return 0;
+  };
 
   return (
-    <View pointerEvents="box-none" style={[styles.tabBarWrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-      <BlurView intensity={50} tint="dark" style={styles.blur}>
-        <View style={styles.inner}>
-          {state.routes.map((route: any, index: number) => {
-            const { options } = descriptors[route.key];
-            const isFocused = state.index === index;
+    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]} pointerEvents="box-none">
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.bar}>
+        {state.routes.map((route, index) => {
+          const item = ITEMS.find((candidate) => candidate.name === route.name);
+          if (!item) return null;
 
-            const iconName =
-              route.name === "feed"
-                ? isFocused
-                  ? "home"
-                  : "home-outline"
-                : route.name === "dms"
-                  ? isFocused
-                    ? "chatbubble-ellipses"
-                    : "chatbubble-ellipses-outline"
-                  : route.name === "notifications"
-                    ? isFocused
-                      ? "notifications"
-                      : "notifications-outline"
-                    : route.name === "profile"
-                      ? isFocused
-                        ? "person"
-                        : "person-outline"
-                      : "ellipse";
+          const focused = state.index === index;
 
-            const onPress = () => {
-              const event = navigation.emit({
-                type: "tabPress",
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name);
-              }
-            };
-
-            return (
-              <View key={route.key} style={styles.tabBtnWrap}>
-                {isFocused ? (
-                  <LinearGradient
-                    colors={GRADIENT_COLORS}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.iconPill}
-                  >
-                    <Ionicons name={iconName as any} size={22} color="#0a0814" />
-                  </LinearGradient>
-                ) : (
-                  <View style={styles.iconPlain}>
-                    <Ionicons name={iconName as any} size={22} color="rgba(255,255,255,0.72)" />
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </View>
+          return (
+            <TabButton
+              key={route.key}
+              name={item.name}
+              label={item.label}
+              focused={focused}
+              badge={countFor(item.name)}
+              onPress={() => {
+                vibrate("tap");
+                const event = navigation.emit({
+                  type: "tabPress",
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+                if (!focused && !event.defaultPrevented) {
+                  navigation.navigate(route.name, route.params);
+                }
+              }}
+            />
+          );
+        })}
       </BlurView>
+
+      {showTerms ? <TermsModal onAccept={() => setShowTerms(false)} /> : null}
     </View>
   );
 }
 
-export default function TabsLayout() {
+function TabButton({
+  name,
+  label,
+  focused,
+  badge,
+  onPress,
+}: {
+  name: (typeof ITEMS)[number]["name"];
+  label: string;
+  focused: boolean;
+  badge: number;
+  onPress: () => void;
+}) {
+  const styles = useStyles(makeStyles);
+  const progress = useSharedValue(focused ? 1 : 0);
+  const scale = useSharedValue(1);
+
+  React.useEffect(() => {
+    progress.value = withTiming(focused ? 1 : 0, { duration: 200, easing: Easing.out(Easing.cubic) });
+  }, [focused, progress]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ scale: 0.88 + progress.value * 0.12 }],
+  }));
+
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + progress.value * 0.05 }] }));
+
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-        tabBarStyle: { display: "none" },
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: focused }}
+      accessibilityLabel={label}
+      onPressIn={() => {
+        scale.value = withSpring(0.94, { damping: 16, stiffness: 300 });
       }}
-      tabBar={(props) => <TabBar {...props} />}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 14, stiffness: 240 });
+      }}
+      onPress={onPress}
+      style={styles.tab}
     >
-      <Tabs.Screen name="feed" />
-      <Tabs.Screen name="dms" />
-      <Tabs.Screen name="notifications" />
-      <Tabs.Screen name="profile" />
-    </Tabs>
+      <Animated.View style={[styles.tabInner, { transform: [{ scale: scale.value }] }]}>
+        <View style={styles.iconWrap}>
+          <Animated.View style={[styles.pill, pillStyle]}>
+            <LinearGradient
+              colors={GRADIENT_COLORS}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.pillGradient}
+            />
+          </Animated.View>
+
+          <Animated.View style={iconStyle}>
+            <TabIcon name={name === "feed" ? "Feed" : name === "dms" ? "DMs" : name === "notifications" ? "Notifications" : "Profile"} focused={focused} />
+          </Animated.View>
+
+          {badge > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badge > 9 ? "9+" : badge}</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={[styles.label, { color: focused ? COLORS.text : COLORS.muted }]}>{label}</Text>
+      </Animated.View>
+    </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  tabBarWrap: {
+const makeStyles = () => StyleSheet.create({
+  wrap: {
     position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 12,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 12,
+    paddingTop: 8,
   },
-  blur: {
-    borderRadius: RADIUS.xxxl,
-    backgroundColor: "rgba(15,12,28,0.72)",
-    borderWidth: 1,
-    borderColor: GLASS.border,
-    overflow: "hidden",
-  },
-  inner: {
+  bar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-around",
-    paddingVertical: 10,
+    justifyContent: "space-between",
+    borderRadius: RADIUS.xxl,
+    borderWidth: 1,
+    borderColor: GLASS.border,
+    backgroundColor: NAV.gloss,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    overflow: "hidden",
   },
-  tabBtnWrap: {
-    flex: 1,
+  tab: { flex: 1, alignItems: "center" },
+  tabInner: { alignItems: "center", gap: 3 },
+  iconWrap: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  pill: { ...StyleSheet.absoluteFillObject, borderRadius: 16, overflow: "hidden" },
+  pillGradient: { flex: 1, borderRadius: 16 },
+  badge: {
+    position: "absolute",
+    top: -1,
+    right: -3,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: COLORS.rose,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: COLORS.background,
   },
-  iconPill: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconPlain: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  badgeText: { color: COLORS.text, fontSize: 9.5, fontWeight: "900" },
+  label: { fontSize: 10.5, fontWeight: "700" },
 });

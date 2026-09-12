@@ -6,7 +6,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { useAnonName } from "@/lib/identity";
 import { generatedAvatarUrl } from "@/lib/identity";
-import { COLORS, GRADIENT_COLORS } from "@/lib/theme";
+import { COLORS, GRADIENT_COLORS, useStyles } from "@/lib/theme";
 
 /**
  * The identity chip.
@@ -36,6 +36,7 @@ export function Avatar({
   imageUrl?: string | null;
   ring?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const rounded = size / 2;
 
   const inner = official ? (
@@ -112,6 +113,7 @@ export function AuthorRow({
   trailing?: React.ReactNode;
   compact?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const name = useAnonName(authorId);
 
   return (
@@ -124,7 +126,7 @@ export function AuthorRow({
           </Text>
           {official && (
             <View style={styles.officialBadge}>
-              <Ionicons name="checkmark" size={10} color="#0a0814" />
+              <Ionicons name="checkmark" size={10} color={COLORS.contrast} />
             </View>
           )}
         </View>
@@ -136,14 +138,15 @@ export function AuthorRow({
 
 /** The small "official" tick used beside a creator's name. */
 export function OfficialBadge() {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.officialBadge}>
-      <Ionicons name="checkmark" size={10} color="#0a0814" />
+      <Ionicons name="checkmark" size={10} color={COLORS.contrast} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   ring: {
     alignItems: "center",
     justifyContent: "center",
@@ -152,7 +155,7 @@ const styles = StyleSheet.create({
   officialInner: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0a0814",
+    backgroundColor: COLORS.background,
   },
   placeholder: {
     alignItems: "center",
@@ -167,7 +170,7 @@ const styles = StyleSheet.create({
     width: 15,
     height: 15,
     borderRadius: 8,
-    backgroundColor: "#22d3ee",
+    backgroundColor: COLORS.cyan,
     alignItems: "center",
     justifyContent: "center",
   },

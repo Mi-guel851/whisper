@@ -1,6 +1,6 @@
 import { StyleSheet, View } from "react-native";
 
-import { COLORS } from "@/lib/theme";
+import { COLORS, useStyles } from "@/lib/theme";
 
 /**
  * A voice note's waveform.
@@ -29,6 +29,7 @@ export function Waveform({
   color?: string;
   inactiveColor?: string;
 }) {
+  const styles = useStyles(makeStyles);
   const samples = normalize(peaks, bars);
   const playedUpTo = Math.floor(progress * samples.length);
 
@@ -81,6 +82,6 @@ function normalize(peaks: number[], bars: number): number[] {
   return output;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 2 },
 });

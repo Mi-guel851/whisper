@@ -15,7 +15,7 @@ import { VoiceNotePlayer } from "./VoiceNotePlayer";
 import { Waveform } from "./Waveform";
 import { formatElapsed } from "@/lib/format";
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
 import type { VoiceRecording } from "@/lib/types";
 import type { Recorder } from "@/lib/useVoiceRecorder";
 
@@ -44,9 +44,10 @@ export function VoiceRecorderPanel({
   onDiscard: () => void;
   sending?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   if (pending) {
     return (
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.panel}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.panel}>
         <View style={styles.reviewRow}>
           <VoiceNotePlayer
             uri={pending.uri}
@@ -82,9 +83,9 @@ export function VoiceRecorderPanel({
                 style={styles.circle}
               >
                 {sending ? (
-                  <Ionicons name="hourglass-outline" size={18} color="#0a0814" />
+                  <Ionicons name="hourglass-outline" size={18} color={COLORS.contrast} />
                 ) : (
-                  <Ionicons name="arrow-up" size={20} color="#0a0814" />
+                  <Ionicons name="arrow-up" size={20} color={COLORS.contrast} />
                 )}
               </LinearGradient>
             </Pressable>
@@ -97,7 +98,7 @@ export function VoiceRecorderPanel({
   }
 
   return (
-    <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.panel}>
+    <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.panel}>
       <View style={styles.liveRow}>
         <RecordingPulse active={recorder.status === "recording"} />
 
@@ -146,7 +147,7 @@ export function VoiceRecorderPanel({
               end={{ x: 1, y: 1 }}
               style={styles.circle}
             >
-              <Ionicons name="checkmark" size={20} color="#0a0814" />
+              <Ionicons name="checkmark" size={20} color={COLORS.contrast} />
             </LinearGradient>
           </Pressable>
         </View>
@@ -161,6 +162,7 @@ export function VoiceRecorderPanel({
 
 /** The blinking red dot, so the panel is unambiguous about being live. */
 function RecordingPulse({ active }: { active: boolean }) {
+  const styles = useStyles(makeStyles);
   const opacity = useSharedValue(1);
 
   React.useEffect(() => {
@@ -176,7 +178,7 @@ function RecordingPulse({ active }: { active: boolean }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   panel: {
     borderRadius: RADIUS.lg,
     borderWidth: 1,

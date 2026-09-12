@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GRADIENT_COLORS } from "@/lib/theme";
+import { COLORS, GRADIENT_COLORS, useStyles } from "@/lib/theme";
 
 /**
  * The switch.
@@ -30,6 +30,7 @@ export function Toggle({
   onChange: (value: boolean) => void;
   disabled?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const progress = useSharedValue(value ? 1 : 0);
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function Toggle({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   track: {
     width: 46,
     height: 28,
@@ -92,7 +93,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 11,
     backgroundColor: COLORS.text,
-    shadowColor: "#000",
+    shadowColor: COLORS.background,
     shadowOpacity: 0.35,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },

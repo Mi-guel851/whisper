@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
+import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -12,268 +13,499 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CoinTipSheet } from "@/components/CoinTipSheet";
+import { IconButton } from "@/components/GradientButton";
+import { LoadingScreen, Screen } from "@/components/Screen";
+import { Sheet, SheetRow } from "@/components/Sheet";
 import { FeedCard } from "@/components/feed/FeedCard";
-import { Avatar } from "@/components/Avatar";
-import { GlassCard } from "@/components/GlassCard";
-import { useSession } from "@/lib/session";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
-import { useToast } from "@/lib/toast";
-import { fetchPost, fetchThread, toggleLike, createFeedPost } from "@/lib/feed";
-import type { FeedPost } from "@/lib/types";
-import { formatCount, timeAgo } from "@/lib/format";
-import { useAnonName } from "@/lib/identity";
+import { FEED_REPLY_COST, fetchWallet } from "@/lib/coins";
+import {
+  apiBase,
+  blockAuthor,
+  claimFeedPhoto,
+  createFeedPost,
+  fetchPost,
+  fetchThread,
+  reportPost,
+  toggleLike,
+} from "@/lib/feed";
+import { optimisticLike, optimisticVote } from "@/lib/feedState";
+import { formatCoins, timeAgo } from "@/lib/format";
 import { vibrate } from "@/lib/haptics";
+import { useAnonName } from "@/lib/identity";
+import { useSession } from "@/lib/session";
+import { useToast } from "@/lib/toast";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
+import { supabase } from "@/lib/supabase";
+import type { FeedPost } from "@/lib/types";
 
 /**
- * Whisper Detail.
+ * One post and its thread.
  *
- * Full whisper at top (glass card), comments list below, add comment input
- * pinned at the bottom, like button with count.
+ * THE RECURSION QUESTION, AGAIN, AND WHY THIS SCREEN EXISTS
+ *
+ * The web app renders replies inline under their parent, four levels deep,
+ * because a page can afford to. A `FlatList` cannot: nested virtualised lists
+ * inside a virtualised list is the classic way to make a phone drop frames, and
+ * a thread of unknown depth makes the item height unknowable in advance.
+ *
+ * So this screen shows the root post as a card, then its replies as a flat,
+ * chronological list — each one still a card, each one able to open *its* own
+ * thread. The structure is the same data; the presentation is the one a phone
+ * can render. Replies to a reply are counted on the reply and reachable by
+ * tapping it, which is how every large app solves this.
+ *
+ * THE COMPOSER
+ *
+ * At the bottom, always visible, and free: a reply costs nothing
+ * (`FEED_REPLY_COST` is 0, and the database only charges for roots). The
+ * composer posts through the same `/api/coins/feed-post` route as a new post,
+ * with `parentPostId` set.
  */
-export default function WhisperDetailScreen() {
-  const { postId } = useLocalSearchParams<{ postId: string }>();
-  const { session, userId } = useSession();
+export default function WhisperDetail() {
+  const styles = useStyles(makeStyles);
+  const params = useLocalSearchParams() as { postId?: string };
+  const postId = typeof params.postId === "string" ? params.postId : "";
+
+  const insets = useSafeAreaInsets();
+  const { userId, session } = useSession();
   const { showToast } = useToast();
 
-  const [post, setPost] = useState<FeedPost | null>(null);
+  const [root, setRoot] = useState<FeedPost | null>(null);
   const [replies, setReplies] = useState<FeedPost[]>([]);
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [comment, setComment] = useState("");
+  const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
+  const [claimedPhoto, setClaimedPhoto] = useState<Record<string, string>>({});
+  const [imageState, setImageState] = useState<Record<string, "locked" | "loading" | "spent" | "unavailable">>({});
+  const [balance, setBalance] = useState<number | null>(null);
+  const [menuPost, setMenuPost] = useState<FeedPost | null>(null);
+  const [tipping, setTipping] = useState(false);
+  const [pollChoices, setPollChoices] = useState<Record<string, number>>({});
+  const [pollCounts, setPollCounts] = useState<Record<string, number[]>>({});
+
+  const rootAuthor = useAnonName(root?.author_id);
+
+  const load = useCallback(async () => {
+    const [post, thread] = await Promise.all([fetchPost(postId), fetchThread(postId)]);
+
+    setRoot(post);
+    setReplies(thread.filter((row) => row.parent_post_id === postId));
+
+    const all = [post, ...thread].filter((row): row is FeedPost => Boolean(row));
+
+    setLiked((current) => {
+      const next = { ...current };
+      for (const row of all) next[row.id] = Boolean(row.viewer_liked);
+      return next;
+    });
+    setLikeCounts((current) => {
+      const next = { ...current };
+      for (const row of all) next[row.id] = Number(row.like_count ?? 0);
+      return next;
+    });
+    setReplyCounts((current) => {
+      const next = { ...current };
+      for (const row of all) next[row.id] = Number(row.reply_count ?? 0);
+      return next;
+    });
+    setImageState((current) => {
+      const next = { ...current };
+      for (const row of all) {
+        if (row.has_image && !next[row.id]) {
+          next[row.id] = row.author_id === userId || row.viewer_image_viewed ? "spent" : "locked";
+        }
+      }
+      return next;
+    });
+    setPollChoices((current) => {
+      const next = { ...current };
+      for (const row of all) if (typeof row.viewer_vote === "number") next[row.id] = row.viewer_vote;
+      return next;
+    });
+    setPollCounts((current) => {
+      const next = { ...current };
+      for (const row of all) if (row.poll_counts) next[row.id] = row.poll_counts;
+      return next;
+    });
+
+    setLoading(false);
+  }, [postId, userId]);
 
   useEffect(() => {
-    if (!postId) return;
-    (async () => {
-      setLoading(true);
-      const p = await fetchPost(postId);
-      if (p) {
-        setPost(p);
-        setLiked(Boolean(p.viewer_liked));
-        setLikeCount(p.like_count ?? 0);
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void fetchWallet(userId).then((wallet) => setBalance(wallet?.balance ?? 0));
+  }, [userId]);
+
+  const toggle = useCallback(
+    async (post: FeedPost) => {
+      if (!userId) return;
+
+      const wasLiked = Boolean(liked[post.id]);
+      const optimistic = optimisticLike(likeCounts[post.id] ?? 0, wasLiked);
+
+      setLiked((current) => ({ ...current, [post.id]: optimistic.liked }));
+      setLikeCounts((current) => ({ ...current, [post.id]: optimistic.count }));
+      vibrate("select");
+
+      try {
+        await toggleLike(post.id, userId, wasLiked);
+      } catch {
+        setLiked((current) => ({ ...current, [post.id]: wasLiked }));
+        setLikeCounts((current) => ({ ...current, [post.id]: Math.max(0, optimistic.count - 1) }));
+        showToast("Couldn't save that like.", { variant: "error" });
       }
-      const thread = await fetchThread(postId);
-      setReplies(thread || []);
-      setLoading(false);
-    })();
-  }, [postId]);
+    },
+    [likeCounts, liked, showToast, userId]
+  );
 
-  const handleLike = async () => {
-    if (!userId || !post) return;
-    const wasLiked = liked;
-    setLiked(!wasLiked);
-    setLikeCount((c) => Math.max(0, c + (wasLiked ? -1 : 1)));
-    vibrate("select");
-    try {
-      await toggleLike(post.id, userId, wasLiked);
-    } catch (err: any) {
-      showToast(err?.message || "Couldn't toggle like.", { variant: "error" });
-      setLiked(wasLiked);
-      setLikeCount((c) => c + (wasLiked ? 1 : -1));
-    }
-  };
+  const vote = useCallback(
+    async (post: FeedPost, index: number) => {
+      if (!userId) return;
 
-  const handleSendComment = async () => {
-    const text = comment.trim();
-    if (!text || !session || !post || !userId) return;
-    setSending(true);
-    try {
-      const result = await createFeedPost(
-        { body: text, parentPostId: post.id },
-        session.access_token
-      );
+      const previous = pollChoices[post.id] ?? null;
+      setPollChoices((current) => ({ ...current, [post.id]: index }));
+      setPollCounts((current) => ({
+        ...current,
+        [post.id]: optimisticVote(current[post.id] ?? post.poll_counts ?? [], previous, index),
+      }));
+
+      const { error } = await supabase.rpc("vote_public_feed_poll", {
+        p_post_id: post.id,
+        p_option_index: index,
+      });
+
+      if (error) {
+        setPollChoices((current) => {
+          const next = { ...current };
+          if (previous === null) delete next[post.id];
+          else next[post.id] = previous;
+          return next;
+        });
+        showToast("Couldn't record that vote.", { variant: "error" });
+      }
+    },
+    [pollChoices, showToast, userId]
+  );
+
+  const openPhoto = useCallback(
+    async (post: FeedPost) => {
+      if (!session?.access_token) return;
+      if (post.author_id === userId) return;
+
+      setImageState((current) => ({ ...current, [post.id]: "loading" }));
+      const result = await claimFeedPhoto(post.id, session.access_token);
+
       if ("error" in result) {
+        setImageState((current) => ({ ...current, [post.id]: "unavailable" }));
         showToast(result.error, { variant: "error" });
-      } else {
-        setReplies((prev) => [...prev, result.post]);
-        setComment("");
-        vibrate("success");
-        showToast("Reply posted", { variant: "subtle" });
+        return;
       }
-    } catch (err: any) {
-      showToast(err?.message || "Couldn't send reply.", { variant: "error" });
-    } finally {
-      setSending(false);
-    }
-  };
 
-  if (loading || !post) {
-    return (
-      <View style={styles.root}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Whisper</Text>
-          <View style={{ width: 40 }} />
+      setClaimedPhoto((current) => ({ ...current, [post.id]: result.uri }));
+      setImageState((current) => ({ ...current, [post.id]: "spent" }));
+    },
+    [session?.access_token, showToast, userId]
+  );
+
+  const reply = useCallback(async () => {
+    const body = draft.trim();
+    if (!body || !userId || sending) return;
+
+    if (!session?.access_token) {
+      showToast("Your session expired. Sign in again.", { variant: "error" });
+      return;
+    }
+
+    setSending(true);
+    setDraft("");
+
+    const result = await createFeedPost({ body, parentPostId: postId }, session.access_token);
+
+    setSending(false);
+
+    if ("error" in result) {
+      setDraft(body);
+      showToast(result.error, { variant: "error" });
+      return;
+    }
+
+    vibrate("success");
+    setReplies((current) => [...current, result.post]);
+    setReplyCounts((current) => ({ ...current, [postId]: (current[postId] ?? 0) + 1 }));
+    setRoot((current) => (current ? { ...current, reply_count: (current.reply_count ?? 0) + 1 } : current));
+    showToast("Reply posted", { variant: "success" });
+  }, [draft, postId, sending, session?.access_token, showToast, userId]);
+
+  const header = useMemo(
+    () => (
+      <View>
+        {root ? (
+          <FeedCard
+            post={root}
+            myId={userId ?? ""}
+            liked={Boolean(liked[root.id])}
+            likeCount={likeCounts[root.id] ?? 0}
+            replyCount={replyCounts[root.id] ?? 0}
+            imageState={imageState[root.id] ?? "locked"}
+            openImageUri={claimedPhoto[root.id] ?? null}
+            pollCounts={pollCounts[root.id]}
+            pollChoice={pollChoices[root.id] ?? null}
+            onToggleLike={() => void toggle(root)}
+            onVote={(index) => void vote(root, index)}
+            onOpenGallery={() => void openPhoto(root)}
+            onOpenThread={() => router.back()}
+            onOpenMenu={() => setMenuPost(root)}
+            onTip={() => setTipping(true)}
+            highlight
+          />
+        ) : null}
+
+        <View style={styles.threadHeading}>
+          <Ionicons name="chatbubbles-outline" size={15} color={COLORS.purple} />
+          <Text style={styles.threadTitle}>
+            {replies.length === 0
+              ? "No replies yet"
+              : `${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
+          </Text>
+          <Text style={styles.threadHint}>Replies are free</Text>
         </View>
-        <Text style={styles.loadingText}>Loading...</Text>
       </View>
-    );
-  }
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [root, replies.length, liked, likeCounts, replyCounts, imageState, claimedPhoto, pollChoices, pollCounts, userId]
+  );
+
+  if (loading || !postId) return <LoadingScreen label="Opening whisper" />;
 
   return (
-    <View style={styles.root}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Whisper</Text>
-        <View style={{ width: 40 }} />
+    <Screen padded={false}>
+      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+        <IconButton icon="chevron-back" size={40} onPress={() => router.back()} accessibilityLabel="Go back" />
+        <View style={styles.headerText}>
+          <Text style={styles.headerTitle}>Whisper</Text>
+          <Text style={styles.headerSub}>
+            {root ? `${rootAuthor} · ${timeAgo(root.created_at)}` : "This post is gone"}
+          </Text>
+        </View>
+        <IconButton
+          icon="ellipsis-horizontal"
+          size={40}
+          onPress={() => root && setMenuPost(root)}
+          accessibilityLabel="Post options"
+        />
       </View>
 
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={88}
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <FlatList
           data={replies}
-          keyExtractor={(r) => r.id}
-          ListHeaderComponent={
-            <View style={{ padding: 16, gap: 12 }}>
-              <FeedCard
-                post={post}
-                myId={userId ?? ""}
-                liked={liked}
-                likeCount={likeCount}
-                replyCount={replies.length}
-                imageState="locked"
-                onToggleLike={handleLike}
-                onOpenThread={() => {}}
-                onOpenMenu={() => {}}
-                onTip={() => router.push("/coins")}
-                saved={false}
-              />
-
-              <Pressable onPress={handleLike} style={styles.likeRow}>
-                <Ionicons
-                  name={liked ? "heart" : "heart-outline"}
-                  size={22}
-                  color={liked ? COLORS.rose : COLORS.text}
-                />
-                <Text style={[styles.likeCount, liked && { color: COLORS.rose }]}>
-                  {formatCount(likeCount)} {likeCount === 1 ? "like" : "likes"}
-                </Text>
-              </Pressable>
-
-              <Text style={styles.sectionTitle}>
-                {replies.length === 0 ? "No replies yet" : `Replies (${replies.length})`}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={header}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => (
+            <FeedCard
+              post={item}
+              myId={userId ?? ""}
+              liked={Boolean(liked[item.id])}
+              likeCount={likeCounts[item.id] ?? 0}
+              replyCount={replyCounts[item.id] ?? 0}
+              imageState={imageState[item.id] ?? "locked"}
+              openImageUri={claimedPhoto[item.id] ?? null}
+              pollCounts={pollCounts[item.id]}
+              pollChoice={pollChoices[item.id] ?? null}
+              onToggleLike={() => void toggle(item)}
+              onVote={(index) => void vote(item, index)}
+              onOpenGallery={() => void openPhoto(item)}
+              onOpenThread={() =>
+                router.push({ pathname: "/whisper-detail", params: { postId: item.id } })
+              }
+              onOpenMenu={() => setMenuPost(item)}
+              onTip={() => setTipping(true)}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyThread}>
+              <Text style={styles.emptyThreadText}>
+                Nobody has replied yet. Yours would be the first.
               </Text>
             </View>
           }
-          renderItem={({ item }) => <ReplyItem reply={item} myId={userId ?? ""} />}
-          contentContainerStyle={{ paddingBottom: 100 }}
         />
 
-        <View style={styles.inputBar}>
-          <GlassCard radius={RADIUS.pill} padded={false} style={styles.inputWrap}>
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.composerInner}>
             <TextInput
-              value={comment}
-              onChangeText={setComment}
-              placeholder="Add a reply..."
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Reply anonymously…"
               placeholderTextColor={COLORS.subtle}
               multiline
+              keyboardAppearance={GLASS.tint === "light" ? "light" : "dark"}
               style={styles.input}
             />
-          </GlassCard>
-          <Pressable onPress={handleSendComment} disabled={sending || !comment.trim()}>
-            <LinearGradient
-              colors={comment.trim() && !sending ? GRADIENT_COLORS : ["rgba(255,255,255,0.1)", "rgba(255,255,255,0.1)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.sendBtn}
-            >
-              <Ionicons name="send" size={18} color={comment.trim() ? "#0a0814" : COLORS.subtle} />
-            </LinearGradient>
-          </Pressable>
+
+            <Pressable onPress={() => void reply()} disabled={sending || !draft.trim()} accessibilityLabel="Post reply">
+              <LinearGradient
+                colors={GRADIENT_COLORS}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.sendButton, (!draft.trim() || sending) && styles.disabled]}
+              >
+                <Ionicons name="arrow-up" size={19} color={COLORS.contrast} />
+              </LinearGradient>
+            </Pressable>
+          </BlurView>
+
+          <Text style={styles.composerHint}>
+            {FEED_REPLY_COST === 0 ? "Replies are free · " : ""}
+            {formatCoins(balance ?? 0)} coins in your wallet
+          </Text>
         </View>
       </KeyboardAvoidingView>
-    </View>
+
+      <CoinTipSheet
+        visible={tipping}
+        onClose={() => setTipping(false)}
+        balance={balance}
+        onDone={(next) => {
+          if (typeof next === "number") setBalance(next);
+        }}
+      />
+
+      <Sheet visible={Boolean(menuPost)} onClose={() => setMenuPost(null)} title="Post options">
+        {menuPost && (
+          <View style={{ paddingBottom: 10 }}>
+            <SheetRow
+              icon="person-outline"
+              label="View author"
+              detail="See their profile and their link"
+              onPress={() => {
+                setMenuPost(null);
+                router.push({ pathname: "/u", params: { userId: menuPost.author_id } });
+              }}
+            />
+            <SheetRow
+              icon="flag-outline"
+              label="Report"
+              onPress={() => {
+                const target = menuPost;
+                setMenuPost(null);
+                if (!target || !userId) return;
+                void reportPost(target.id, userId, "Reported from a thread")
+                  .then(() => showToast("Thanks — we'll take a look.", { variant: "success" }))
+                  .catch(() => showToast("Couldn't send that report.", { variant: "error" }));
+              }}
+            />
+            <SheetRow
+              icon="ban-outline"
+              label="Block author"
+              onPress={() => {
+                const target = menuPost;
+                setMenuPost(null);
+                if (!target || !userId) return;
+                void blockAuthor(userId, target.author_id)
+                  .then(() => {
+                    showToast("Blocked", { variant: "subtle" });
+                    router.back();
+                  })
+                  .catch(() => showToast("Couldn't block that account.", { variant: "error" }));
+              }}
+            />
+            {menuPost.author_id === userId && (
+              <SheetRow
+                icon="trash-outline"
+                label="Delete post"
+                danger
+                onPress={() => {
+                  const target = menuPost;
+                  setMenuPost(null);
+                  if (!target) return;
+                  void supabase
+                    .from("public_feed_posts")
+                    .delete()
+                    .eq("id", target.id)
+                    .then(({ error }) => {
+                      if (error) {
+                        showToast(error.message, { variant: "error" });
+                        return;
+                      }
+                      showToast("Deleted", { variant: "subtle" });
+                      router.back();
+                    });
+                }}
+              />
+            )}
+            <SheetRow
+              icon="link-outline"
+              label="Copy link"
+              detail={`${apiBase()}/public-feed?post=${menuPost.id}`}
+              onPress={() => setMenuPost(null)}
+            />
+          </View>
+        )}
+      </Sheet>
+    </Screen>
   );
 }
 
-function ReplyItem({ reply, myId }: { reply: FeedPost; myId: string }) {
-  const name = useAnonName(reply.author_id);
-  return (
-    <View style={styles.replyItem}>
-      <Avatar authorId={reply.author_id} size={32} />
-      <View style={styles.replyBody}>
-        <View style={styles.replyBubble}>
-          <Text style={styles.replyName}>{name}</Text>
-          <Text style={styles.replyText}>{reply.body}</Text>
-        </View>
-        <Text style={styles.replyTime}>{timeAgo(reply.created_at)}</Text>
-      </View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.background },
+const makeStyles = () => StyleSheet.create({
+  flex: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-    paddingTop: 50,
+    gap: 8,
+    paddingHorizontal: 10,
     paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: GLASS.border,
   },
-  backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { color: COLORS.text, fontSize: 17, fontWeight: "900" },
-  loadingText: { color: COLORS.muted, textAlign: "center", marginTop: 40 },
-  likeRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 },
-  likeCount: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
-  sectionTitle: {
-    color: COLORS.muted,
-    fontSize: 13,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginTop: 8,
-    marginLeft: 4,
-  },
-  replyItem: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingVertical: 8 },
-  replyBody: { flex: 1 },
-  replyBubble: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: GLASS.border,
-    padding: 10,
-  },
-  replyName: { color: COLORS.cyan, fontSize: 13, fontWeight: "800", marginBottom: 3 },
-  replyText: { color: COLORS.text, fontSize: 14 },
-  replyTime: { color: COLORS.subtle, fontSize: 11, marginTop: 4, marginLeft: 4 },
-  inputBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+  headerText: { flex: 1 },
+  headerTitle: { color: COLORS.text, fontSize: 16, fontWeight: "800" },
+  headerSub: { color: COLORS.muted, fontSize: 11.5, fontWeight: "600", marginTop: 1 },
+
+  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
+  threadHeading: { flexDirection: "row", alignItems: "center", gap: 7, marginVertical: 10 },
+  threadTitle: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
+  threadHint: { color: COLORS.subtle, fontSize: 11.5, fontWeight: "600", marginLeft: "auto" },
+
+  emptyThread: { paddingVertical: 30, alignItems: "center" },
+  emptyThreadText: { color: COLORS.muted, fontSize: 13.5, textAlign: "center" },
+
+  composer: { paddingHorizontal: 12, paddingTop: 8 },
+  composerInner: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "rgba(10,8,20,0.9)",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: GLASS.border,
+    gap: 8,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: GLASS.border,
+    backgroundColor: "rgba(23,18,42,0.6)",
+    padding: 8,
+    overflow: "hidden",
   },
-  inputWrap: { flex: 1 },
   input: {
+    flex: 1,
     color: COLORS.text,
-    fontSize: 15,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    maxHeight: 120,
+    fontSize: 15.5,
+    maxHeight: 110,
+    paddingHorizontal: 6,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  disabled: { opacity: 0.45 },
+  composerHint: { color: COLORS.subtle, fontSize: 10.5, textAlign: "center", marginTop: 6 },
 });

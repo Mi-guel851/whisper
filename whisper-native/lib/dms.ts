@@ -508,6 +508,67 @@ export async function sweepExpiredPins(conversationId: string): Promise<void> {
   await supabase.rpc("sweep_expired_pins", { target_conversation_id: conversationId });
 }
 
+/* --------------------------------------------------------------------------- *
+ * Pins — `pinned_messages` (migration 202608070001).
+ *
+ * One row per pinned message per conversation, written with who pinned it and
+ * an optional `expires_at`; the sweep above reaps expired rows when a thread
+ * opens. The web chat overlays a bar under the header cycling through them —
+ * the native screen does the same.
+ * -------------------------------------------------------------------------- */
+
+/** How long a pin can live. `null` is "until I remove it" — no expiry. */
+export const PIN_DURATIONS: { label: string; hours: number | null }[] = [
+  { label: "24 hours", hours: 24 },
+  { label: "7 days", hours: 24 * 7 },
+  { label: "30 days", hours: 24 * 30 },
+  { label: "until I remove it", hours: null },
+];
+
+export async function fetchPinnedMessageIds(conversationId: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("pinned_messages")
+    .select("message_id")
+    .eq("conversation_id", conversationId);
+
+  if (error) {
+    console.warn("[dms] pinned fetch failed:", error.message);
+    return new Set();
+  }
+  return new Set((data || []).map((row) => (row as { message_id: string }).message_id));
+}
+
+export async function pinMessage(
+  conversationId: string,
+  messageId: string,
+  pinnedBy: string,
+  durationHours: number | null
+): Promise<{ ok: boolean; error?: string }> {
+  const expiresAt = durationHours === null ? null : new Date(Date.now() + durationHours * 3_600_000).toISOString();
+
+  const { error } = await supabase.from("pinned_messages").insert({
+    conversation_id: conversationId,
+    message_id: messageId,
+    pinned_by: pinnedBy,
+    expires_at: expiresAt,
+  });
+
+  return error ? { ok: false, error: safeErrorMessage(error, "Couldn't pin that message.") } : { ok: true };
+}
+
+export async function unpinMessage(
+  conversationId: string,
+  messageId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from("pinned_messages")
+    .delete()
+    .eq("conversation_id", conversationId)
+    .eq("message_id", messageId);
+
+  return error ? { ok: false, error: safeErrorMessage(error, "Couldn't unpin that message.") } : { ok: true };
+}
+
 /* ---------------------------------------------------------------------------
  * View-once media
  * ------------------------------------------------------------------------ */

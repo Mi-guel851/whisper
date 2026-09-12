@@ -7,7 +7,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "
 import { GlassCard } from "./GlassCard";
 import { timeAgo } from "@/lib/format";
 import { HINT_UNLOCK_COST } from "@/lib/coins";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, GRADIENT_COLORS, RADIUS, useStyles } from "@/lib/theme";
 import type { Whisper, WhisperHint } from "@/lib/types";
 
 /**
@@ -52,6 +52,7 @@ export function WhisperCard({
   onDelete: () => void;
   onReply: () => void;
 }) {
+  const styles = useStyles(makeStyles);
   const tone = useSharedValue(whisper.is_read ? 0 : 1);
 
   React.useEffect(() => {
@@ -149,6 +150,7 @@ function RevealRow({
   label: string;
   value: string;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.revealRow}>
       <Ionicons name={icon} size={14} color={COLORS.cyan} />
@@ -168,7 +170,7 @@ export function formatPlace(hint: WhisperHint): string {
   return parts.length > 0 ? parts.join(", ") : "Somewhere on Earth";
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   card: { marginBottom: 10, overflow: "hidden" },
   unreadBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3 },
   head: { flexDirection: "row", alignItems: "center", gap: 10 },

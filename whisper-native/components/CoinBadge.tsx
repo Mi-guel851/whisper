@@ -3,7 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Pressable, StyleSheet, Text } from "react-native";
 
 import { formatCoins } from "@/lib/format";
-import { COLORS, GRADIENT_COLORS, RADIUS, glow } from "@/lib/theme";
+import { COLORS, GRADIENT_COLORS, RADIUS, glow, useStyles } from "@/lib/theme";
 
 /**
  * The coin balance.
@@ -26,6 +26,7 @@ export function CoinBadge({
   variant?: "compact" | "prominent";
   loading?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const prominent = variant === "prominent";
   const label = loading ? "—" : formatCoins(balance ?? 0);
 
@@ -46,7 +47,7 @@ export function CoinBadge({
           glow(COLORS.cyan, prominent ? 18 : 12, 0.32),
         ]}
       >
-        <Ionicons name="logo-bitcoin" size={prominent ? 22 : 15} color="#0a0814" />
+        <Ionicons name="logo-bitcoin" size={prominent ? 22 : 15} color={COLORS.contrast} />
         <Text style={[styles.amount, prominent && styles.amountProminent]}>{label}</Text>
         <Text style={[styles.unit, prominent && styles.unitProminent]}>COINS</Text>
       </LinearGradient>
@@ -54,7 +55,7 @@ export function CoinBadge({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   gradient: {
     flexDirection: "row",
     alignItems: "center",
@@ -63,7 +64,7 @@ const styles = StyleSheet.create({
   },
   compact: { paddingHorizontal: 12, paddingVertical: 7 },
   prominent: { paddingHorizontal: 20, paddingVertical: 12, alignSelf: "flex-start" },
-  amount: { color: "#0a0814", fontSize: 15, fontWeight: "900" },
+  amount: { color: COLORS.contrast, fontSize: 15, fontWeight: "900" },
   amountProminent: { fontSize: 26 },
   unit: { color: "rgba(10,8,20,0.75)", fontSize: 9.5, fontWeight: "900", letterSpacing: 0.8 },
   unitProminent: { fontSize: 11 },

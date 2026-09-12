@@ -4,7 +4,7 @@ import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
-import { COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, FILLS, RADIUS, useStyles } from "@/lib/theme";
 import type { FeedImageState } from "@/lib/feedState";
 
 /**
@@ -40,6 +40,7 @@ export function PhotoWhisper({
   /** The claimed photo, once the route has answered. */
   openUri?: string | null;
 }) {
+  const styles = useStyles(makeStyles);
   const overlay = useSharedValue(state === "locked" ? 1 : 0);
 
   React.useEffect(() => {
@@ -105,7 +106,7 @@ export function PhotoWhisper({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   wrap: {
     marginTop: 10,
     borderRadius: RADIUS.lg,
@@ -116,7 +117,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
   },
   preview: { width: "100%", height: "100%" },
-  placeholder: { backgroundColor: "#141026" },
+  placeholder: { backgroundColor: FILLS[2] },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

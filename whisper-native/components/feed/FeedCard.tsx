@@ -3,6 +3,7 @@ import React from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
+  FadeInDown,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -20,7 +21,7 @@ import { isCreatorPost, topicMeta } from "@/lib/feed";
 import type { FeedPost } from "@/lib/types";
 import { useAnonName } from "@/lib/identity";
 import { vibrate } from "@/lib/haptics";
-import { COLORS, GLASS, GRADIENT_COLORS, RADIUS } from "@/lib/theme";
+import { COLORS, EASINGS, GLASS, GRADIENT_COLORS, MOTION, RADIUS, useStyles } from "@/lib/theme";
 import { LinearGradient } from "expo-linear-gradient";
 
 /**
@@ -63,6 +64,7 @@ export function FeedCard({
   pollCounts,
   pollChoice,
   pollPending,
+  enteringIndex,
   onOpenGallery,
   highlight = false,
 }: {
@@ -95,9 +97,16 @@ export function FeedCard({
   pollCounts?: number[];
   pollChoice?: number | null;
   pollPending?: boolean;
+  /**
+   * The card's position in the feed's FIRST page — the initial-load entrance
+   * staggers in 55ms steps (the web's stagger default) up to a visible cap.
+   * `undefined` (every page after the first) enters without delay.
+   */
+  enteringIndex?: number;
   onOpenGallery?: () => void;
   highlight?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const name = useAnonName(post.author_id);
   const official = isCreatorPost(post);
   const isMine = post.author_id === myId;
@@ -131,6 +140,15 @@ export function FeedCard({
   };
 
   return (
+    <Animated.View
+      entering={
+        enteringIndex === undefined
+          ? undefined
+          : FadeInDown.duration(MOTION.base)
+              .delay(Math.min(enteringIndex, 8) * MOTION.stagger)
+              .easing(Easing.bezier(0.22, 1, 0.36, 1))
+      }
+    >
     <GlassCard
       style={[styles.card, highlight && styles.highlighted]}
       radius={RADIUS.xl}
@@ -151,7 +169,7 @@ export function FeedCard({
             </Text>
             {official && (
               <View style={styles.official}>
-                <Ionicons name="checkmark" size={10} color="#0a0814" />
+                <Ionicons name="checkmark" size={10} color={COLORS.contrast} />
               </View>
             )}
             <Text style={styles.dot}>·</Text>
@@ -316,12 +334,13 @@ export function FeedCard({
             end={{ x: 1, y: 1 }}
             style={styles.tipGradient}
           >
-            <Ionicons name="logo-bitcoin" size={13} color="#0a0814" />
+            <Ionicons name="logo-bitcoin" size={13} color={COLORS.contrast} />
             <Text style={styles.tipText}>Tip</Text>
           </LinearGradient>
         </Pressable>
       </View>
     </GlassCard>
+    </Animated.View>
   );
 }
 
@@ -338,6 +357,7 @@ function ActionButton({
   accessibilityLabel: string;
   readOnly?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const content = (
     <>
       <Ionicons name={icon} size={17} color={COLORS.subtle} />
@@ -362,6 +382,7 @@ function ActionButton({
 
 /** The topic chips row shown above the feed — exported for the composer too. */
 export function TopicChip({ emoji, label, active }: { emoji: string; label: string; active: boolean }) {
+  const styles = useStyles(makeStyles);
   return (
     <LinearGradient
       colors={active ? GRADIENT_COLORS : ["rgba(255,255,255,0.06)", "rgba(255,255,255,0.06)"]}
@@ -369,14 +390,14 @@ export function TopicChip({ emoji, label, active }: { emoji: string; label: stri
       end={{ x: 1, y: 0 }}
       style={styles.topicChipLarge}
     >
-      <Text style={[styles.topicChipText, active && { color: "#0a0814" }]}>
+      <Text style={[styles.topicChipText, active && { color: COLORS.contrast }]}>
         {emoji} {label}
       </Text>
     </LinearGradient>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   card: { marginBottom: 12 },
   highlighted: { borderColor: COLORS.cyan },
   head: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
@@ -440,7 +461,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: RADIUS.pill,
   },
-  tipText: { color: "#0a0814", fontSize: 11.5, fontWeight: "900" },
+  tipText: { color: COLORS.contrast, fontSize: 11.5, fontWeight: "900" },
   topicChipLarge: {
     paddingHorizontal: 12,
     paddingVertical: 7,

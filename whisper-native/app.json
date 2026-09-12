@@ -7,19 +7,23 @@
     "icon": "./assets/icon.png",
     "scheme": "whisper",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0a0814",
+    "backgroundColor": "#000000",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
-      "backgroundColor": "#0a0814"
+      "backgroundColor": "#634BFF"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.whisper.app",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSMicrophoneUsageDescription": "Whisper uses your microphone to record voice notes you choose to send.",
         "NSCameraUsageDescription": "Whisper uses your camera so you can attach a photo to a chat message.",
         "NSPhotoLibraryUsageDescription": "Whisper needs access to your photos so you can attach one to a chat message."
@@ -31,7 +35,7 @@
       "userInterfaceStyle": "dark",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#0a0814"
+        "backgroundColor": "#000000"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -44,6 +48,12 @@
       "edgeToEdgeEnabled": true
     },
     "plugins": [
+      [
+        "expo-router",
+        {
+          "root": "./app"
+        }
+      ],
       [
         "expo-av",
         {
@@ -64,6 +74,12 @@
         "expo-image-picker",
         {
           "photosPermission": "Whisper needs access to your photos so you can attach one to a chat message."
+        }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.226343458064-tq6nf31ekoos2h6r7dk4dc1o1cobaoh5"
         }
       ]
     ],

@@ -2,7 +2,7 @@ import { Image } from "expo-image";
 import { StyleSheet, Text, View } from "react-native";
 
 import { GradientText } from "./GradientText";
-import { COLORS } from "@/lib/theme";
+import { COLORS, useStyles } from "@/lib/theme";
 
 /**
  * The wordmark.
@@ -24,6 +24,7 @@ export function Logo({
   compact?: boolean;
   showTagline?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const size = compact ? 32 : 48;
 
   return (
@@ -68,7 +69,7 @@ export function GhostMark({ size = 26 }: { size?: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   textColumn: { justifyContent: "center" },
   wordmark: { fontWeight: "800", letterSpacing: -0.8 },

@@ -40,6 +40,9 @@ without at least the first two values.
 | `EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY` | the coin store | Paystack → Settings → API Keys (`pk_live_…`) |
 | `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME` | photo uploads | Cloudinary dashboard |
 | `EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET` | photo uploads when signing is unavailable | Cloudinary → Settings → Upload |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Google sign-in (optional) | defaults to the web app's OAuth client |
+| `EXPO_PUBLIC_SIGNUPS_OPEN` | the signup gate (optional) | `true` reopens new-account creation, the web's flag |
+| `EXPO_PUBLIC_ADMIN_EMAILS` | the admin console (optional) | defaults to the web app's `lib/admin/emails.ts` |
 
 **The Android push configuration is already in the repository** —
 `whisper-native/google-services.json` is a copy of `android/app/google-services.json`
@@ -55,31 +58,85 @@ old key is the most common way "it works for me but not on the device" happens.
 ## What is where
 
 ```
-App.tsx                 providers: gesture handler → safe area → session → toast → paystack
-index.ts                registerRootComponent (no expo-router — React Navigation)
+app/                    the route tree (expo-router, file-based)
+  _layout.tsx           providers + root Stack; badges, push taps, the loader
+  index.tsx             the fork: signed-in → feed / complete-profile; first run
+                        → the landing, after that → login
+  (auth)/
+    _layout.tsx         the pre-account guard: redirects signed-in users (through the fork)
+    onboarding.tsx      the landing — the web hero: pill, word-sweep headline,
+                        Create My Link, social proof, the four-step how-it-works
+    login.tsx           signInWithPassword, inline errors, forgot-password link
+    signup.tsx          signUp with the username in metadata
+  (tabs)/
+    _layout.tsx         the floating glass tab bar (Feed · DMs · Alerts · Profile);
+                        mounts the "Before you whisper..." agreement once per session
+    feed.tsx            the public feed: four sorts, topics, search, threads,
+                        the Daily Whisper spotlight card
+    dms.tsx             the inbox: conversations, previews, unread counts
+    notifications.tsx   the whisper inbox + the durable alert history
+    profile.tsx         identity, whisper link, wallet, your posts
+  complete-profile.tsx  the post-signup gate: username, country + phone, consent,
+                        recovery phrase → profile_completed = true
+  coins.tsx             the coin store (Paystack) + transfer sheet + history
+  create-whisper.tsx    the composer (post or reply; photo, poll, topic)
+  conversation.tsx      one chat: bubbles, voice notes, view-once, the 40-coin gate,
+                        message pinning (bar + duration sheet + realtime)
+  whisper-detail.tsx    one post, its replies, the free reply composer
+  whisper.tsx           send an anonymous Whisper to one person (the web's
+                        /u/[username] form: sender context, Cloudinary photo)
+  friends.tsx           discover / active / requests / friends tabs — anonymous
+                        names, presence dots, Active-now rows, start-chat, unfriend
+  games.tsx             Whisper Games: share or copy a prompt with your link
+  discover.tsx          the feature + utility hub
+  legal.tsx             Privacy / Terms / Community Guidelines (from lib/legal.ts)
+  help.tsx              Help Center: guides + FAQ accordion
+  support.tsx           Contact Support: category + subject + message → mailto
+  banned.tsx            the ban screen: reason, expiry, appeal, sign out —
+                        reached from the root BanGate (my_ban_status, 60s recheck)
+  feedback.tsx          star rating + message → mailto
+  favorites.tsx         the web's "Coming Soon" page, natively
+  creator.tsx           the creator console: official posts behind `is_whisper_creator`
+  admin.tsx             the announcements admin: email allowlist + ADMIN_GRANT_PIN
+  settings.tsx          push switches, appearance (system/light/dark), wallet, legal, log out
+  forgot-password.tsx   reset by username + recovery phrase
+  saved.tsx             saved posts (the feed's bookmark)
+  u.tsx                 somebody else's profile
 lib/                    data access, one file per surface, plus theme/format/errors/haptics
   supabase.ts           the client (AsyncStorage session, AppState refresh)
+  session.tsx           SessionProvider: getSession + onAuthStateChange, in context
+  ThemeProvider.tsx     system/light/dark: AsyncStorage + profiles.theme_preference
+  calls/                voice calls: callSession (WebRTC engine), signaling, iceServers,
+                        ringTone, callFormat, pendingRing (push-tap → ring), callColors
   feed.ts feedState.ts  the public feed: RPC-first, table fallback
   useFeedEngagement.ts  likes, poll votes, photo claims and saves, shared by the
                         feed and the saved-posts screen
   whispers.ts           anonymous whispers (public.messages) + paid sender hints
-  dms.ts                conversations, direct messages, view-once claims
+  dms.ts                conversations, direct messages, view-once claims, pins
+  friends.ts            the friends surface: roster, requests, discover scan, chats
+  games.ts              Whisper Games, the Daily Whisper pool + seeded rotation,
+                        and the feed's question of the day
+  legal.ts              the legal documents, verbatim from the web pages
+  countries.ts          the complete-profile country list (the web's, one for one)
+  consent.ts            the consent row (record_consent RPC) complete-profile writes
   notifications.ts      the durable alert history
-  payments.ts (paystack) the coin checkout
+  paystack.ts           the coin checkout
   push.ts               device tokens, taps, channels
   badges.ts             the unread counts the tab bar shows
-  session.tsx toast.tsx theme.ts identity.ts format.ts errors.ts uploads.ts
+  creator.ts adminClient.ts announcements.ts presence.ts blocks.ts
+  googleAuth.ts         official posts, the admin client, announcement voting,
+                        online dots, inbox blocking, native Google sign-in
+  profile.ts coins.ts identity.ts firstRun.ts toast.tsx theme.ts format.ts
+  errors.ts uploads.ts useVoiceRecorder.ts whispersAi.ts haptics.ts types.ts
 components/             the design system + shared pieces (see below)
-screens/                the thirteen screens
-navigation/             RootNavigator, MainTabs, the typed param lists
 ```
 
 Components worth knowing: `Background` (the gradient wash every screen sits on),
 `GlassCard`, `GradientButton`/`IconButton`, `GradientText`, `Avatar`, `Screen`
 (the shell: background + safe area + fade-in), `Sheet`/`ConfirmSheet`/`SheetRow`,
 `Toggle`, `CoinBadge`, `Waveform`, `VoiceNotePlayer`, `VoiceRecorderPanel`,
-`CoinTipSheet`, `WhisperCard`, `Input`/`SearchField`, and `feed/`'s `FeedCard`,
-`Poll` and `PhotoWhisper`.
+`CoinTipSheet`, `WhisperCard`, `Input`/`SearchField`, `Toast`, `TabIcon`, and
+`feed/`'s `FeedCard`, `Poll` and `PhotoWhisper`.
 
 ## The rules this app follows
 

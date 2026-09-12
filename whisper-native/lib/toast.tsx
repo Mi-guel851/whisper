@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { vibrate } from "./haptics";
 import { COLORS, GLASS, RADIUS } from "./theme";
+import { useStyles } from "@/lib/theme";
 
 /**
  * Toasts.
@@ -89,6 +90,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 }
 
 function ToastView({ toast, onDone }: { toast: Toast; onDone: () => void }) {
+  const styles = useStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
 
@@ -140,7 +142,7 @@ export function useToast(): ToastContextValue {
   return context;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   wrap: {
     position: "absolute",
     left: 16,

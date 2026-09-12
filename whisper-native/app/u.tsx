@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { router, useLocalSearchParams } from "expo-router";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useState } from "react";
@@ -10,17 +10,14 @@ import { GradientButton, IconButton } from "@/components/GradientButton";
 import { FeedCard } from "@/components/feed/FeedCard";
 import { EmptyState, LoadingScreen, Screen } from "@/components/Screen";
 import { Sheet, SheetRow } from "@/components/Sheet";
-import type { MainStackParamList } from "@/navigation/types";
 import { blockAuthor, fetchMyPosts, reportPost } from "@/lib/feed";
 import { timeAgo } from "@/lib/format";
 import { useAnonName } from "@/lib/identity";
-import { fetchProfile, whisperLink } from "@/lib/profile";
+import { fetchProfile, whisperLink, whisperLinkLabel } from "@/lib/profile";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/lib/toast";
-import { COLORS, GLASS, RADIUS } from "@/lib/theme";
+import { COLORS, GLASS, RADIUS, useStyles } from "@/lib/theme";
 import type { FeedPost, Profile } from "@/lib/types";
-
-type Props = NativeStackScreenProps<MainStackParamList, "UserProfile">;
 
 /**
  * Somebody else's profile.
@@ -35,10 +32,13 @@ type Props = NativeStackScreenProps<MainStackParamList, "UserProfile">;
  * is on the gradient. Everything else — their posts, and the two escape hatches
  * (report, block) — is below it.
  */
-export function UserProfileScreen({ navigation, route }: Props) {
+export default function UserProfile() {
+  const styles = useStyles(makeStyles);
+  const params = useLocalSearchParams() as { userId?: string };
+  const subjectId = typeof params.userId === "string" ? params.userId : "";
+
   const { userId: viewerId } = useSession();
   const { showToast } = useToast();
-  const { userId: subjectId } = route.params;
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -47,9 +47,10 @@ export function UserProfileScreen({ navigation, route }: Props) {
 
   const fallbackName = useAnonName(subjectId);
   const name = profile?.display_name || profile?.username || fallbackName;
-  const isSelf = viewerId === subjectId;
+  const isSelf = Boolean(viewerId) && viewerId === subjectId;
 
   const load = useCallback(async () => {
+    if (!subjectId) return;
     const [row, mine] = await Promise.all([fetchProfile(subjectId), fetchMyPosts(subjectId, 40)]);
     setProfile(row);
     setPosts(mine);
@@ -60,13 +61,13 @@ export function UserProfileScreen({ navigation, route }: Props) {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingScreen label="Opening profile" />;
+  if (loading || !subjectId) return <LoadingScreen label="Opening profile" />;
 
   const link = whisperLink(profile?.username);
 
   const header = (
     <View style={styles.header}>
-      <BlurView intensity={GLASS.blurIntensity} tint="dark" style={styles.identityCard}>
+      <BlurView intensity={GLASS.blurIntensity} tint={GLASS.tint} style={styles.identityCard}>
         <View style={styles.identityInner}>
           <Avatar authorId={subjectId} size={78} imageUrl={profile?.avatar_url} />
 
@@ -84,16 +85,18 @@ export function UserProfileScreen({ navigation, route }: Props) {
 
           {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
 
-          {!isSelf && profile?.username ? (
+          {!isSelf ? (
             <>
               <GradientButton
                 label="Send an anonymous Whisper"
                 icon="mail-outline"
                 fullWidth
-                onPress={() => {
-                  void Clipboard.setStringAsync(link);
-                  showToast("Link copied — open it to send anonymously", { variant: "success" });
-                }}
+                onPress={() =>
+                  router.push({
+                    pathname: "/whisper",
+                    params: profile?.username ? { username: profile.username } : { userId: subjectId },
+                  })
+                }
                 style={styles.cta}
               />
 
@@ -106,7 +109,7 @@ export function UserProfileScreen({ navigation, route }: Props) {
               >
                 <Ionicons name="link-outline" size={14} color={COLORS.cyan} />
                 <Text style={styles.linkText} numberOfLines={1}>
-                  whisper.app/u/{profile.username}
+                  {whisperLinkLabel(profile?.username)}
                 </Text>
               </Pressable>
             </>
@@ -118,7 +121,7 @@ export function UserProfileScreen({ navigation, route }: Props) {
               icon="person-circle-outline"
               variant="glass"
               fullWidth
-              onPress={() => navigation.navigate("Tabs", { screen: "Profile" })}
+              onPress={() => router.push("/(tabs)/profile")}
               style={styles.cta}
             />
           ) : null}
@@ -137,7 +140,7 @@ export function UserProfileScreen({ navigation, route }: Props) {
   return (
     <Screen padded={false}>
       <View style={styles.topBar}>
-        <IconButton icon="chevron-back" size={40} onPress={() => navigation.goBack()} accessibilityLabel="Go back" />
+        <IconButton icon="chevron-back" size={40} onPress={() => router.back()} accessibilityLabel="Go back" />
         <Text style={styles.topTitle}>Profile</Text>
         <IconButton icon="ellipsis-horizontal" size={40} onPress={() => setMenuOpen(true)} accessibilityLabel="Options" />
       </View>
@@ -156,9 +159,11 @@ export function UserProfileScreen({ navigation, route }: Props) {
             replyCount={Number(item.reply_count ?? 0)}
             imageState="spent"
             onToggleLike={() => {}}
-            onOpenThread={() => navigation.push("SingleWhisper", { postId: item.id })}
+            onOpenThread={() =>
+              router.push({ pathname: "/whisper-detail", params: { postId: item.id } })
+            }
             onOpenMenu={() => setMenuOpen(true)}
-            onTip={() => navigation.navigate("CoinStore")}
+            onTip={() => router.push("/coins")}
           />
         )}
         ListEmptyComponent={
@@ -167,7 +172,7 @@ export function UserProfileScreen({ navigation, route }: Props) {
             title="No whispers yet"
             body={`${name} hasn't posted to the feed.`}
             actionLabel={isSelf ? "Write one" : undefined}
-            onAction={isSelf ? () => navigation.navigate("CreateWhisper") : undefined}
+            onAction={isSelf ? () => router.push("/create-whisper") : undefined}
           />
         }
       />
@@ -214,7 +219,7 @@ export function UserProfileScreen({ navigation, route }: Props) {
                   void blockAuthor(viewerId, subjectId)
                     .then(() => {
                       showToast("Blocked", { variant: "subtle" });
-                      navigation.goBack();
+                      router.back();
                     })
                     .catch(() => showToast("Couldn't block that account.", { variant: "error" }));
                 }}
@@ -227,7 +232,7 @@ export function UserProfileScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -249,7 +254,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   identityInner: { alignItems: "center", padding: 18, gap: 6 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 10 },
   name: { color: COLORS.text, fontSize: 20, fontWeight: "900", marginTop: 10, flexShrink: 1 },
   handle: { color: COLORS.muted, fontSize: 12.5, fontWeight: "600" },
   bio: { color: COLORS.muted, fontSize: 13.5, textAlign: "center", lineHeight: 19, marginTop: 6 },
