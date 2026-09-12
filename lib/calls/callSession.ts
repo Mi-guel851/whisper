@@ -88,11 +88,35 @@ export type IncomingRing = {
   conversationId: string;
   callerId: string;
   callId: string | null;
+  /**
+   * The `notifications` row this ring came from, when it came from one.
+   *
+   * A row-derived ring is already gated on `is_read = false` (the server
+   * marks the row read the moment the call ends — 202609120004 — so a row
+   * that is still unread is a call that is still live). A ring with no row
+   * (a push tap, an offer that arrived first) is verified against
+   * `call_logs` in `beginIncomingRing` instead: without that check a tap on
+   * a stale notification rang for a call that had already ended, because
+   * the payload ring carries a fresh timestamp and nothing older to judge
+   * it by.
+   */
+  rowId?: string | null;
   /** ms epoch, from the row. Used to keep a stale ring from taking the screen. */
   createdAt?: number;
   callerName?: string | null;
   callerAvatar?: string | null;
 };
+
+/** Terminal states, in the server's words (call_logs.status). */
+const TERMINAL_CALL_STATUSES: ReadonlySet<string> = new Set([
+  "completed",
+  "canceled",
+  "declined",
+  "missed",
+  "expired",
+  "busy",
+  "failed",
+]);
 
 /** A conversation the app is currently looking at, so it can hear a ring. */
 export type AttachedThread = {
@@ -236,6 +260,15 @@ class CallSession {
   private prewarmedIce: Promise<RTCIceServer[]> | null = null;
   private pendingPeerName: string | null = null;
   private pendingPeerAvatar: string | null = null;
+
+  /**
+   * Autoplay was refused, so the peer is audible only to a future gesture.
+   * A WebAudio-less retry, on a slow cadence, because the Android WebView's
+   * autoplay policy is the one that refuses in the first place and the user
+   * is looking at a call, not at a video ad: the call that connected while
+   * silent must not wait for the user to discover it.
+   */
+  private remoteAudioRetryTimer: ReturnType<typeof setInterval> | null = null;
 
   private ringingTimeout: ReturnType<typeof setTimeout> | null = null;
   private ringExpiryTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -537,26 +570,41 @@ class CallSession {
       if (this.finalized) return;
       this.finalized = true;
     }
-    void Promise.resolve(supabase.rpc("end_call_log", { p_call_id: callId, p_outcome: outcome }))
-      .then(({ error }) => {
-        if (!error) return;
-        const missing =
-          error.code === "PGRST202" || error.code === "42883" || /does not exist/i.test(error.message ?? "");
-        if (missing && outcome !== "answered") {
-          void Promise.resolve(
-            supabase
-              .from("call_logs")
-              .update({ ended_at: new Date().toISOString(), missed: outcome === "missed" })
-              .eq("id", this.callLogId)
-          ).catch(() => {});
-          return;
-        }
-        /* Anything else (a rejected transition, a transient error) is not
-           worth the user's attention: the server sweep and the other side's
-           own transition converge the row; a notification that cannot ride a
-           dead network is a missed notification, not a broken call. */
-      })
-      .catch(() => {});
+    /*
+     * The report is retried once, because its loss is the visible bug: a
+     * network blip at hang-up time (the moment mobile links change over
+     * most) used to leave the row open, and an open `answered` row is what
+     * tells the next caller "they're on another call". The 10-minute server
+     * window (202609120004) is the backstop; this is the fast half.
+     */
+    const attempt = (retry: boolean) => {
+      void Promise.resolve(supabase.rpc("end_call_log", { p_call_id: callId, p_outcome: outcome }))
+        .then(({ error }) => {
+          if (!error) return;
+          const missing =
+            error.code === "PGRST202" || error.code === "42883" || /does not exist/i.test(error.message ?? "");
+          if (missing && outcome !== "answered") {
+            void Promise.resolve(
+              supabase
+                .from("call_logs")
+                .update({ ended_at: new Date().toISOString(), missed: outcome === "missed" })
+                .eq("id", this.callLogId)
+            ).catch(() => {});
+            return;
+          }
+          if (retry) {
+            /* A rejected transition (the peer reached the server first) and
+               a transient error both land here; only the second attempt is
+               the last word — after it the server sweep and the other side's
+               own transition converge the row. */
+            setTimeout(() => attempt(false), 1_500);
+          }
+        })
+        .catch(() => {
+          if (retry) setTimeout(() => attempt(false), 1_500);
+        });
+    };
+    attempt(true);
   };
 
   /** Pre-0005 databases only: a bare update against the row id, kept as the
@@ -621,6 +669,26 @@ class CallSession {
     }
   }
 
+  private stopRemoteAudioRetry() {
+    if (this.remoteAudioRetryTimer) {
+      clearInterval(this.remoteAudioRetryTimer);
+      this.remoteAudioRetryTimer = null;
+    }
+  }
+
+  private startRemoteAudioRetry() {
+    if (this.remoteAudioRetryTimer || !this.remoteAudioBlocked) return;
+    this.remoteAudioRetryTimer = setInterval(() => {
+      if (!this.remoteAudioBlocked || this.state.status === "idle" || !this.pc) {
+        this.stopRemoteAudioRetry();
+        return;
+      }
+      /* Each play() that is refused is harmless; the one that is accepted
+         clears the flag (in resumeRemoteAudio) and stops the loop. */
+      this.resumeRemoteAudio();
+    }, 2_500);
+  }
+
   private startIncomingVibration() {
     this.stopIncomingVibration();
     /* A triple pulse now, then on a 3s cadence for the life of the ring —
@@ -655,6 +723,7 @@ class CallSession {
   private teardownMedia() {
     stopRingTone();
     this.stopIncomingVibration();
+    this.stopRemoteAudioRetry();
     this.clearTimers();
     if (this.pc) {
       this.pc.onicecandidate = null;
@@ -745,6 +814,7 @@ class CallSession {
     void audio.play().then(
       () => {
         this.remoteAudioBlocked = false;
+        this.stopRemoteAudioRetry();
       },
       () => {}
     );
@@ -861,13 +931,17 @@ class CallSession {
       void audio.play().then(
         () => {
           this.remoteAudioBlocked = false;
+          this.stopRemoteAudioRetry();
         },
         () => {
           /* Autoplay blocked. Not a dead call — the user is looking at a call
              surface with their finger on the screen, so the next tap (mute,
-             speaker, minimize) is a gesture this can retry on. Until then the
-             flag keeps a silent-but-connected call from looking healthy. */
+             speaker, minimize) is a gesture this can retry on. The retry
+             timer covers the WebViews (Android's chief among them) whose
+             policy refuses the play outright: a call that is connected but
+             silent must not wait for the user to notice it is silent. */
           this.remoteAudioBlocked = true;
+          this.startRemoteAudioRetry();
         }
       );
     };
@@ -1043,11 +1117,26 @@ class CallSession {
           return;
         }
 
-        /* Already ringing for this call: the caller's retransmission. Refresh
-           the SDP (the newest one has the fullest candidate list) and keep
-           ringing — treating it as a second call would answer "busy" to the
-           one call we are actually ringing for. */
+        /* Already ringing: the caller's retransmission, OR a second dialer.
+           A retransmission refreshes the SDP (the newest one has the fullest
+           candidate list) and keeps ringing — treating it as a second call
+           would answer "busy" to the one call we are actually ringing for.
+           A DIFFERENT call gets its verdict here, from the device itself:
+           the server no longer treats a fresh ring as busy (a user who
+           navigated to the call screen must not read as busy to their own
+           retry), so without this signal the second dialer would ring for
+           the full 45 seconds and then log a miss for a device that was
+           busy, not absent. */
         if (this.state.status === "incoming") {
+          const sameRing = !callId || !this.incomingCallId || callId === this.incomingCallId;
+          if (!sameRing) {
+            this.debug("offer: busy — already ringing for a different call");
+            this.broadcast({
+              event: "busy",
+              payload: callId ? { callId } : null,
+            });
+            return;
+          }
           if (sdp) this.pendingOfferSdp = sdp;
           if (callId && !this.incomingCallId) this.incomingCallId = callId;
           return;
@@ -1088,13 +1177,17 @@ class CallSession {
           return;
         }
 
-        this.beginIncomingRing({
+        /* The SDP is kept only if the ring actually started: an offer that
+           verifies to a dead call must not leave its SDP lying around for
+           the next ring to answer with. */
+        void this.beginIncomingRing({
           conversationId,
           callerId: peerId,
           callId,
           createdAt: Date.now(),
+        }).then((started) => {
+          if (started && sdp) this.pendingOfferSdp = sdp;
         });
-        this.pendingOfferSdp = sdp;
         return;
       }
 
@@ -1239,10 +1332,46 @@ class CallSession {
    * Idempotent by call_id, because the same call routinely arrives twice —
    * the offer over broadcast and the row over postgres_changes — and a ring
    * that restarts its own tone halfway through is a bug people hear.
+   *
+   * A ring with no row of its own is verified against the server before it
+   * takes the screen (the row is the call's only proof of life); a
+   * row-derived ring is already gated on `is_read = false`, and the server
+   * marks the row read the moment the call ends, so an unread row is a live
+   * call.
+   *
+   * Resolves `true` when the ring is up (freshly shown, or already up for
+   * this same call) and `false` when it was refused — no row, a row that is
+   * already over, or a ring whose window passed. Callers gate the SDP and
+   * any other state on that: an offer that does not start a ring must not
+   * leave its SDP lying around for the next one to answer with.
    */
-  beginIncomingRing(ring: IncomingRing) {
-    if (!ring.conversationId || !ring.callerId) return;
-    if (typeof ring.createdAt === "number" && Date.now() - ring.createdAt > RING_WINDOW_MS) return;
+  async beginIncomingRing(ring: IncomingRing): Promise<boolean> {
+    if (!ring.conversationId || !ring.callerId) return false;
+    if (typeof ring.createdAt === "number" && Date.now() - ring.createdAt > RING_WINDOW_MS) return false;
+
+    if (ring.callId && !ring.rowId) {
+      const { data: row } = await supabase
+        .from("call_logs")
+        .select("status,started_at")
+        .eq("call_id", ring.callId)
+        .maybeSingle();
+      if (!row) {
+        this.debug("ring: no server row for this call — not ringing");
+        return false;
+      }
+      if (TERMINAL_CALL_STATUSES.has(row.status as string)) {
+        this.debug("ring: row already", row.status, "— not ringing");
+        return false;
+      }
+      if (row.status === "ringing") {
+        const startedAt: string | undefined = (row as { started_at?: string }).started_at;
+        const startedMs = typeof startedAt === "string" ? Date.parse(startedAt) : NaN;
+        if (Number.isFinite(startedMs) && Date.now() - startedMs > RING_WINDOW_MS) {
+          this.debug("ring: the server's ring window passed — not ringing");
+          return false;
+        }
+      }
+    }
     // Store prefetched name/avatar for instant screen (no Supabase round trip)
     if (ring.callerName) this.pendingPeerName = ring.callerName;
     if (ring.callerAvatar) this.pendingPeerAvatar = ring.callerAvatar;
@@ -1265,11 +1394,12 @@ class CallSession {
           this.incomingCallId = ring.callId;
           this.publish();
         }
-        return;
+        return true;
       }
-      /* A different call, while one is already ringing or live. The server's
-         busy check is what tells the other side; nothing to render here. */
-      return;
+      /* A different call, while one is already ringing or live. The device's
+         busy verdict (in the offer path) is what tells the other side;
+         nothing to render here. */
+      return false;
     }
 
     this.state.conversationId = ring.conversationId;
@@ -1293,6 +1423,7 @@ class CallSession {
       this.endLocalCall(true);
       this.notice("Missed call.");
     }, Math.max(0, RING_WINDOW_MS - elapsed));
+    return true;
   }
 
   /**
@@ -1567,6 +1698,16 @@ class CallSession {
 
     const iceServers = await getIceServers();
 
+    /* A STUN-only dial is a coin flip on carrier networks: two phones behind
+       restrictive NATs have no path without a relay, and the only symptom of
+       that is 25 seconds of "Connecting…" followed by a failure. The user
+       deserves the sentence while the ring is still going, not after. */
+    if (!iceServers.some((server) => String(server.urls ?? "").includes("turn:"))) {
+      this.notice(
+        "No call relay is configured on this server, so this call may not connect across different networks."
+      );
+    }
+
     /* The sheet is on screen from the first ring, so End is tappable while the
        microphone prompt is up; if it was tapped, this call is over and the
        stream that just arrived must not be wired into a fresh connection. */
@@ -1658,6 +1799,37 @@ class CallSession {
   /* ------------------------------------------------------------------ */
   /* Controls                                                            */
   /* ------------------------------------------------------------------ */
+
+  /**
+   * The app came back. Called by the provider on visibility/resume, because
+   * a paused WebView (Android backgrounding, screen lock) kills the
+   * transport WITHOUT firing the final state change — the engine wakes up
+   * still "in_call" over a dead pipe, the timer still counting, no audio.
+   *
+   * If the transport is dead, the call is over: end it now, with the row
+   * closed, instead of leaving a counting pill over a ghost. A transport
+   * that merely reports "disconnected" gets the same grace-and-restart the
+   * live path gets — the grace timer did not run while we were paused, so
+   * it is armed here rather than waited for.
+   */
+  checkHealth = () => {
+    if (this.state.status !== "in_call" && this.state.status !== "connecting") return;
+    const pc = this.pc;
+    if (!pc) return;
+    if (pc.connectionState === "failed" || pc.iceConnectionState === "failed") {
+      this.debug("resume: transport dead, ending the call");
+      this.hangUp("Call ended.");
+      return;
+    }
+    if (pc.iceConnectionState === "disconnected" && !this.iceRestartTimer) {
+      this.iceRestartTimer = setTimeout(() => {
+        this.iceRestartTimer = null;
+        if (pc.iceConnectionState === "disconnected" && this.state.status !== "idle") {
+          this.attemptIceRestart(pc);
+        }
+      }, ICE_DISCONNECT_GRACE_MS);
+    }
+  };
 
   /**
    * The local-side hangup. `notify` is shown to the local user; the peer

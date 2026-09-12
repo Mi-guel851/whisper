@@ -3,7 +3,7 @@
 import WhisperCoinIcon from "@/components/WhisperCoinIcon";
 import Script from "next/script";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Coins, Gem, Sparkles, Loader2, ShieldCheck, Gift, ChevronRight } from "lucide-react";
@@ -22,6 +22,7 @@ import BottomNavigation from "@/components/BottomNavigation";
 import BackButton from "@/components/BackButton";
 import GlassPanel from "@/components/GlassPanel";
 import { useToast } from "@/components/ToastProvider";
+import { MASKED_EMAIL } from "@/lib/paystack/shared";
 import WalletAddressCard from "@/components/wallet/WalletAddressCard";
 import TransferCoinsModal from "@/components/wallet/TransferCoinsModal";
 import WalletReceiptModal from "@/components/wallet/WalletReceiptModal";
@@ -48,7 +49,6 @@ declare global {
   }
 }
 
-const PAYSTACK_MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
 
 /* Accounts allowed to grant coins. This list only decides whether the "Grant
    Coins" shortcut is even visible on the wallet page, so it is not a security
@@ -63,6 +63,87 @@ const TX_COLUMNS = "id,amount,description,transaction_type,created_at,reference"
 /* Rows fetched per round trip. Larger than the 4 shown initially so the first
    "Show more" is instant — the second page is already in memory. */
 const FETCH_SIZE = 20;
+
+/* ---------------------------------------------------------------------------
+ * Pending payments
+ *
+ * A payment that left this browser through the Paystack iframe is only as
+ * settled as the verify round trip that follows it. If the app closes right
+ * after the success screen, the network blips at that moment, or a bank
+ * transfer is still settling, that round trip can be lost — and the user
+ * paid without the coins moving. (The server-side webhook credits the same
+ * transaction without this tab; this reconciliation is the second, honest
+ * belt for deployments before the webhook is wired up, and the fast path
+ * the user actually sees.)
+ *
+ * The pending entry is a reference + package, written the moment the
+ * charge opens and cleared only when the credit is confirmed (verify is
+ * idempotent — credit_verified_payment's reference guard makes every retry
+ * a no-op after the first, so retrying a settled payment is free).
+ * ------------------------------------------------------------------------- */
+const PENDING_PAYMENT_KEY = "whisper:pending-payment";
+/* A reference stays redeemable at the gateway far longer than this; a day is
+   plenty for a transfer to settle and for the user to come back. */
+const PENDING_PAYMENT_TTL_MS = 24 * 60 * 60 * 1000;
+
+type PendingPayment = { reference: string; coins: number; at: number };
+
+function stashPendingPayment(reference: string, coins: number) {
+  try {
+    const pending: PendingPayment = { reference, coins, at: Date.now() };
+    sessionStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(pending));
+  } catch {
+    /* Private mode: the callback path below still covers the live case. */
+  }
+}
+
+function loadPendingPayment(): PendingPayment | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_PAYMENT_KEY);
+    if (!raw) return null;
+    const pending = JSON.parse(raw) as PendingPayment;
+    if (!pending?.reference || typeof pending.at !== "number" || !Number.isFinite(pending.coins)) return null;
+    if (Date.now() - pending.at > PENDING_PAYMENT_TTL_MS) {
+      sessionStorage.removeItem(PENDING_PAYMENT_KEY);
+      return null;
+    }
+    return pending;
+  } catch {
+    return null;
+  }
+}
+
+export type VerifyOutcome =
+  | { kind: "credited"; balance: number; coins: number }
+  /** The gateway has not confirmed it yet (bank transfer, USSD). */
+  | { kind: "pending" }
+  /** Settled, but the rules do not match — retrying will not change the verdict. */
+  | { kind: "rejected"; error: string }
+  /** The round trip itself failed; the payment may well be fine. */
+  | { kind: "network" };
+
+/** One verify round trip, shared by the Paystack callback and the
+    pending-payment reconciliation, so they cannot drift apart. */
+async function verifyReference(accessToken: string, reference: string): Promise<VerifyOutcome> {
+  try {
+    const verifyRes = await fetch("/api/paystack/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ reference }),
+    });
+    const result = await verifyRes.json();
+    if (verifyRes.ok) {
+      return { kind: "credited", balance: result.balance || 0, coins: result.coins ?? 0 };
+    }
+    if (verifyRes.status === 202 || result.pending) return { kind: "pending" };
+    return { kind: "rejected", error: result.error || "Verification failed." };
+  } catch {
+    return { kind: "network" };
+  }
+}
 
 function AnimatedBalance({ value }: { value: number }) {
   const count = useMotionValue(value);
@@ -416,9 +497,15 @@ export default function PremiumPage() {
 
     setBusy(`buy-${pkg.coins}`);
 
+    /* The charge is about to leave this browser; remember it so a lost
+       confirm (closed app, network blip, transfer still settling) is
+       reconciled on the next visit instead of paid-for coins that never
+       show up. */
+    stashPendingPayment(reference, pkg.coins);
+
     const handler = window.PaystackPop.setup({
       key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
-      email: PAYSTACK_MASKED_EMAIL,
+      email: MASKED_EMAIL,
       amount: chargeAmountKobo,
       currency: "NGN",
       metadata: { coins: pkg.coins, region, user_id: session.user.id },
@@ -426,27 +513,25 @@ export default function PremiumPage() {
       callback: (response: { reference: string }) => {
         (async () => {
           try {
-            const verifyRes = await fetch("/api/paystack/verify", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${session.access_token}`,
-              },
-              body: JSON.stringify({ reference: response.reference }),
-            });
-
-            const result = await verifyRes.json();
-
-            if (!verifyRes.ok) {
-              showToast(result.error || "Verification failed.");
-            } else {
-              setBalance(result.balance || 0);
-              showToast(`🎉 ${result.coins ?? pkg.coins} Whisper Coins added to your wallet!`);
+            const outcome = await verifyReference(session.access_token, response.reference);
+            if (outcome.kind === "credited") {
+              try { sessionStorage.removeItem(PENDING_PAYMENT_KEY); } catch {}
+              setBalance(outcome.balance);
+              showToast(`🎉 ${outcome.coins || pkg.coins} Whisper Coins added to your wallet!`);
               setVisibleCount(HISTORY_PAGE_SIZE);
               await refresh(userId);
+            } else if (outcome.kind === "pending") {
+              /* Keep the pending entry: the reconciliation re-checks on the
+                 next visit/resume, and the webhook credits it the moment
+                 the gateway confirms — coins are not lost either way. */
+              showToast("Your payment is being confirmed — coins will be added automatically.");
+            } else if (outcome.kind === "rejected") {
+              try { sessionStorage.removeItem(PENDING_PAYMENT_KEY); } catch {}
+              showToast(outcome.error);
+            } else {
+              /* Keep the pending entry; reconciliation retries it. */
+              showToast("We couldn't confirm your payment yet — we'll keep checking.");
             }
-          } catch {
-            showToast("Something went wrong verifying your payment.");
           } finally {
             setBusy(null);
           }
@@ -460,6 +545,72 @@ export default function PremiumPage() {
     handler.openIframe();
   }
 
+  /* ------------------------------------------------------------------
+   * Pending-payment reconciliation
+   *
+   * A payment that left this browser but whose confirm round trip did not
+   * land — the tab closed right after the Paystack success screen, the app
+   * was backgrounded mid-verify, a transfer was still settling — gets its
+   * reference re-verified here: on mount, on window focus, and on app
+   * resume. Re-verification is a no-op once the credit has happened
+   * (credit_verified_payment's reference guard), so running it often costs
+   * one gateway check and nothing else. `rejected` is final (the server
+   * told us why — retrying cannot change it); `pending` and `network` keep
+   * the entry for the next pass.
+   * ------------------------------------------------------------------ */
+  const reconcileInFlight = useRef(false);
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+
+    const reconcile = async () => {
+      if (reconcileInFlight.current) return;
+      const pending = loadPendingPayment();
+      if (!pending) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!active || !session) return;
+      reconcileInFlight.current = true;
+      try {
+        const outcome = await verifyReference(session.access_token, pending.reference);
+        if (!active) return;
+        if (outcome.kind === "credited") {
+          try { sessionStorage.removeItem(PENDING_PAYMENT_KEY); } catch {}
+          setBalance(outcome.balance);
+          showToast(`🎉 ${outcome.coins || pending.coins} Whisper Coins added to your wallet!`);
+          setVisibleCount(HISTORY_PAGE_SIZE);
+          await refresh(userId);
+        } else if (outcome.kind === "rejected") {
+          try { sessionStorage.removeItem(PENDING_PAYMENT_KEY); } catch {}
+          showToast(outcome.error);
+        }
+        /* pending / network: keep the entry, try again on the next visit. */
+      } finally {
+        reconcileInFlight.current = false;
+      }
+    };
+
+    void reconcile();
+    const onFocus = () => void reconcile();
+    window.addEventListener("focus", onFocus);
+
+    /* The Android app resumes without a window focus: the same pass, from
+       the native lifecycle. */
+    let removeResume: (() => void) | null = null;
+    void import("@capacitor/app")
+      .then(({ App }) => {
+        if (!active) return;
+        App.addListener("resume", () => void reconcile()).then((listener) => {
+          if (active) removeResume = () => void listener.remove();
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+      removeResume?.();
+    };
+  }, [userId, refresh, showToast]);
 
   if (loading) {
     return <main className="min-h-screen theme-bg-gradient flex items-center justify-center text-white"><Loader2 className="animate-spin text-purple-400" /></main>;

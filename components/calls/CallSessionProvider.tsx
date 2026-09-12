@@ -141,10 +141,18 @@ export default function CallSessionProvider() {
   /* ---------------------------------------------------------------- */
   /* Rings, from all three paths                                       */
   /* ---------------------------------------------------------------- */
+  /**
+   * `rowId` is the row the engine can trust: a ring derived from an unread
+   * `notifications` row is a live call by construction (the server marks the
+   * row read the moment the call ends). A ring without one (a push tap, an
+   * offer that arrived first) is verified against `call_logs` inside
+   * beginIncomingRing — that is the check that keeps a tap on a stale
+   * notification from ringing a call that has already ended.
+   */
   const showRing = useCallback((ring: Ring, rowId: string | null) => {
     if (!isFresh(ring)) return;
     ringRowIdRef.current = rowId;
-    callSession.beginIncomingRing(ring);
+    void callSession.beginIncomingRing({ ...ring, rowId });
   }, []);
 
   /** The cold-start query: unread `call` rows still inside the ring window. */
@@ -350,6 +358,10 @@ export default function CallSessionProvider() {
   useEffect(() => {
     function onVisibility() {
       if (document.visibilityState === "visible") {
+        // A paused WebView kills the transport without a final state change:
+        // a call that was live now sits "in_call" over a dead pipe. Judge it
+        // first, so the pill does not keep counting over a ghost.
+        callSession.checkHealth();
         // If we were backgrounded during a ringing leg, clear stale rows
         // so next startCall doesn't see phantom busy
         if (call.status === "idle") {
@@ -358,6 +370,7 @@ export default function CallSessionProvider() {
       }
     }
     function onResume() {
+      callSession.checkHealth();
       if (call.status === "idle") void callSession.forceClearPhantom();
     }
     document.addEventListener("visibilitychange", onVisibility);

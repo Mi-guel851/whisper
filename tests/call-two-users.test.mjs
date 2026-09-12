@@ -430,6 +430,90 @@ try {
     }
   );
 
+  /* --------------------------------------------------------------------- */
+
+  await scenario(
+    "11. an eleven-minute-old orphan no longer reads as busy",
+    { nat: "open" },
+    async (harness) => {
+      await openThread(harness);
+      const deadId = await dial(harness);
+      await answer(harness);
+
+      /* The same death as scenario 10, but the orphan is young: eleven
+         minutes old. Inside the four-hour window 202609120003 shipped, this
+         user was still "on another call" to everyone; the window is now ten
+         minutes, so the lazy sweep inside start_call_log closes the orphan
+         in the very call that used to be refused. */
+      await harness.cmd("caller", "hangUp", { notify: null });
+      await harness.cmd("callee", "hangUp", { notify: null });
+      const dead = harness.row(deadId);
+      dead.status = "answered";
+      dead.started_at = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+      dead.ended_at = null;
+
+      const nextId = await dial(harness);
+      ok("an eleven-minute-old orphan does not block the next call", nextId !== deadId);
+      ok("a fresh row was opened", harness.row(nextId).status === "ringing");
+      ok("the orphan was closed as failed", harness.row(deadId).status === "failed");
+      await answer(harness);
+      ok("and the two users are talking", harness.status("caller") === "in_call");
+    }
+  );
+
+  /* --------------------------------------------------------------------- */
+
+  await scenario(
+    "12. a call that ended cannot ring again",
+    { nat: "open" },
+    async (harness) => {
+      await openThread(harness);
+      const callId = await dial(harness);
+      await harness.waitFor("the callee's ring", () => harness.status("callee") === "incoming");
+
+      /* The caller gives up: the call is over, server-side. */
+      await harness.cmd("caller", "hangUp", { notify: "Call ended." });
+      await harness.waitFor("the callee's ring to stop", () => harness.status("callee") === "idle");
+      ok("the row is canceled", harness.row(callId).status === "canceled");
+
+      /* The server retires the ring row on the terminal transition — this is
+         what a cold start looks for (unread 'call' rows inside the window),
+         and the UPDATE is what stands down a ring still on screen. */
+      const ringRow = harness.notifications.find(
+        (note) => note.type === "call" && note.metadata?.call_id === callId
+      );
+      ok("the ring row was marked read when the call ended", ringRow?.is_read === true);
+
+      /* A tap on the (stale) notification arrives AFTER the end. The payload
+         ring carries no row, so the engine verifies the call is still alive
+         before it takes the screen — the check that used to not exist, and
+         the reason an ended call would ring again. */
+      await harness.cmd("callee", "beginIncomingRing", {
+        conversationId: CONVERSATION_ID,
+        callerId: CALLER_ID,
+        callId,
+        createdAt: Date.now(),
+      });
+      await sleep(100);
+      ok("a stale tap does not ring a call that is over", harness.status("callee") === "idle");
+      await harness.settleFor("the overlay must not come up late", () => harness.status("callee") === "incoming", 600);
+
+      /* And the live path still rings: a fresh call, fresh row, fresh tap. */
+      const liveId = await dial(harness);
+      await harness.cmd("callee", "beginIncomingRing", {
+        conversationId: CONVERSATION_ID,
+        callerId: CALLER_ID,
+        callId: liveId,
+        createdAt: Date.now(),
+      });
+      await harness.waitFor("a live call to ring", () => harness.status("callee") === "incoming");
+      ok("a live call still rings from the same path", harness.status("callee") === "incoming");
+      await harness.cmd("callee", "accept");
+      await harness.waitFor("the answer to connect", () => harness.status("caller") === "in_call");
+      ok("and it connects", harness.status("callee") === "in_call");
+    }
+  );
+
   console.log("\nTWO-USER CALL FLOW PASSED");
 } catch (error) {
   failures += 1;

@@ -30,8 +30,8 @@ export const CONVERSATION_ID = "33333333-3333-4333-8333-333333333333";
 
 const TERMINAL = ["completed", "canceled", "declined", "missed", "expired", "busy", "failed"];
 
-/** Mirrors `v_live_window` in 202609120003. */
-const LIVE_WINDOW_MS = 4 * 60 * 60 * 1000;
+/** Mirrors `v_live_window` in 202609120004: ten minutes, not four hours. */
+const LIVE_WINDOW_MS = 10 * 60 * 1000;
 
 export class CallHarness {
   constructor({
@@ -218,6 +218,10 @@ export class CallHarness {
         user.worker.postMessage({ kind: "rpc-result", reqId: message.reqId, data: [], error: null });
         return;
       }
+      case "table-read": {
+        user.worker.postMessage({ kind: "rpc-result", reqId: message.reqId, data: this._tableRead(message.call), error: null });
+        return;
+      }
       case "channel-join": {
         user.channels.set(message.channelId, message.topic);
         return;
@@ -382,6 +386,8 @@ export class CallHarness {
       this.notifications.push({
         user_id: peerId,
         type: "call",
+        source_id: row.id,
+        is_read: false,
         metadata: {
           type: "call",
           call_id: callId,
@@ -428,11 +434,16 @@ export class CallHarness {
       row.missed = ["missed", "expired"].includes(next);
       if (next === "answered") {
         row.answered_at = row.answered_at ?? new Date().toISOString();
-        for (const note of this.notifications) {
-          if (note.user_id === me && note.type === "call") note.is_read = true;
-        }
       } else {
         row.ended_at = new Date().toISOString();
+      }
+      /* 202609120004: EVERY legal transition retires the callee's ring row —
+         answered elsewhere, declined, canceled by the caller, missed, failed,
+         completed. An unread 'call' row inside the window is what a cold
+         start (and a tap on the stale push) rings from, so a call that is
+         over must never be able to ring again. */
+      for (const note of this.notifications) {
+        if (note.type === "call" && note.user_id === row.callee_id) note.is_read = true;
       }
       this._publishLogUpdate(row);
       return { data: { status: next, id: row.id, call_id: row.call_id }, error: null };
@@ -464,6 +475,20 @@ export class CallHarness {
         user.worker.postMessage({ kind: "log-update", channelId, row: { ...row } });
       }
     }
+  }
+
+  /** The read half of the supabase stub: the only select the engine issues is
+      beginIncomingRing's verification against call_logs, keyed by call_id. */
+  _tableRead(call) {
+    if (call.table !== "call_logs") return null;
+    const [column, value] = call.filters.find(([, v]) => v != null) ?? [];
+    const row = this.rows.find((r) => column && r[column] === value) ?? null;
+    if (!row) return null;
+    const out = {};
+    for (const key of (call.columns ?? "").split(",").map((c) => c.trim()).filter(Boolean)) {
+      out[key] = row[key];
+    }
+    return out;
   }
 }
 
