@@ -1,39 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { paymentBelongsToUser } from "@/lib/paymentOwnership";
-import { COIN_PACKAGES } from "@/lib/coins";
-import { getLiveRatesPerUsd } from "@/lib/currency";
 import { clientIp, consumeMulti, rateLimitedResponse } from "@/lib/apiGuard";
+import { settleVerifiedPayment } from "../credit";
 
-const MASKED_EMAIL = "whisper.anonymous.app@gmail.com";
-
-// Paystack only ever settles in NGN on this account, so every charge —
-// Africa/India flat-priced or foreign-converted — arrives as NGN. This
-// figures out which package was paid for and whether the amount actually
-// paid is close enough to what it should have been.
-async function validateAmount(
-  region: "ngn" | "usd_via_ngn",
-  coins: number,
-  amountKobo: number
-): Promise<boolean> {
-  const pkg = COIN_PACKAGES.find((p) => p.coins === coins);
-  if (!pkg) return false;
-
-  if (region === "ngn") {
-    // Flat ₦ pricing for Africa/India — must match exactly.
-    return amountKobo === pkg.ngnAmount * 100;
-  }
-
-  // Foreign buyer: their $ price was converted to NGN using the live rate
-  // at checkout time, which may have drifted slightly by the time the
-  // payment actually settles. Allow a 5% band either side to absorb that,
-  // while still catching genuinely tampered amounts.
-  const { rates } = await getLiveRatesPerUsd();
-  const ngnPerUsd = rates.NGN ?? 1550;
-  const expectedKobo = Math.round(pkg.usdAmount * ngnPerUsd * 100);
-  const tolerance = expectedKobo * 0.05;
-  return Math.abs(amountKobo - expectedKobo) <= tolerance;
-}
+/**
+ * Browser-side verification: the Paystack iframe's callback asks "was that
+ * payment real?" and the coins are released here.
+ *
+ * This is still the fast, user-visible path — but it is no longer the only
+ * path. /api/paystack/webhook credits the same transaction the moment
+ * Paystack confirms it, with or without this tab, and the premium page
+ * re-verifies any payment it started and never saw settled (its
+ * pending-payment reconciliation). The three paths all run the same rule
+ * chain in app/api/paystack/credit.ts and land on the same idempotent
+ * credit_verified_payment write, so a payment is credited exactly once no
+ * matter which path (or how many) arrive.
+ *
+ * NOTHING SECRETS: the request carries the user's session JWT (identity +
+ * rate bucket) and a reference; the body says nothing about who the caller
+ * is, and the account key stays server-side.
+ */
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,58 +75,30 @@ export async function POST(req: NextRequest) {
 
     const tx = paystackData.data;
 
+    /* Still settling (bank transfer, USSD): not a failure. The page keeps
+       the payment pending and re-verifies on the next visit — and the
+       webhook credits it the instant Paystack flips it to success, even if
+       the user never comes back to this tab. */
+    if (tx.status === "pending") {
+      return NextResponse.json(
+        { success: false, pending: true, error: "Payment is being confirmed — coins will be added automatically." },
+        { status: 202 }
+      );
+    }
+
     if (tx.status !== "success") {
       return NextResponse.json({ error: "Payment not successful" }, { status: 400 });
     }
 
-    // The gateway-verified transaction, not the request body, binds the payer.
-    if (!paymentBelongsToUser(tx, reference, user.id)) {
-      return NextResponse.json({ error: "Payment does not belong to this account" }, { status: 403 });
+    /* One rule chain, shared with the webhook: ownership, currency,
+       package, amount, email, then the idempotent credit. */
+    const result = await settleVerifiedPayment(tx, reference, user.id);
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const currency = String(tx.currency || "").toUpperCase();
-    if (currency !== "NGN") {
-      return NextResponse.json({ error: "Unsupported charge currency" }, { status: 400 });
-    }
-
-    const coins = Number(tx.metadata?.coins);
-    const region = tx.metadata?.region === "usd_via_ngn" ? "usd_via_ngn" : "ngn";
-
-    if (!coins || !Number.isFinite(coins)) {
-      return NextResponse.json({ error: "Missing package metadata" }, { status: 400 });
-    }
-
-    const amountValid = await validateAmount(region, coins, tx.amount);
-    if (!amountValid) {
-      return NextResponse.json({ error: "Amount mismatch" }, { status: 400 });
-    }
-
-    if (tx.customer?.email && tx.customer.email !== MASKED_EMAIL) {
-      return NextResponse.json({ error: "Email mismatch" }, { status: 400 });
-    }
-
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    const { data: newBalance, error: creditError } = await supabaseAdmin.rpc(
-      "credit_verified_payment",
-      {
-        target_user: user.id,
-        payment_reference: reference,
-        currency_code: currency,
-        amount_minor_units: tx.amount,
-        coin_amount: coins,
-      }
-    );
-
-    if (creditError) {
-      console.error("Credit error:", creditError.message);
-      return NextResponse.json({ error: "Failed to credit account" }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true, balance: newBalance, coins });
+    return NextResponse.json({ success: true, balance: result.balance, coins: result.coins });
   } catch (err) {
     console.error("Verify route error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
